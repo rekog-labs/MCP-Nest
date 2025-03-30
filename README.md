@@ -8,6 +8,7 @@ A NestJS module for exposing your services as an MCP (Model Context Protocol) se
 - **Tool Discovery**: Automatically discover and register tools using decorators
 - **Tool Request Validation**: Define Zod schemas to validate tool requests.
 - **Progress Notifications**: Send continuous progress updates from tools to clients.
+- **Cleanup**: Define resource cleanup logic when mcp session is closed using decorator
 
 ## Installation
 
@@ -42,9 +43,10 @@ export class AppModule {}
 ```typescript
 // greeting.tool.ts
 import { Injectable } from '@nestjs/common';
-import { Tool } from '@rekog/mcp-nest';
+import { Tool, Cleanup } from '@rekog/mcp-nest';
 import { z } from 'zod';
 import { Context } from '@rekog/mcp-nest/dist/services/mcp-tools.discovery';
+import { CleanupContext } from '@rekog/mcp-nest/dist/services/cleanup.service';
 import { Progress } from '@modelcontextprotocol/sdk/types';
 
 @Injectable()
@@ -60,6 +62,11 @@ export class GreetingTool {
     }),
   })
   async sayHello({ name }, context: Context) {
+    const { request } = context;
+
+    // retrieve unique session id of the current tool call
+    const sessionId = req.query.sessionId as string;
+
     const greeting = `Hello, ${name}!`;
 
     const totalSteps = 5;
@@ -77,6 +84,14 @@ export class GreetingTool {
       content: [{ type: 'text', text: greeting }],
     };
   }
+
+  @Cleanup()
+  async onSessionClose(context: CleanupContext) {
+
+    const sessionId = context.sessionId;
+    // cleanup resources on session close
+  }
+
 }
 ```
 

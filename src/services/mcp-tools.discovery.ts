@@ -14,6 +14,7 @@ export type Context = {
     info: (message: string, data?: SerializableValue) => void;
     warn: (message: string, data?: SerializableValue) => void;
   };
+  request: z.infer<typeof CallToolRequestSchema>;
 };
 
 type Literal = boolean | null | number | string | undefined;
@@ -149,10 +150,8 @@ export class McpToolsDiscovery implements OnApplicationBootstrap {
         parsedParams = result.data;
       }
 
-      const progressToken = request.params?._meta?.progressToken;
-
       try {
-        const context = this.createContext(mcpServer, progressToken!);
+        const context = this.createContext(mcpServer, request);
         const result = await tool.instance[tool.methodName].call(
           tool.instance,
           parsedParams,
@@ -186,7 +185,9 @@ export class McpToolsDiscovery implements OnApplicationBootstrap {
     });
   }
 
-  private createContext(mcpServer: McpServer, progressToken?: string | number) : Context {
+  private createContext(mcpServer: McpServer, request: z.infer<typeof CallToolRequestSchema>) : Context {
+    const progressToken = request.params?._meta?.progressToken;
+
     return {
       reportProgress: async (progress: Progress) => {
         if (progressToken) {
@@ -225,6 +226,7 @@ export class McpToolsDiscovery implements OnApplicationBootstrap {
           });
         },
       },
+      request,
     };
   }
 }
