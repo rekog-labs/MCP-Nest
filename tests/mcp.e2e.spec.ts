@@ -1,12 +1,15 @@
 import { INestApplication, Injectable } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { z } from "zod";
-import { Tool } from "../src";
+import { Tool, Cleanup } from "../src";
 import { McpModule } from "../src/mcp.module";
 import { Context } from "../src/services/mcp-tools.discovery";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Progress } from "@modelcontextprotocol/sdk/types.js";
+import { CleanupContext } from "../src/services/cleanup.service";
+
+const mockCleanupFn = jest.fn();
 
 // Mock UserRepository for testing
 @Injectable()
@@ -24,6 +27,10 @@ class MockUserRepository {
         },
       ],
     };
+  }
+
+  async cleanupBySessionId(sessionId: string) {
+    mockCleanupFn(sessionId);
   }
 }
 
@@ -61,6 +68,11 @@ export class GreetingTool {
       ],
     };
   }
+
+  @Cleanup()
+  async onSessionClose(context: CleanupContext) {
+    await this.userRepository.cleanupBySessionId(context.sessionId);
+  }
 }
 
 describe("E2E: MCP Server via SSE", () => {
@@ -92,6 +104,7 @@ describe("E2E: MCP Server via SSE", () => {
         }),
       ],
       providers: [GreetingTool, MockUserRepository],
+      exports: [MockUserRepository],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -105,6 +118,8 @@ describe("E2E: MCP Server via SSE", () => {
     await app.close();
   });
 
+  afterEach(() => jest.clearAllMocks());
+
   it("should list tools", async () => {
     const client = new Client(
       { name: "example-client", version: "1.0.0" },
@@ -116,6 +131,11 @@ describe("E2E: MCP Server via SSE", () => {
     const tools = await client.listTools();
     expect(tools.tools.length).toBeGreaterThan(0);
     await client.close();
+
+    // give time for cleanup promises to be resolved
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(mockCleanupFn).toHaveBeenCalledTimes(1);
+    expect(mockCleanupFn).toHaveBeenCalledWith(expect.any(String));
   });
 
   it('should inject dependencies into the tool and call the "hello-world" tool via SSE', async () => {
@@ -154,5 +174,10 @@ describe("E2E: MCP Server via SSE", () => {
       ],
     });
     await client.close();
+
+    // give time for cleanup promises to be resolved
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(mockCleanupFn).toHaveBeenCalledTimes(1);
+    expect(mockCleanupFn).toHaveBeenCalledWith(expect.any(String));
   });
 });

@@ -5,6 +5,7 @@ import { McpOptions, McpAsyncOptions, McpOptionsFactory } from './interfaces/mcp
 
 import { createSseController } from './controllers/sse.controller.factory';
 import { McpToolsDiscovery } from './services/mcp-tools.discovery';
+import { CleanupService } from './services/cleanup.service';
 
 @Module({})
 export class McpModule {
@@ -36,6 +37,7 @@ export class McpModule {
           inject: ['MCP_OPTIONS'],
         },
         McpToolsDiscovery,
+        CleanupService,
       ],
       exports: ['MCP_SERVER'],
     };
@@ -62,6 +64,7 @@ export class McpModule {
           inject: ['MCP_OPTIONS'],
         },
         McpToolsDiscovery,
+        CleanupService,
       ],
       exports: ['MCP_SERVER'],
     };

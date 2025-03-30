@@ -5,6 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { McpOptions } from '../interfaces';
 import { McpToolsDiscovery } from '../services/mcp-tools.discovery';
+import { CleanupService } from '../services/cleanup.service';
 
 
 export function createSseController(
@@ -19,6 +20,7 @@ export function createSseController(
     constructor(
       @Inject('MCP_OPTIONS') public readonly options: McpOptions,
       public readonly mcpToolsDiscovery: McpToolsDiscovery,
+      public readonly cleanupService: CleanupService,
     ) {}
 
     @Get(sseEndpoint)
@@ -36,8 +38,9 @@ export function createSseController(
 
       this.transports.set(sessionId, transport);
 
-      transport.onclose = () => {
+      mcpServer.server.onclose = () => {
         this.transports.delete(sessionId);
+        this.cleanupService.cleanup(sessionId);
       };
 
       await mcpServer.connect(transport);
