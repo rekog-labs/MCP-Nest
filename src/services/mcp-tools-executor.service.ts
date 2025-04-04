@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Injectable, Scope } from '@nestjs/common';
+import { Injectable, Scope, Inject } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -129,9 +129,7 @@ export class McpToolsExecutorService {
           if (!result.success) {
             throw new McpError(
               ErrorCode.InvalidParams,
-              `Invalid ${request.params.name} parameters: ${JSON.stringify(
-                result.error.format(),
-              )}`,
+              `Invalid ${request.params.name} parameters: ${JSON.stringify(result.error.format())}`,
             );
           }
           parsedParams = result.data;
@@ -193,7 +191,7 @@ export class McpToolsExecutorService {
   private createContext(
     mcpServer: McpServer,
     toolRequest: z.infer<typeof CallToolRequestSchema>,
-    _?: Request & { user: any },
+    httpRequest?: Request & { user: any },
   ): Context {
     const progressToken = toolRequest.params?._meta?.progressToken;
     return {
