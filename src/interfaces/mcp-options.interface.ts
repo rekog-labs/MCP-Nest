@@ -4,9 +4,9 @@ import { CanActivate } from '@nestjs/common';
 export interface McpOptions {
   name: string;
   version: string;
-  sseEndpoint?: string,
-  messagesEndpoint?: string,
-  globalApiPrefix?: string,
+  sseEndpoint?: string;
+  messagesEndpoint?: string;
+  globalApiPrefix?: string;
   capabilities?: Record<string, any>;
   guards?: Type<CanActivate>[];
 }

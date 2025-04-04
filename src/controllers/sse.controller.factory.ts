@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Inject, Post, Req, Res, Type, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Post,
+  Req,
+  Res,
+  Type,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CanActivate } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
@@ -20,7 +30,6 @@ export function createSseController(
 ) {
   @Controller()
   class SseController {
-
     // Note: Currently, storing transports and servers in memory makes this not viable for scaling out.
     // Redis can be used for this purpose, but considering that HTTP Streamable succeeds SSE then we can drop keeping this in memory.
 
@@ -40,7 +49,10 @@ export function createSseController(
      */
     @Get(sseEndpoint)
     async sse(@Res() res: Response) {
-      const transport = new SSEServerTransport(`${globalApiPrefix}/${messagesEndpoint}`, res);
+      const transport = new SSEServerTransport(
+        `${globalApiPrefix}/${messagesEndpoint}`,
+        res,
+      );
       const sessionId = transport.sessionId;
 
       // Create a new MCP server for this session
@@ -67,7 +79,11 @@ export function createSseController(
      */
     @Post(messagesEndpoint)
     @UseGuards(...guards)
-    async messages(@Req() req: Request & { user: any }, @Res() res: Response, @Body() body: unknown) {
+    async messages(
+      @Req() req: Request & { user: any },
+      @Res() res: Response,
+      @Body() body: unknown,
+    ) {
       const sessionId = req.query.sessionId as string;
       const transport = this.transports.get(sessionId);
 
@@ -84,7 +100,7 @@ export function createSseController(
       const toolExecutor = await this.moduleRef.resolve(
         McpToolsExecutorService,
         undefined,
-        { strict: false }
+        { strict: false },
       );
 
       // Register request handlers with the user context from this specific request
