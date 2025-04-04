@@ -1,29 +1,29 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { Progress } from "@modelcontextprotocol/sdk/types.js";
-import { INestApplication, Injectable, Scope } from "@nestjs/common";
-import { Test, TestingModule } from "@nestjs/testing";
-import { z } from "zod";
-import { Context, Tool } from "../src";
-import { McpModule } from "../src/mcp.module";
-import { createMCPClient } from "./utils";
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { Progress } from '@modelcontextprotocol/sdk/types.js';
+import { INestApplication, Injectable, Scope } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import { z } from 'zod';
+import { Context, Tool } from '../src';
+import { McpModule } from '../src/mcp.module';
+import { createMCPClient } from './utils';
 
 // Mock user repository
 @Injectable()
 class MockUserRepository {
   async findOne(id: string) {
-    return {
+    return Promise.resolve({
       id,
-      name: "Repository User",
+      name: 'Repository User',
       orgMemberships: [
         {
-          orgId: "org123",
+          orgId: 'org123',
           organization: {
-            name: "Repository Org",
+            name: 'Repository Org',
           },
         },
       ],
-    };
+    });
   }
 }
 
@@ -33,10 +33,10 @@ export class GreetingTool {
   constructor(private readonly userRepository: MockUserRepository) {}
 
   @Tool({
-    name: "hello-world",
-    description: "A sample tool that get the user by id",
+    name: 'hello-world',
+    description: 'A sample tool that get the user by id',
     parameters: z.object({
-      name: z.string().default("World"),
+      name: z.string().default('World'),
     }),
   })
   async sayHello({ id }, context: Context) {
@@ -54,7 +54,7 @@ export class GreetingTool {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: `Hello, ${user.name}!`,
         },
       ],
@@ -67,10 +67,10 @@ export class GreetingToolRequestScoped {
   constructor(private readonly userRepository: MockUserRepository) {}
 
   @Tool({
-    name: "hello-world-scoped",
-    description: "A sample tool that get the user by id",
+    name: 'hello-world-scoped',
+    description: 'A sample tool that get the user by id',
     parameters: z.object({
-      name: z.string().default("World"),
+      name: z.string().default('World'),
     }),
   })
   async sayHello({ id }, context: Context) {
@@ -88,7 +88,7 @@ export class GreetingToolRequestScoped {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: `Hello, ${user.name}!`,
         },
       ],
@@ -96,7 +96,7 @@ export class GreetingToolRequestScoped {
   }
 }
 
-describe("E2E: MCP Server", () => {
+describe('E2E: MCP Server', () => {
   let app: INestApplication;
   let testPort: number;
 
@@ -104,8 +104,8 @@ describe("E2E: MCP Server", () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         McpModule.forRoot({
-          name: "test-mcp-server",
-          version: "0.0.1",
+          name: 'test-mcp-server',
+          version: '0.0.1',
           guards: [],
         }),
       ],
@@ -123,19 +123,19 @@ describe("E2E: MCP Server", () => {
     await app.close();
   });
 
-  it("should list tools", async () => {
+  it('should list tools', async () => {
     const client = await createMCPClient(testPort);
     const tools = await client.listTools();
 
     // Verify that the authenticated tool is available
     expect(tools.tools.length).toBeGreaterThan(0);
-    expect(tools.tools.find((t) => t.name === "hello-world")).toBeDefined();
+    expect(tools.tools.find((t) => t.name === 'hello-world')).toBeDefined();
 
     await client.close();
   });
 
-  it.each([{ tool: "hello-world" }, { tool: "hello-world-scoped" }])(
-    "should call the tool and receive progress notifications for $tool",
+  it.each([{ tool: 'hello-world' }, { tool: 'hello-world-scoped' }])(
+    'should call the tool and receive progress notifications for $tool',
     async ({ tool }) => {
       const client = await createMCPClient(testPort);
 
@@ -143,24 +143,24 @@ describe("E2E: MCP Server", () => {
       const result: any = await client.callTool(
         {
           name: tool,
-          arguments: { id: "userRepo123" },
+          arguments: { id: 'userRepo123' },
         },
         undefined,
         {
           onprogress: () => {
             progressCount++;
           },
-        }
+        },
       );
 
       // Verify that progress notifications were received
       expect(progressCount).toBe(5);
 
       // Verify that authentication context was available to the tool
-      expect(result.content[0].type).toBe("text");
-      expect(result.content[0].text).toContain("Hello, Repository User!");
+      expect(result.content[0].type).toBe('text');
+      expect(result.content[0].text).toContain('Hello, Repository User!');
 
       await client.close();
-    }
+    },
   );
 });

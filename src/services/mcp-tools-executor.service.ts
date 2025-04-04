@@ -1,18 +1,17 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { Injectable, Scope, Inject } from "@nestjs/common";
-import { ModuleRef } from "@nestjs/core";
-import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Injectable, Scope } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
   McpError,
   Progress,
-} from "@modelcontextprotocol/sdk/types.js";
-import { REQUEST } from "@nestjs/core";
-import { Request } from "express";
-import { McpToolRegistryService } from "./mcp-tool-registry.service";
+} from '@modelcontextprotocol/sdk/types.js';
+import { Request } from 'express';
+import { McpToolRegistryService } from './mcp-tool-registry.service';
 
 export type Literal = boolean | null | number | string | undefined;
 
@@ -22,13 +21,13 @@ export type SerializableValue =
   | { [key: string]: SerializableValue };
 
 export type TextContent = {
-  type: "text";
+  type: 'text';
   text: string;
 };
 
 export const TextContentZodSchema = z
   .object({
-    type: z.literal("text"),
+    type: z.literal('text'),
     /**
      * The text content of the message.
      */
@@ -38,7 +37,7 @@ export const TextContentZodSchema = z
 
 export type Content = TextContent;
 
-export const ContentZodSchema = z.discriminatedUnion("type", [
+export const ContentZodSchema = z.discriminatedUnion('type', [
   TextContentZodSchema,
 ]) satisfies z.ZodType<Content>;
 
@@ -71,7 +70,7 @@ export type Context = {
 class UserError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "UserError";
+    this.name = 'UserError';
   }
 }
 
@@ -83,7 +82,7 @@ export class McpToolsExecutorService {
   // Don't inject the request directly in the constructor
   constructor(
     private readonly moduleRef: ModuleRef,
-    private readonly toolRegistry: McpToolRegistryService
+    private readonly toolRegistry: McpToolRegistryService,
   ) {}
 
   /**
@@ -93,9 +92,9 @@ export class McpToolsExecutorService {
    */
   registerRequestHandlers(
     mcpServer: McpServer,
-    httpRequest: Request & { user: any }
+    httpRequest: Request & { user: any },
   ) {
-    mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
       const tools = this.toolRegistry.getTools().map((tool) => ({
         name: tool.metadata.name,
         description: tool.metadata.description,
@@ -118,7 +117,7 @@ export class McpToolsExecutorService {
         if (!toolInfo) {
           throw new McpError(
             ErrorCode.MethodNotFound,
-            `Unknown tool: ${request.params.name}`
+            `Unknown tool: ${request.params.name}`,
           );
         }
 
@@ -131,8 +130,8 @@ export class McpToolsExecutorService {
             throw new McpError(
               ErrorCode.InvalidParams,
               `Invalid ${request.params.name} parameters: ${JSON.stringify(
-                result.error.format()
-              )}`
+                result.error.format(),
+              )}`,
             );
           }
           parsedParams = result.data;
@@ -143,7 +142,7 @@ export class McpToolsExecutorService {
           const toolInstance = await this.moduleRef.resolve(
             toolInfo.providerClass,
             undefined,
-            { strict: false }
+            { strict: false },
           );
 
           // Create the execution context with user information
@@ -154,15 +153,15 @@ export class McpToolsExecutorService {
             toolInstance,
             parsedParams,
             context,
-            httpRequest
+            httpRequest,
           );
 
           // Handle different result types
-          if (typeof result === "string") {
+          if (typeof result === 'string') {
             return ContentResultZodSchema.parse({
-              content: [{ type: "text", text: result }],
+              content: [{ type: 'text', text: result }],
             });
-          } else if (result && typeof result === "object" && "type" in result) {
+          } else if (result && typeof result === 'object' && 'type' in result) {
             return ContentResultZodSchema.parse({
               content: [result],
             });
@@ -172,16 +171,16 @@ export class McpToolsExecutorService {
         } catch (error) {
           if (error instanceof UserError) {
             return {
-              content: [{ type: "text", text: error.message }],
+              content: [{ type: 'text', text: error.message }],
               isError: true,
             };
           }
           return {
-            content: [{ type: "text", text: `Error: ${error}` }],
+            content: [{ type: 'text', text: `Error: ${error}` }],
             isError: true,
           };
         }
-      }
+      },
     );
   }
 
@@ -194,14 +193,14 @@ export class McpToolsExecutorService {
   private createContext(
     mcpServer: McpServer,
     toolRequest: z.infer<typeof CallToolRequestSchema>,
-    _?: Request & { user: any }
+    _?: Request & { user: any },
   ): Context {
     const progressToken = toolRequest.params?._meta?.progressToken;
     return {
       reportProgress: async (progress: Progress) => {
         if (progressToken) {
           await mcpServer.server.notification({
-            method: "notifications/progress",
+            method: 'notifications/progress',
             params: {
               ...progress,
               progressToken,
@@ -213,25 +212,25 @@ export class McpToolsExecutorService {
       log: {
         debug: (message: string, context?: SerializableValue) => {
           mcpServer.server.sendLoggingMessage({
-            level: "debug",
+            level: 'debug',
             data: { message, context },
           });
         },
         error: (message: string, context?: SerializableValue) => {
           mcpServer.server.sendLoggingMessage({
-            level: "error",
+            level: 'error',
             data: { message, context },
           });
         },
         info: (message: string, context?: SerializableValue) => {
           mcpServer.server.sendLoggingMessage({
-            level: "info",
+            level: 'info',
             data: { message, context },
           });
         },
         warn: (message: string, context?: SerializableValue) => {
           mcpServer.server.sendLoggingMessage({
-            level: "warning",
+            level: 'warning',
             data: { message, context },
           });
         },
