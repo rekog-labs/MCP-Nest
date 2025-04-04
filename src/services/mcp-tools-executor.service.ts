@@ -3,7 +3,13 @@ import { Injectable, Scope, Inject } from "@nestjs/common";
 import { ModuleRef } from "@nestjs/core";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError, Progress } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListToolsRequestSchema,
+  McpError,
+  Progress,
+} from "@modelcontextprotocol/sdk/types.js";
 import { REQUEST } from "@nestjs/core";
 import { Request } from "express";
 import { McpToolRegistryService } from "./mcp-tool-registry.service";
@@ -65,7 +71,7 @@ export type Context = {
 class UserError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'UserError';
+    this.name = "UserError";
   }
 }
 
@@ -77,7 +83,7 @@ export class McpToolsExecutorService {
   // Don't inject the request directly in the constructor
   constructor(
     private readonly moduleRef: ModuleRef,
-    private readonly toolRegistry: McpToolRegistryService,
+    private readonly toolRegistry: McpToolRegistryService
   ) {}
 
   /**
@@ -85,7 +91,10 @@ export class McpToolsExecutorService {
    * @param mcpServer - The MCP server instance
    * @param request - The current HTTP request object
    */
-  registerRequestHandlers(mcpServer: McpServer, httpRequest: Request & { user: any }) {
+  registerRequestHandlers(
+    mcpServer: McpServer,
+    httpRequest: Request & { user: any }
+  ) {
     mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => {
       const tools = this.toolRegistry.getTools().map((tool) => ({
         name: tool.metadata.name,
@@ -96,81 +105,84 @@ export class McpToolsExecutorService {
       }));
 
       return {
-        tools
+        tools,
       };
     });
 
     // Register call tool handler
-    mcpServer.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const toolInfo = this.toolRegistry.findTool(request.params.name);
+    mcpServer.server.setRequestHandler(
+      CallToolRequestSchema,
+      async (request) => {
+        const toolInfo = this.toolRegistry.findTool(request.params.name);
 
-      if (!toolInfo) {
-        throw new McpError(
-          ErrorCode.MethodNotFound,
-          `Unknown tool: ${request.params.name}`
-        );
-      }
-
-      const schema = toolInfo.metadata.parameters;
-      let parsedParams = request.params.arguments;
-
-      if (schema && schema instanceof z.ZodType) {
-        const result = schema.safeParse(request.params.arguments);
-        if (!result.success) {
+        if (!toolInfo) {
           throw new McpError(
-            ErrorCode.InvalidParams,
-            `Invalid ${request.params.name} parameters: ${JSON.stringify(result.error.format())}`
+            ErrorCode.MethodNotFound,
+            `Unknown tool: ${request.params.name}`
           );
         }
-        parsedParams = result.data;
-      }
 
-      const progressToken = request.params?._meta?.progressToken;
+        const schema = toolInfo.metadata.parameters;
+        let parsedParams = request.params.arguments;
 
-      try {
-        // Resolve the tool instance for the current request
-        const toolInstance = await this.moduleRef.resolve(
-          toolInfo.providerClass,
-          undefined,
-          { strict: false }
-        );
-
-        // Create the execution context with user information
-        const context = this.createContext(mcpServer, request, httpRequest);
-
-        // Call the tool method
-        const result = await toolInstance[toolInfo.methodName].call(
-          toolInstance,
-          parsedParams,
-          context,
-          httpRequest,
-        );
-
-        // Handle different result types
-        if (typeof result === "string") {
-          return ContentResultZodSchema.parse({
-            content: [{ type: "text", text: result }],
-          });
-        } else if (result && typeof result === "object" && "type" in result) {
-          return ContentResultZodSchema.parse({
-            content: [result],
-          });
-        } else {
-          return ContentResultZodSchema.parse(result);
+        if (schema && schema instanceof z.ZodType) {
+          const result = schema.safeParse(request.params.arguments);
+          if (!result.success) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              `Invalid ${request.params.name} parameters: ${JSON.stringify(
+                result.error.format()
+              )}`
+            );
+          }
+          parsedParams = result.data;
         }
-      } catch (error) {
-        if (error instanceof UserError) {
+
+        try {
+          // Resolve the tool instance for the current request
+          const toolInstance = await this.moduleRef.resolve(
+            toolInfo.providerClass,
+            undefined,
+            { strict: false }
+          );
+
+          // Create the execution context with user information
+          const context = this.createContext(mcpServer, request, httpRequest);
+
+          // Call the tool method
+          const result = await toolInstance[toolInfo.methodName].call(
+            toolInstance,
+            parsedParams,
+            context,
+            httpRequest
+          );
+
+          // Handle different result types
+          if (typeof result === "string") {
+            return ContentResultZodSchema.parse({
+              content: [{ type: "text", text: result }],
+            });
+          } else if (result && typeof result === "object" && "type" in result) {
+            return ContentResultZodSchema.parse({
+              content: [result],
+            });
+          } else {
+            return ContentResultZodSchema.parse(result);
+          }
+        } catch (error) {
+          if (error instanceof UserError) {
+            return {
+              content: [{ type: "text", text: error.message }],
+              isError: true,
+            };
+          }
           return {
-            content: [{ type: "text", text: error.message }],
+            content: [{ type: "text", text: `Error: ${error}` }],
             isError: true,
           };
         }
-        return {
-          content: [{ type: "text", text: `Error: ${error}` }],
-          isError: true,
-        };
       }
-    });
+    );
   }
 
   /**
@@ -179,7 +191,11 @@ export class McpToolsExecutorService {
    * @param progressToken - Optional progress token for reporting progress
    * @param request - The current HTTP request
    */
-  private createContext(mcpServer: McpServer, toolRequest: z.infer<typeof CallToolRequestSchema>, httpRequest?: Request & { user: any}): Context {
+  private createContext(
+    mcpServer: McpServer,
+    toolRequest: z.infer<typeof CallToolRequestSchema>,
+    _?: Request & { user: any }
+  ): Context {
     const progressToken = toolRequest.params?._meta?.progressToken;
     return {
       reportProgress: async (progress: Progress) => {
