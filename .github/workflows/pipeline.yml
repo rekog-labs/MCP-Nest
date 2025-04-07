@@ -43,6 +43,8 @@ jobs:
         registry-url: 'https://registry.npmjs.org'
     - name: Install dependencies
       run: npm ci
+    - name: Generate changelog and bump version
+      run: npm run release
     - name: Bump version
       run: |
         npm version patch -m "ci: bump version to %s [skip ci]"
