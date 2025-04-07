@@ -9,7 +9,7 @@ import { McpModule } from '../src/mcp.module';
 import { createMCPClient } from './utils';
 
 // Mock user repository
-@Injectable()
+@Injectable({ scope: Scope.TRANSIENT })
 class MockUserRepository {
   async findOne(id: string) {
     return Promise.resolve({

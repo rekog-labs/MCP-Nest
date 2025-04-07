@@ -100,8 +100,7 @@ export class McpToolsExecutorService {
         name: tool.metadata.name,
         description: tool.metadata.description,
         inputSchema: tool.metadata.parameters
-          ? // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-            zodToJsonSchema(tool.metadata.parameters)
+          ? zodToJsonSchema(tool.metadata.parameters)
           : undefined,
       }));
 
@@ -142,7 +141,6 @@ export class McpToolsExecutorService {
         try {
           // Resolve the tool instance for the current request
           const toolInstance = await this.moduleRef.resolve(
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
             toolInfo.providerClass,
             undefined,
             { strict: false },

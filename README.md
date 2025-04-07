@@ -13,7 +13,7 @@ A NestJS module for exposing your services as an MCP (Model Context Protocol) se
 ## Installation
 
 ```bash
-npm install @rekog/mcp-nest reflect-metadata @modelcontextprotocol/sdk zod @nestjs/common @nestjs/core
+npm install @kieling/nest-mcp reflect-metadata @modelcontextprotocol/sdk zod @nestjs/common @nestjs/core
 ```
 
 ## Quick Start
@@ -23,7 +23,7 @@ npm install @rekog/mcp-nest reflect-metadata @modelcontextprotocol/sdk zod @nest
 ```typescript
 // app.module.ts
 import { Module } from '@nestjs/common';
-import { McpModule } from '@rekog/mcp-nest';
+import { McpModule } from '@kieling/nest-mcp';
 import { GreetingTool } from './greeting.tool';
 
 @Module({
@@ -31,9 +31,9 @@ import { GreetingTool } from './greeting.tool';
     McpModule.forRoot({
       name: 'my-mcp-server',
       version: '1.0.0',
-    })
+    }),
   ],
-  providers: [GreetingTool]
+  providers: [GreetingTool],
 })
 export class AppModule {}
 ```
@@ -43,7 +43,7 @@ export class AppModule {}
 ```typescript
 // greeting.tool.ts
 import { Injectable } from '@nestjs/common';
-import { Tool, Context } from '@rekog/mcp-nest';
+import { Tool, Context } from '@kieling/nest-mcp';
 import { z } from 'zod';
 import { Progress } from '@modelcontextprotocol/sdk/types';
 
@@ -89,6 +89,7 @@ You can secure your MCP endpoints using standard NestJS Guards.
 ### 1. Create a Guard
 
 Implement the `CanActivate` interface. The guard should handle request validation (e.g., checking JWTs, API keys) and optionally attach user information to the request object.
+
 <details>
 <summary>Example Guard Implementation</summary>
 
@@ -129,7 +130,7 @@ Pass your guard(s) to the `McpModule.forRoot` configuration. The guard(s) will b
 ```typescript
 // app.module.ts
 import { Module } from '@nestjs/common';
-import { McpModule } from '@rekog/mcp-nest';
+import { McpModule } from '@kieling/nest-mcp';
 import { GreetingTool } from './greeting.tool';
 import { AuthGuard } from './auth.guard';
 
@@ -138,10 +139,10 @@ import { AuthGuard } from './auth.guard';
     McpModule.forRoot({
       name: 'my-mcp-server',
       version: '1.0.0',
-      guards: [AuthGuard] // Apply the guard here
-    })
+      guards: [AuthGuard], // Apply the guard here
+    }),
   ],
-  providers: [GreetingTool, AuthGuard] // Ensure the Guard is also provided
+  providers: [GreetingTool, AuthGuard], // Ensure the Guard is also provided
 })
 export class AppModule {}
 ```
@@ -153,20 +154,23 @@ If your guard attaches user information to the `request` object (e.g., `request.
 ```typescript
 // authenticated-greeting.tool.ts
 import { Injectable } from '@nestjs/common';
-import { Tool, Context } from '@rekog/mcp-nest';
+import { Tool, Context } from '@kieling/nest-mcp';
 import { z } from 'zod';
 import { Request } from 'express'; // Import Request from express
 
 @Injectable()
 export class AuthenticatedGreetingTool {
-
   @Tool({
     name: 'auth-hello-world',
     description: 'Greets the authenticated user',
     parameters: z.object({}), // No parameters needed for this example
   })
   // Add 'request' as the third parameter
-  async sayAuthHello(args: {}, context: Context, request: Request & { user?: { id: string } }) {
+  async sayAuthHello(
+    args: {},
+    context: Context,
+    request: Request & { user?: { id: string } },
+  ) {
     const userId = request.user?.id || 'Anonymous';
     const greeting = `Hello, user ${userId}!`;
 
@@ -177,7 +181,7 @@ export class AuthenticatedGreetingTool {
 }
 ```
 
-*Note: Ensure your tool (`AuthenticatedGreetingTool` in this example) is added to the `providers` array in your `AppModule`.*
+_Note: Ensure your tool (`AuthenticatedGreetingTool` in this example) is added to the `providers` array in your `AppModule`._
 
 ## Client Connection
 
@@ -192,11 +196,11 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse';
 
 const client = new Client(
   { name: 'client-name', version: '1.0.0' },
-  { capabilities: {} }
+  { capabilities: {} },
 );
 
 await client.connect(
-  new SSEClientTransport(new URL('http://localhost:3000/sse'))
+  new SSEClientTransport(new URL('http://localhost:3000/sse')),
 );
 
 // ... list tools, call tools etc.
@@ -213,23 +217,19 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse';
 
 const client = new Client(
   { name: 'client-name', version: '1.0.0' },
-  { capabilities: {} }
+  { capabilities: {} },
 );
 
-const transport = new SSEClientTransport(
-  new URL('http://localhost:3000/sse'),
-  {
-    // Provide necessary credentials here
-    requestInit: {
-      headers: {
-        Authorization: 'Bearer your-secret-token' // Match guard expectation
-      }
-    }
-  }
-);
+const transport = new SSEClientTransport(new URL('http://localhost:3000/sse'), {
+  // Provide necessary credentials here
+  requestInit: {
+    headers: {
+      Authorization: 'Bearer your-secret-token', // Match guard expectation
+    },
+  },
+});
 
 await client.connect(transport);
-
 
 // Execute the 'auth-hello-world' tool
 const greetResult = await client.callTool(
@@ -239,10 +239,9 @@ const greetResult = await client.callTool(
   },
   undefined, // responseSchema is optional
   {
-    onprogress: (progress) => { // Example progress handler
-      console.log(
-        `Progress: ${progress.progress}/${progress.total}`
-      );
+    onprogress: (progress) => {
+      // Example progress handler
+      console.log(`Progress: ${progress.progress}/${progress.total}`);
     },
   },
 );
@@ -254,41 +253,3 @@ console.log(greetResult.content[0].text); // Output: Hello, user user-123!
 
 - `GET /sse`: SSE connection endpoint (Protected by guards if configured)
 - `POST /messages`: Tool execution endpoint (Protected by guards if configured)
-
-## Configuration Reference
-
-### `McpOptions`
-
-| Property             | Type                      | Description                                                                 | Default Value |
-|----------------------|---------------------------|-----------------------------------------------------------------------------|---------------|
-| `name`               | string                    | Server name                                                                 | -             |
-| `version`            | string                    | Server version                                                              | -             |
-| `capabilities`       | Record<string, any>       | Server capabilities, defines what the server can do.                        | `{}`          |
-| `guards`             | `any[]` (NestJS Guards)   | An array of NestJS Guards to apply to the MCP endpoints.                    | `[]`          |
-| `sseEndpoint`        | string (optional)         | Endpoint for SSE connections.                                               | `'sse'`       |
-| `messagesEndpoint`   | string (optional)         | Endpoint for handling tool execution.                                        | `'messages'`  |
-| `globalApiPrefix`    | string (optional)         | Global API prefix for all endpoints.                                        | `''`          |
-
-### Tool Decorator
-
-The `@Tool` decorator is used to define a method as an MCP tool.
-
-```typescript
-@Tool({ name: string, description: string, parameters?: z.ZodObject<any> })
-```
-
-- `name`: The name of the tool. This will be used to list it in the `listTools` request.
-- `description`: A description of the tool.
-- `parameters`: (Optional) A Zod schema defining the expected structure of the tool's input arguments.
-
-### Context Parameter
-
-The second parameter passed to a `@Tool` decorated method is the `Context` object.
-
-- `context.reportProgress(progress: Progress)`: Sends a progress update message to the client. `Progress` typically has `{ progress: number, total: number }`.
-
-### Request Paramter
-
-The third parameter passed to a `@Tool` decorated method is the `Request` object.
-
-- `request`: The request object from the underlying HTTP framework (e.g., Express). This can be used to access headers, query parameters, etc.

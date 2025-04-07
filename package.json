@@ -1,8 +1,9 @@
 {
-  "name": "@rekog/mcp-nest",
-  "version": "1.2.0",
+  "name": "@kieling/nest-mcp",
+  "version": "0.1.0",
   "description": "NestJS module for creating Model Context Protocol (MCP) servers and exposing tools using SSE",
   "main": "dist/index.js",
+  "license": "MIT",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
@@ -10,7 +11,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "version": "npm run format && git add -A src",
+    "postversion": "git push && git push --tags"
   },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": ">=1.4.1",

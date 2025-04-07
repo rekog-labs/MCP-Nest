@@ -8,18 +8,20 @@ export interface ToolMetadata {
   parameters?: z.ZodTypeAny;
 }
 
-export const Tool = ({
-  name,
-  description,
-  parameters,
-}: {
+export interface ToolOptions {
   name: string;
   description: string;
   parameters?: z.ZodTypeAny;
-}) => {
-  return SetMetadata(MCP_TOOL_METADATA_KEY, {
-    name,
-    description,
-    parameters,
-  });
+}
+
+/**
+ * Decorator that marks a controller method as an MCP tool.
+ * @param {Object} options - The options for the decorator
+ * @param {string} options.name - The name of the tool
+ * @param {string} options.description - The description of the tool
+ * @param {z.ZodTypeAny} [options.parameters] - The parameters of the tool
+ * @returns {MethodDecorator} - The decorator
+ */
+export const Tool = (options: ToolOptions) => {
+  return SetMetadata(MCP_TOOL_METADATA_KEY, options);
 };

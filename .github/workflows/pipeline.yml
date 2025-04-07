@@ -1,4 +1,4 @@
-name: Node.js CI
+name: Node.js CI and Publish
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         node-version: [18.x, 20.x]
@@ -25,3 +24,33 @@ jobs:
       run: npm ci
     - name: Run tests
       run: npm run test
+
+  publish:
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Git
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        registry-url: 'https://registry.npmjs.org'
+    - name: Install dependencies
+      run: npm ci
+    - name: Bump version
+      run: npm version patch -m "ci: bump version to %s [skip ci]"
+    - name: Push version bump
+      run: |
+        git push origin HEAD --follow-tags
+    - name: Build
+      run: npm run build
+    - name: Publish to npm
+      run: npm publish --access public
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
