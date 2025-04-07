@@ -5,6 +5,9 @@
   "main": "dist/index.js",
   "license": "MIT",
   "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "prepare": "npm run build",
