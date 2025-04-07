@@ -1,28 +1,31 @@
-import { INestApplication, Injectable } from "@nestjs/common";
-import { Test, TestingModule } from "@nestjs/testing";
-import { z } from "zod";
-import { Context, Tool } from "../src";
-import { McpModule } from "../src/mcp.module";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { Progress } from "@modelcontextprotocol/sdk/types.js";
-import { CanActivate, ExecutionContext } from "@nestjs/common";
+import { INestApplication, Injectable } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import { z } from 'zod';
+import { Context, Tool } from '../src';
+import { McpModule } from '../src/mcp.module';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { Progress } from '@modelcontextprotocol/sdk/types.js';
+import { CanActivate, ExecutionContext } from '@nestjs/common';
+import { createMCPClient } from './utils';
 
 // Mock authentication guard
 class MockAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
 
-
-    if (request.headers.authorization && request.headers.authorization.includes("token-xyz")) {
+    if (
+      request.headers.authorization &&
+      request.headers.authorization.includes('token-xyz')
+    ) {
       request.user = {
-        id: "user123",
-        name: "Test User",
+        id: 'user123',
+        name: 'Test User',
         orgMemberships: [
           {
-            orgId: "org123",
+            orgId: 'org123',
             organization: {
-              name: "Auth Test Org",
+              name: 'Auth Test Org',
             },
           },
         ],
@@ -30,6 +33,7 @@ class MockAuthGuard implements CanActivate {
 
       return true;
     }
+
     return false;
   }
 }
@@ -38,18 +42,18 @@ class MockAuthGuard implements CanActivate {
 @Injectable()
 class MockUserRepository {
   async findOne() {
-    return {
-      id: "userRepo123",
-      name: "Repository User",
+    return Promise.resolve({
+      id: 'userRepo123',
+      name: 'Repository User',
       orgMemberships: [
         {
-          orgId: "org123",
+          orgId: 'org123',
           organization: {
-            name: "Repository Org",
+            name: 'Repository Org',
           },
         },
       ],
-    };
+    });
   }
 }
 
@@ -59,10 +63,10 @@ export class AuthGreetingTool {
   constructor(private readonly userRepository: MockUserRepository) {}
 
   @Tool({
-    name: "auth-hello-world",
-    description: "A sample tool that accesses the authenticated user",
+    name: 'auth-hello-world',
+    description: 'A sample tool that accesses the authenticated user',
     parameters: z.object({
-      name: z.string().default("World"),
+      name: z.string().default('World'),
     }),
   })
   async sayHello({ name }, context: Context, request: Request & { user: any }) {
@@ -71,15 +75,13 @@ export class AuthGreetingTool {
     const authUser = request.user; // Authenticated user from the request
 
     // Construct greeting using both data sources
-    const greeting = `Hello, ${name}! I'm ${authUser.name} from ${
-      authUser.orgMemberships[0].organization.name
-    }. Repository user is ${repoUser.name}.`;
+    const greeting = `Hello, ${name}! I'm ${authUser.name} from ${authUser.orgMemberships[0].organization.name}. Repository user is ${repoUser.name}.`;
 
     // Report progress for demonstration
     for (let i = 0; i < 5; i++) {
       await new Promise((resolve) => setTimeout(resolve, 200));
       await context.reportProgress({
-        progress: (i+1) * 20,
+        progress: (i + 1) * 20,
         total: 100,
       } as Progress);
     }
@@ -87,7 +89,7 @@ export class AuthGreetingTool {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: greeting,
         },
       ],
@@ -95,7 +97,7 @@ export class AuthGreetingTool {
   }
 }
 
-describe("E2E: MCP Server with Authentication", () => {
+describe('E2E: MCP Server with Authentication', () => {
   let app: INestApplication;
   let testPort: number;
 
@@ -103,18 +105,19 @@ describe("E2E: MCP Server with Authentication", () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         McpModule.forRoot({
-          name: "test-auth-mcp-server",
-          version: "0.0.1",
+          name: 'test-auth-mcp-server',
+          version: '0.0.1',
           // Specify the MockAuthGuard to protect the messages endpoint
           guards: [MockAuthGuard],
           capabilities: {
             tools: {
-              "auth-hello-world": {
-                description: "A sample tool that accesses the authenticated user",
+              'auth-hello-world': {
+                description:
+                  'A sample tool that accesses the authenticated user',
                 input: {
                   name: {
-                    type: "string",
-                    default: "World",
+                    type: 'string',
+                    default: 'World',
                   },
                 },
               },
@@ -136,53 +139,43 @@ describe("E2E: MCP Server with Authentication", () => {
     await app.close();
   });
 
-  it("should list tools", async () => {
-    const client = new Client(
-      { name: "example-client", version: "1.0.0" },
-      { capabilities: {} },
-    );
-    const sseUrl = new URL(`http://localhost:${testPort}/sse`);
-    const transport = new SSEClientTransport(sseUrl, {
+  it('should list tools', async () => {
+    const client = await createMCPClient(testPort, {
       requestInit: {
         headers: {
-          Authorization: 'Bearer token-xyz'
-        }
-      }
+          Authorization: 'Bearer token-xyz',
+        },
+      },
     });
-    await client.connect(transport);
     const tools = await client.listTools();
 
     // Verify that the authenticated tool is available
     expect(tools.tools.length).toBeGreaterThan(0);
-    expect(tools.tools.find((t) => t.name === "auth-hello-world")).toBeDefined();
+    expect(
+      tools.tools.find((t) => t.name === 'auth-hello-world'),
+    ).toBeDefined();
 
     await client.close();
   });
 
   it('should inject authentication context into the tool', async () => {
-    const client = new Client(
-      { name: "example-client", version: "1.0.0" },
-      { capabilities: {} },
-    );
-    const sseUrl = new URL(`http://localhost:${testPort}/sse`);
-    const transport = new SSEClientTransport(sseUrl, {
+    const client = await createMCPClient(testPort, {
       requestInit: {
         headers: {
-          Authorization: 'Bearer token-xyz'
-        }
-      }
+          Authorization: 'Bearer token-xyz',
+        },
+      },
     });
-    await client.connect(transport);
 
     let progressCount = 0;
     const result: any = await client.callTool(
       {
-        name: "auth-hello-world",
-        arguments: { name: "Authenticated User" },
+        name: 'auth-hello-world',
+        arguments: { name: 'Authenticated User' },
       },
       undefined,
       {
-        onprogress: (progress) => {
+        onprogress: () => {
           progressCount++;
         },
       },
@@ -192,40 +185,35 @@ describe("E2E: MCP Server with Authentication", () => {
     expect(progressCount).toBeGreaterThan(0);
 
     // Verify that authentication context was available to the tool
-    expect(result.content[0].type).toBe("text");
-    expect(result.content[0].text).toContain("Auth Test Org");
-    expect(result.content[0].text).toContain("Test User");
-    expect(result.content[0].text).toContain("Repository user is Repository User");
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('Auth Test Org');
+    expect(result.content[0].text).toContain('Test User');
+    expect(result.content[0].text).toContain(
+      'Repository user is Repository User',
+    );
 
     await client.close();
   });
 
   it('should reject unauthenticated connections', async () => {
-    const client = new Client(
-      { name: "example-client", version: "1.0.0" },
-      { capabilities: {} },
-    );
-    const sseUrl = new URL(`http://localhost:${testPort}/sse`);
-
-    // Using invalid token
-    const transport = new SSEClientTransport(sseUrl, {
-      requestInit: {
-        headers: {
-          Authorization: 'Bearer invalid-token'
-        }
-      }
-    });
-
     // Connection should be rejected
+    let client: Client | undefined;
     try {
-      await client.connect(transport);
+      client = await createMCPClient(testPort, {
+        requestInit: {
+          headers: {
+            Authorization: 'Bearer invalid-token',
+          },
+        },
+      });
+
       // If we get here, the test should fail
       fail('Connection should have been rejected');
     } catch (error) {
       // We expect an error to be thrown when authentication fails
       expect(error).toBeDefined();
     } finally {
-      await client.close();
+      await client?.close();
     }
   });
 });

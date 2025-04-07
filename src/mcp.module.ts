@@ -1,7 +1,11 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { McpOptions, McpAsyncOptions, McpOptionsFactory } from './interfaces/mcp-options.interface';
+import {
+  McpOptions,
+  McpAsyncOptions,
+  McpOptionsFactory,
+} from './interfaces/mcp-options.interface';
 
 import { createSseController } from './controllers/sse.controller.factory';
 import { McpToolRegistryService } from './services/mcp-tool-registry.service';
@@ -20,7 +24,7 @@ export class McpModule {
       sseEndpoint,
       messagesEndpoint,
       globalApiPrefix,
-      guards
+      guards,
     );
 
     return {
@@ -45,7 +49,7 @@ export class McpModule {
         },
         // Register both the registry (singleton) and executor (request-scoped) services
         McpToolRegistryService,
-        McpToolsExecutorService
+        McpToolsExecutorService,
       ],
       exports: ['MCP_SERVER', McpToolRegistryService, McpToolsExecutorService],
     };
@@ -73,7 +77,7 @@ export class McpModule {
         },
         // Register both the registry and executor services
         McpToolRegistryService,
-        McpToolsExecutorService
+        McpToolsExecutorService,
       ],
       exports: ['MCP_SERVER', McpToolRegistryService, McpToolsExecutorService],
     };
@@ -88,7 +92,9 @@ export class McpModule {
     }
 
     if (!options.useClass) {
-      throw new Error('useClass must be defined when not using useExisting or useFactory');
+      throw new Error(
+        'useClass must be defined when not using useExisting or useFactory',
+      );
     }
 
     return [
@@ -103,7 +109,9 @@ export class McpModule {
   /**
    * Create the async options provider
    */
-  private static createAsyncOptionsProvider(options: McpAsyncOptions): Provider {
+  private static createAsyncOptionsProvider(
+    options: McpAsyncOptions,
+  ): Provider {
     if (options.useFactory) {
       return {
         provide: 'MCP_OPTIONS',
@@ -114,7 +122,9 @@ export class McpModule {
 
     const injectionToken = options.useExisting || options.useClass;
     if (!injectionToken) {
-      throw new Error('Either useExisting or useClass must be defined when not using useFactory');
+      throw new Error(
+        'Either useExisting or useClass must be defined when not using useFactory',
+      );
     }
 
     return {
