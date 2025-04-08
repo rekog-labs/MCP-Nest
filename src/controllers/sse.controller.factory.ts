@@ -16,8 +16,8 @@ import { ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { McpOptions } from '../interfaces';
-import { McpToolRegistryService } from '../services/mcp-tool-registry.service';
-import { McpToolsExecutorService } from '../services/mcp-tools-executor.service';
+import { McpRegistryService } from '../services/mcp-registry.service';
+import { McpExecutorService } from '../services/mcp-executor.service';
 
 /**
  * Creates a controller for handling SSE connections and tool executions
@@ -41,7 +41,7 @@ export function createSseController(
     constructor(
       @Inject('MCP_OPTIONS') public readonly options: McpOptions,
       public readonly moduleRef: ModuleRef,
-      public readonly toolRegistry: McpToolRegistryService,
+      public readonly toolRegistry: McpRegistryService,
     ) {}
 
     /**
@@ -58,7 +58,13 @@ export function createSseController(
       // Create a new MCP server for this session
       const mcpServer = new McpServer(
         { name: this.options.name, version: this.options.version },
-        { capabilities: this.options.capabilities || { tools: {} } },
+        {
+          capabilities: this.options.capabilities || {
+            tools: {},
+            resources: {},
+            resourceTemplates: {},
+          },
+        },
       );
 
       // Store the transport and server for this session
@@ -97,14 +103,14 @@ export function createSseController(
       }
 
       // Resolve the request-scoped tool executor service
-      const toolExecutor = await this.moduleRef.resolve(
-        McpToolsExecutorService,
+      const executor = await this.moduleRef.resolve(
+        McpExecutorService,
         undefined,
         { strict: false },
       );
 
       // Register request handlers with the user context from this specific request
-      toolExecutor.registerRequestHandlers(mcpServer, req);
+      executor.registerRequestHandlers(mcpServer, req);
 
       // Process the message
       await transport.handlePostMessage(req, res, body);

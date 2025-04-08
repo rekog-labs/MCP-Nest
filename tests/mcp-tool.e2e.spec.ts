@@ -116,7 +116,7 @@ export class ToolRequestScoped {
   }
 }
 
-describe('E2E: MCP Server', () => {
+describe('E2E: MCP ToolServer', () => {
   let app: INestApplication;
   let testPort: number;
 
