@@ -33,13 +33,13 @@ export class GreetingToolResource {
     mimeType: 'text/plain',
     uriTemplate: 'mcp://hello-world-dynamic/{userName}',
   })
-  async sayHelloDynamic(data) {
+  async sayHelloDynamic({ uri, userName }) {
     return {
       contents: [
         {
-          uri: data.uri,
+          uri: uri,
           mimeType: 'text/plain',
-          text: 'Hello World',
+          text: `Hello ${userName}`,
         },
       ],
     };
@@ -112,7 +112,7 @@ describe('E2E: MCP Resource Server', () => {
       'mcp://hello-world-dynamic/Raphael_John',
     );
     expect(result.contents[0].mimeType).toBe('text/plain');
-    expect(result.contents[0].text).toBe('Hello World');
+    expect(result.contents[0].text).toBe('Hello Raphael_John');
 
     await client.close();
   });

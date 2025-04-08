@@ -11,6 +11,7 @@ import {
 } from '../decorators';
 import { ResourceMetadata } from 'src/decorators/resource.decorator';
 import { match } from 'path-to-regexp';
+import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 /**
  * Interface representing a discovered tool
@@ -161,9 +162,14 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
   /**
    * Find a resource by uri
-   * @returns The resource found or undefined if no resource is found
+   * @returns An object containing the found resource and extracted parameters, or undefined if no resource is found
    */
-  findResourceByUri(uri: string): DiscoveredTool<ResourceMetadata> | undefined {
+  findResourceByUri(uri: string):
+    | {
+        resource: DiscoveredTool<ResourceMetadata>;
+        params: Record<string, string>;
+      }
+    | undefined {
     const resources = this.getResources().map((tool: any) => ({
       name: tool.metadata.name as string,
       uri: (tool.metadata.uri || tool.metadata.uriTemplate) as string,
@@ -176,18 +182,17 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
       const rawTemplate = t.uri;
       const templatePath = this.convertTemplate(this.convertUri(rawTemplate));
+      const matcher = match(templatePath, { decode: decodeURIComponent });
+      const result = matcher(strippedInputUri);
 
-      try {
-        const matcher = match(templatePath, { decode: decodeURIComponent });
-        const result = matcher(strippedInputUri);
+      if (result) {
+        const foundResource = this.findResource(t.name);
+        if (!foundResource) continue;
 
-        if (result) {
-          return this.findResource(t.name);
-        }
-      } catch (err: any) {
-        console.warn(
-          `Erro ao compilar template: "${rawTemplate}": ${err.message}`,
-        );
+        return {
+          resource: foundResource,
+          params: result.params as Record<string, string>,
+        };
       }
     }
 

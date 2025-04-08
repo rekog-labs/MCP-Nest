@@ -38,7 +38,8 @@ describe('McpRegistryService', () => {
 
   it('should return the correct resource by URI', () => {
     const result = service.findResourceByUri('/users/123');
-    expect(result?.metadata.name).toBe('res1');
+    expect(result?.resource.metadata.name).toBe('res1');
+    expect(result?.params).toEqual({ id: '123' });
   });
 
   it('should return undefined for unknown URI', () => {
@@ -48,16 +49,19 @@ describe('McpRegistryService', () => {
 
   it('should match complex URI template', () => {
     const result = service.findResourceByUri('/posts/456/comments');
-    expect(result?.metadata.name).toBe('res2');
+    expect(result?.resource.metadata.name).toBe('res2');
+    expect(result?.params).toEqual({ postId: '456' });
   });
 
   it('should match simple URI template', () => {
     const result = service.findResourceByUri('/posts/comments');
-    expect(result?.metadata.name).toBe('res0');
+    expect(result?.resource.metadata.name).toBe('res0');
+    expect(result?.params).toEqual({});
   });
 
   it('should match mcp URI', () => {
     const result = service.findResourceByUri('mcp://hello-world');
-    expect(result?.metadata.name).toBe('res3');
+    expect(result?.resource.metadata.name).toBe('res3');
+    expect(result?.params).toEqual({});
   });
 });

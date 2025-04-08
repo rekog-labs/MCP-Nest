@@ -39,7 +39,7 @@ export class McpExecutorService {
 
   private registerResources(mcpServer: McpServer, httpRequest: Request) {
     mcpServer.server.setRequestHandler(ListResourcesRequestSchema, () => {
-      return {
+      const data = {
         resources: this.registry
           .getStaticResources()
           .map((resources) => resources.metadata),
@@ -47,13 +47,14 @@ export class McpExecutorService {
           .getResourceTemplates()
           .map((resources) => resources.metadata),
       };
+
+      return data;
     });
 
     mcpServer.server.setRequestHandler(
       ReadResourceRequestSchema,
       async (request) => {
-        // TODO: give support for dynamic resources, since they use uriTemplates (RFC 6570)
-        // Also, this isn't so documented in the spec
+        // Support for dynamic resources, since they use uriTemplates (RFC 6570)
         // https://modelcontextprotocol.io/docs/concepts/resources#resource-templates
         const uri = request.params.uri;
         const resourceInfo = this.registry.findResourceByUri(uri);
@@ -71,7 +72,7 @@ export class McpExecutorService {
           this.moduleRef.registerRequestByContextId(httpRequest, contextId);
 
           const resourceInstance = await this.moduleRef.resolve(
-            resourceInfo.providerClass as Type<any>,
+            resourceInfo.resource.providerClass as Type<any>,
             contextId,
             { strict: false },
           );
@@ -86,11 +87,18 @@ export class McpExecutorService {
           // Create the execution context with user information
           const context = this.createContext(mcpServer, request);
 
+          const requestParams = {
+            ...resourceInfo.params,
+            ...request.params,
+          };
+
+          const methodName = resourceInfo.resource.methodName;
+
           // Call the resource method
           // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-          const result = await resourceInstance[resourceInfo.methodName].call(
+          const result = await resourceInstance[methodName].call(
             resourceInstance,
-            request.params,
+            requestParams,
             context,
             httpRequest,
           );

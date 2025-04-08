@@ -83,17 +83,17 @@ export class GreetingTool {
   }
 
   @Resource({
-    uri: 'mcp://hello-world',
+    uri: 'mcp://hello-world/{userName}',
     name: 'Hello World',
     description: 'A simple greeting resource',
     mimeType: 'text/plain',
   })
-  async getCurrentSchema() {
+  async getCurrentSchema({ uri, userName }) {
     return {
       content: [
         {
-          uri: 'mcp://hello-world',
-          text: 'Data from server',
+          uri,
+          text: `User is ${userName}`,
           mimeType: 'text/plain',
         },
       ],
