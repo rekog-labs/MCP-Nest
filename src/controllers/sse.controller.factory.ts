@@ -80,7 +80,7 @@ export function createSseController(
     @Post(messagesEndpoint)
     @UseGuards(...guards)
     async messages(
-      @Req() req: Request & { user: any },
+      @Req() req: Request,
       @Res() res: Response,
       @Body() body: unknown,
     ) {

@@ -1,15 +1,14 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import { INestApplication, Injectable, Scope } from '@nestjs/common';
+import { INestApplication, Inject, Injectable, Scope } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
 import { Context, Tool } from '../src';
 import { McpModule } from '../src/mcp.module';
 import { createMCPClient } from './utils';
+import { REQUEST } from '@nestjs/core';
 
 // Mock user repository
-@Injectable({ scope: Scope.TRANSIENT })
+@Injectable()
 class MockUserRepository {
   async findOne(id: string) {
     return Promise.resolve({
@@ -96,6 +95,27 @@ export class GreetingToolRequestScoped {
   }
 }
 
+@Injectable({ scope: Scope.REQUEST })
+export class ToolRequestScoped {
+  constructor(@Inject(REQUEST) private request: Request) {}
+
+  @Tool({
+    name: 'get-request-scoped',
+    description: 'A sample tool that get the request',
+    parameters: z.object({}),
+  })
+  async getRequest() {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: this.request.headers['any-header'] ?? 'No header found',
+        },
+      ],
+    };
+  }
+}
+
 describe('E2E: MCP Server', () => {
   let app: INestApplication;
   let testPort: number;
@@ -109,7 +129,12 @@ describe('E2E: MCP Server', () => {
           guards: [],
         }),
       ],
-      providers: [GreetingTool, GreetingToolRequestScoped, MockUserRepository],
+      providers: [
+        GreetingTool,
+        GreetingToolRequestScoped,
+        MockUserRepository,
+        ToolRequestScoped,
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -163,4 +188,24 @@ describe('E2E: MCP Server', () => {
       await client.close();
     },
   );
+
+  it('should call the tool and receive progress notifications for get-request-scoped', async () => {
+    const client = await createMCPClient(testPort, {
+      requestInit: {
+        headers: {
+          'any-header': 'any-value',
+        },
+      },
+    });
+
+    const result: any = await client.callTool({
+      name: 'get-request-scoped',
+      arguments: {},
+    });
+
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toContain('any-value');
+
+    await client.close();
+  });
 });

@@ -1,4 +1,8 @@
-import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import {
+  Injectable,
+  InjectionToken,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 import { MCP_TOOL_METADATA_KEY, ToolMetadata } from '../decorators';
 
@@ -7,7 +11,7 @@ import { MCP_TOOL_METADATA_KEY, ToolMetadata } from '../decorators';
  */
 export interface DiscoveredTool {
   metadata: ToolMetadata;
-  providerClass: any;
+  providerClass: InjectionToken;
   methodName: string;
 }
 
@@ -36,17 +40,13 @@ export class McpToolRegistryService implements OnApplicationBootstrap {
     const allInstances = [...providers, ...controllers]
       .filter((wrapper) => wrapper.instance)
       .map((wrapper) => ({
-        instance: wrapper.instance,
+        instance: wrapper.instance as object,
         token: wrapper.token,
       }));
 
     allInstances.forEach(({ instance, token }) => {
-      if (!instance || typeof instance !== 'object') {
-        return;
-      }
-
       this.metadataScanner.getAllMethodNames(instance).forEach((methodName) => {
-        const methodRef = instance[methodName];
+        const methodRef = instance[methodName] as object;
         const methodMetaKeys = Reflect.getOwnMetadataKeys(methodRef);
 
         if (!methodMetaKeys.includes(MCP_TOOL_METADATA_KEY)) {

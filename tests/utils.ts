@@ -20,7 +20,10 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
  */
 export async function createMCPClient(
   port: number,
-  sseArgs: any = {},
+  sseArgs: {
+    eventSourceInit?: EventSourceInit;
+    requestInit?: RequestInit;
+  } = {},
 ): Promise<Client> {
   const client = new Client(
     { name: 'example-client', version: '1.0.0' },

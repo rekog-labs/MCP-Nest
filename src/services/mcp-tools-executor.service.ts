@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Injectable, Scope, Inject } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
+import { Injectable, Scope, Type } from '@nestjs/common';
+import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
@@ -10,7 +10,6 @@ import {
   McpError,
   Progress,
 } from '@modelcontextprotocol/sdk/types.js';
-import { REQUEST } from '@nestjs/core';
 import { Request } from 'express';
 import { McpToolRegistryService } from './mcp-tool-registry.service';
 
@@ -58,7 +57,6 @@ export const ContentResultZodSchema = z
  * Enhanced execution context that includes user information
  */
 export type Context = {
-  user?: any;
   reportProgress: (progress: Progress) => Promise<void>;
   log: {
     debug: (message: string, data?: SerializableValue) => void;
@@ -91,16 +89,14 @@ export class McpToolsExecutorService {
    * @param mcpServer - The MCP server instance
    * @param request - The current HTTP request object
    */
-  registerRequestHandlers(
-    mcpServer: McpServer,
-    httpRequest: Request & { user: any },
-  ) {
+  registerRequestHandlers(mcpServer: McpServer, httpRequest: Request) {
     mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
       const tools = this.toolRegistry.getTools().map((tool) => ({
         name: tool.metadata.name,
         description: tool.metadata.description,
         inputSchema: tool.metadata.parameters
-          ? zodToJsonSchema(tool.metadata.parameters)
+          ? // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            zodToJsonSchema(tool.metadata.parameters)
           : undefined,
       }));
 
@@ -136,20 +132,29 @@ export class McpToolsExecutorService {
           parsedParams = result.data;
         }
 
-        const progressToken = request.params?._meta?.progressToken;
-
         try {
           // Resolve the tool instance for the current request
+          const contextId = ContextIdFactory.getByRequest(httpRequest);
+          this.moduleRef.registerRequestByContextId(httpRequest, contextId);
+
           const toolInstance = await this.moduleRef.resolve(
-            toolInfo.providerClass,
-            undefined,
+            toolInfo.providerClass as Type<any>,
+            contextId,
             { strict: false },
           );
 
           // Create the execution context with user information
-          const context = this.createContext(mcpServer, request, httpRequest);
+          const context = this.createContext(mcpServer, request);
+
+          if (!toolInstance) {
+            throw new McpError(
+              ErrorCode.MethodNotFound,
+              `Unknown tool: ${request.params.name}`,
+            );
+          }
 
           // Call the tool method
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           const result = await toolInstance[toolInfo.methodName].call(
             toolInstance,
             parsedParams,
@@ -194,7 +199,6 @@ export class McpToolsExecutorService {
   private createContext(
     mcpServer: McpServer,
     toolRequest: z.infer<typeof CallToolRequestSchema>,
-    httpRequest?: Request & { user: any },
   ): Context {
     const progressToken = toolRequest.params?._meta?.progressToken;
     return {
@@ -205,32 +209,32 @@ export class McpToolsExecutorService {
             params: {
               ...progress,
               progressToken,
-            },
+            } as Progress,
           });
         }
       },
 
       log: {
         debug: (message: string, context?: SerializableValue) => {
-          mcpServer.server.sendLoggingMessage({
+          void mcpServer.server.sendLoggingMessage({
             level: 'debug',
             data: { message, context },
           });
         },
         error: (message: string, context?: SerializableValue) => {
-          mcpServer.server.sendLoggingMessage({
+          void mcpServer.server.sendLoggingMessage({
             level: 'error',
             data: { message, context },
           });
         },
         info: (message: string, context?: SerializableValue) => {
-          mcpServer.server.sendLoggingMessage({
+          void mcpServer.server.sendLoggingMessage({
             level: 'info',
             data: { message, context },
           });
         },
         warn: (message: string, context?: SerializableValue) => {
-          mcpServer.server.sendLoggingMessage({
+          void mcpServer.server.sendLoggingMessage({
             level: 'warning',
             data: { message, context },
           });
