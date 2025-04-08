@@ -15,7 +15,6 @@ import {
 import { Request } from 'express';
 import { McpRegistryService } from './mcp-registry.service';
 import { Context, SerializableValue } from 'src/interfaces/mcp-tool.interface';
-import { inspect } from 'util';
 
 /**
  * Request-scoped service for executing MCP tools
