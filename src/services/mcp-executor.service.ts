@@ -42,6 +42,7 @@ export class McpExecutorService {
 
   private registerResources(mcpServer: McpServer, httpRequest: Request) {
     mcpServer.server.setRequestHandler(ListResourcesRequestSchema, () => {
+      this.logger.debug('ListResourcesRequestSchema is being called');
       const data = {
         resources: this.registry
           .getResources()
@@ -105,11 +106,7 @@ export class McpExecutorService {
             httpRequest,
           );
 
-          this.logger.debug(
-            `ReadResourceRequestSchema result is being returned: ${inspect(
-              result,
-            )}`,
-          );
+          this.logger.debug(result, 'ReadResourceRequestSchema result');
 
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return result;
@@ -144,6 +141,8 @@ export class McpExecutorService {
     mcpServer.server.setRequestHandler(
       CallToolRequestSchema,
       async (request) => {
+        this.logger.debug('CallToolRequestSchema is being called');
+
         const toolInfo = this.registry.findTool(request.params.name);
 
         if (!toolInfo) {
@@ -197,9 +196,12 @@ export class McpExecutorService {
             httpRequest,
           );
 
+          this.logger.debug(result, 'CallToolRequestSchema result');
+
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return result;
         } catch (error) {
+          this.logger.error(error);
           return {
             content: [{ type: 'text', text: error.message }],
             isError: true,
