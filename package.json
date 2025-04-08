@@ -9,7 +9,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "test": "jest",
     "test:watch": "jest --watch",
