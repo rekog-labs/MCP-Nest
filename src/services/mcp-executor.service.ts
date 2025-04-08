@@ -41,7 +41,7 @@ export class McpExecutorService {
     mcpServer.server.setRequestHandler(ListResourcesRequestSchema, () => {
       const data = {
         resources: this.registry
-          .getStaticResources()
+          .getResources()
           .map((resources) => resources.metadata),
       };
 

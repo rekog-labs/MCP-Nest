@@ -125,15 +125,6 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   /**
-   * Get all discovered resources
-   */
-  getStaticResources(): DiscoveredTool<ResourceMetadata>[] {
-    return this.getResources().filter(
-      (tool) => !('uriTemplate' in tool.metadata),
-    );
-  }
-
-  /**
    * Find a resource by name
    */
   findResource(name: string): DiscoveredTool<ResourceMetadata> | undefined {
