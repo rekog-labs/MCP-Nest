@@ -39,13 +39,10 @@ export class McpExecutorService {
 
   private registerResources(mcpServer: McpServer, httpRequest: Request) {
     mcpServer.server.setRequestHandler(ListResourcesRequestSchema, () => {
-      const resources = this.registry.getResources().map((resource) => ({
-        name: resource.metadata.name,
-        uri: resource.metadata.uri,
-      }));
-
       return {
-        resources,
+        resources: this.registry
+          .getResources()
+          .map((resources) => resources.metadata),
       };
     });
 

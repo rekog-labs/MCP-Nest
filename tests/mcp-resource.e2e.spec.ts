@@ -11,6 +11,8 @@ export class GreetingToolResource {
 
   @Resource({
     name: 'hello-world',
+    description: 'A simple greeting resource',
+    mimeType: 'text/plain',
     uri: 'mcp://hello-world',
   })
   async sayHello({ uri }) {
@@ -59,9 +61,12 @@ describe('E2E: MCP Resource Server', () => {
 
     // Verify that the authenticated resource is available
     expect(resources.resources.length).toBeGreaterThan(0);
-    expect(
-      resources.resources.find((r) => r.name === 'hello-world'),
-    ).toBeDefined();
+    expect(resources.resources.find((r) => r.name === 'hello-world')).toEqual({
+      name: 'hello-world',
+      uri: 'mcp://hello-world',
+      description: 'A simple greeting resource',
+      mimeType: 'text/plain',
+    });
 
     await client.close();
   });
@@ -73,6 +78,8 @@ describe('E2E: MCP Resource Server', () => {
       uri: 'mcp://hello-world',
     });
 
+    expect(result.contents[0].uri).toBe('mcp://hello-world');
+    expect(result.contents[0].mimeType).toBe('text/plain');
     expect(result.contents[0].text).toBe('Hello World');
 
     await client.close();

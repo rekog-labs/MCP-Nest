@@ -9,7 +9,7 @@ A NestJS module for creating an MCP (Model Context Protocol) server with Server-
 ## Features
 
 - 🚀 SSE Transport for streaming and tool execution
-- 🔍 Automatic tool discovery and registration
+- 🔍 Automatic `tool` and `resource` discovery and registration
 - 💯 Zod-based request validation
 - 📊 Progress notifications
 - 🔒 Guard-based authentication
@@ -42,7 +42,7 @@ import { GreetingTool } from './greeting.tool';
 export class AppModule {}
 ```
 
-### 2. Define Tools
+### 2. Define Tools and Resource
 
 ```typescript
 // greeting.tool.ts
@@ -79,6 +79,24 @@ export class GreetingTool {
 
     return {
       content: [{ type: 'text', text: greeting }],
+    };
+  }
+
+  @Resource({
+    uri: 'mcp://hello-world',
+    name: 'Hello World',
+    description: 'A simple greeting resource',
+    mimeType: 'text/plain',
+  })
+  async getCurrentSchema() {
+    return {
+      content: [
+        {
+          uri: 'mcp://hello-world',
+          text: 'Data from server',
+          mimeType: 'text/plain',
+        },
+      ],
     };
   }
 }

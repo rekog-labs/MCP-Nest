@@ -124,9 +124,18 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   /**
+   * Find a resource by name
+   */
+  findResource(name: string): DiscoveredTool<ResourceMetadata> | undefined {
+    return this.getResources().find((tool) => tool.metadata.name === name);
+  }
+
+  /**
    * Find a resource by uri
    */
   findResourceByUri(uri: string): DiscoveredTool<ResourceMetadata> | undefined {
-    return this.getResources().find((tool) => tool.metadata.uri === uri);
+    return this.getResources().find(
+      (tool) => 'uri' in tool.metadata && tool.metadata.uri === uri,
+    );
   }
 }
