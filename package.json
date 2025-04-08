@@ -1,6 +1,6 @@
 {
   "name": "@kieling/nest-mcp",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "NestJS module for creating Model Context Protocol (MCP) servers and exposing tools using SSE",
   "main": "dist/index.js",
   "license": "MIT",
