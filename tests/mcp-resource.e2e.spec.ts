@@ -31,7 +31,7 @@ export class GreetingToolResource {
     name: 'hello-world-dynamic',
     description: 'A simple greeting dynamic resource',
     mimeType: 'text/plain',
-    uriTemplate: 'mcp://hello-world-dynamic/{userName}',
+    uri: 'mcp://hello-world-dynamic/{userName}',
   })
   async sayHelloDynamic({ uri, userName }) {
     return {
@@ -40,6 +40,24 @@ export class GreetingToolResource {
           uri: uri,
           mimeType: 'text/plain',
           text: `Hello ${userName}`,
+        },
+      ],
+    };
+  }
+
+  @Resource({
+    name: 'hello-world-dynamic-multiple-paths',
+    description: 'A simple greeting dynamic resource with multiple paths',
+    mimeType: 'text/plain',
+    uri: 'mcp://hello-world-dynamic-multiple-paths/{userId}/{userName}',
+  })
+  async sayHelloMultiplePathsDynamic({ uri, userId, userName }) {
+    return {
+      contents: [
+        {
+          uri: uri,
+          mimeType: 'text/plain',
+          text: `Hello ${userName} from ${userId}`,
         },
       ],
     };
@@ -84,35 +102,14 @@ describe('E2E: MCP Resource Server', () => {
       mimeType: 'text/plain',
     });
 
-    await client.close();
-  });
-
-  it('should list dynamic resources', async () => {
-    const client = await createMCPClient(testPort);
-    const resources = await client.listResourceTemplates();
-
     expect(
-      resources.resourceTemplates.find((r) => r.name === 'hello-world-dynamic'),
+      resources.resources.find((r) => r.name === 'hello-world-dynamic'),
     ).toEqual({
       name: 'hello-world-dynamic',
-      uriTemplate: 'mcp://hello-world-dynamic/{userName}',
+      uri: 'mcp://hello-world-dynamic/{userName}',
       description: 'A simple greeting dynamic resource',
       mimeType: 'text/plain',
     });
-
-    await client.close();
-  });
-
-  it('should call the resource', async () => {
-    const client = await createMCPClient(testPort);
-
-    const result: any = await client.readResource({
-      uri: 'mcp://hello-world',
-    });
-
-    expect(result.contents[0].uri).toBe('mcp://hello-world');
-    expect(result.contents[0].mimeType).toBe('text/plain');
-    expect(result.contents[0].text).toBe('Hello World');
 
     await client.close();
   });
@@ -129,6 +126,22 @@ describe('E2E: MCP Resource Server', () => {
     );
     expect(result.contents[0].mimeType).toBe('text/plain');
     expect(result.contents[0].text).toBe('Hello Raphael_John');
+
+    await client.close();
+  });
+
+  it('should call the dynamic resource with multiple paths', async () => {
+    const client = await createMCPClient(testPort);
+
+    const result: any = await client.readResource({
+      uri: 'mcp://hello-world-dynamic-multiple-paths/123/Raphael_John',
+    });
+
+    expect(result.contents[0].uri).toBe(
+      'mcp://hello-world-dynamic-multiple-paths/123/Raphael_John',
+    );
+    expect(result.contents[0].mimeType).toBe('text/plain');
+    expect(result.contents[0].text).toBe('Hello Raphael_John from 123');
 
     await client.close();
   });

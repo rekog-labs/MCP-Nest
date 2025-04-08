@@ -3,19 +3,12 @@ import { MCP_RESOURCE_METADATA_KEY } from './constants';
 
 export type ResourceOptions =
   // https://modelcontextprotocol.io/docs/concepts/resources#direct-resources
-  | {
-      uri: string; // Unique identifier for the resource
-      name: string; // Human-readable name
-      description?: string; // Optional description
-      mimeType?: string; // Optional MIME type
-    }
-  //https://modelcontextprotocol.io/docs/concepts/resources#resource-templates
-  | {
-      uriTemplate: string; // URI template following RFC 6570
-      name: string; // Human-readable name for this type
-      description?: string; // Optional description
-      mimeType?: string; // Optional MIME type for all matching resources
-    };
+  {
+    uri: string; // Unique identifier for the resource
+    name: string; // Human-readable name
+    description?: string; // Optional description
+    mimeType?: string; // Optional MIME type
+  };
 
 export type ResourceMetadata = ResourceOptions;
 

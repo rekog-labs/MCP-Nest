@@ -43,9 +43,6 @@ export class McpExecutorService {
         resources: this.registry
           .getStaticResources()
           .map((resources) => resources.metadata),
-        resourceTemplates: this.registry
-          .getResourceTemplates()
-          .map((resources) => resources.metadata),
       };
 
       return data;
@@ -103,7 +100,6 @@ export class McpExecutorService {
             httpRequest,
           );
 
-          // Handle different result types
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return result;
         } catch (error) {
@@ -189,7 +185,6 @@ export class McpExecutorService {
             httpRequest,
           );
 
-          // Handle different result types
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return result;
         } catch (error) {

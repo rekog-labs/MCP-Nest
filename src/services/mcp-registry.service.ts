@@ -11,7 +11,6 @@ import {
 } from '../decorators';
 import { ResourceMetadata } from 'src/decorators/resource.decorator';
 import { match } from 'path-to-regexp';
-import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 /**
  * Interface representing a discovered tool
@@ -135,13 +134,6 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   /**
-   * Get all discovered resource templates
-   */
-  getResourceTemplates(): DiscoveredTool<ResourceMetadata>[] {
-    return this.getResources().filter((tool) => 'uriTemplate' in tool.metadata);
-  }
-
-  /**
    * Find a resource by name
    */
   findResource(name: string): DiscoveredTool<ResourceMetadata> | undefined {
@@ -170,9 +162,9 @@ export class McpRegistryService implements OnApplicationBootstrap {
         params: Record<string, string>;
       }
     | undefined {
-    const resources = this.getResources().map((tool: any) => ({
-      name: tool.metadata.name as string,
-      uri: (tool.metadata.uri || tool.metadata.uriTemplate) as string,
+    const resources = this.getResources().map((tool) => ({
+      name: tool.metadata.name,
+      uri: tool.metadata.uri,
     }));
 
     const strippedInputUri = this.convertUri(uri);
