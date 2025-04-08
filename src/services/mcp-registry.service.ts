@@ -10,6 +10,7 @@ import {
   ToolMetadata,
 } from '../decorators';
 import { ResourceMetadata } from 'src/decorators/resource.decorator';
+import { match } from 'path-to-regexp';
 
 /**
  * Interface representing a discovered tool
@@ -124,18 +125,72 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   /**
+   * Get all discovered resources
+   */
+  getStaticResources(): DiscoveredTool<ResourceMetadata>[] {
+    return this.getResources().filter(
+      (tool) => !('uriTemplate' in tool.metadata),
+    );
+  }
+
+  /**
+   * Get all discovered resource templates
+   */
+  getResourceTemplates(): DiscoveredTool<ResourceMetadata>[] {
+    return this.getResources().filter((tool) => 'uriTemplate' in tool.metadata);
+  }
+
+  /**
    * Find a resource by name
    */
   findResource(name: string): DiscoveredTool<ResourceMetadata> | undefined {
     return this.getResources().find((tool) => tool.metadata.name === name);
   }
 
+  private convertTemplate(template: string): string {
+    return template?.replace(/{(\w+)}/g, ':$1');
+  }
+
+  private convertUri(uri: string): string {
+    if (uri.includes('://')) {
+      return uri.split('://')[1];
+    }
+
+    return uri;
+  }
+
   /**
    * Find a resource by uri
+   * @returns The resource found or undefined if no resource is found
    */
   findResourceByUri(uri: string): DiscoveredTool<ResourceMetadata> | undefined {
-    return this.getResources().find(
-      (tool) => 'uri' in tool.metadata && tool.metadata.uri === uri,
-    );
+    const resources = this.getResources().map((tool: any) => ({
+      name: tool.metadata.name as string,
+      uri: (tool.metadata.uri || tool.metadata.uriTemplate) as string,
+    }));
+
+    const strippedInputUri = this.convertUri(uri);
+
+    for (const t of resources) {
+      if (!t.uri) continue;
+
+      const rawTemplate = t.uri;
+      const templatePath = this.convertTemplate(this.convertUri(rawTemplate));
+
+      try {
+        const matcher = match(templatePath, { decode: decodeURIComponent });
+        const result = matcher(strippedInputUri);
+
+        if (result) {
+          return this.findResource(t.name);
+        }
+      } catch (err: any) {
+        console.warn(
+          `Erro ao compilar template: "${rawTemplate}": ${err.message}`,
+        );
+      }
+    }
+
+    return undefined;
   }
 }

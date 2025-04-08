@@ -62,6 +62,7 @@ export function createSseController(
           capabilities: this.options.capabilities || {
             tools: {},
             resources: {},
+            resourceTemplates: {},
           },
         },
       );

@@ -26,6 +26,24 @@ export class GreetingToolResource {
       ],
     };
   }
+
+  @Resource({
+    name: 'hello-world-dynamic',
+    description: 'A simple greeting dynamic resource',
+    mimeType: 'text/plain',
+    uriTemplate: 'mcp://hello-world-dynamic/{userName}',
+  })
+  async sayHelloDynamic(data) {
+    return {
+      contents: [
+        {
+          uri: data.uri,
+          mimeType: 'text/plain',
+          text: 'Hello World',
+        },
+      ],
+    };
+  }
 }
 
 describe('E2E: MCP Resource Server', () => {
@@ -59,8 +77,6 @@ describe('E2E: MCP Resource Server', () => {
     const client = await createMCPClient(testPort);
     const resources = await client.listResources();
 
-    // Verify that the authenticated resource is available
-    expect(resources.resources.length).toBeGreaterThan(0);
     expect(resources.resources.find((r) => r.name === 'hello-world')).toEqual({
       name: 'hello-world',
       uri: 'mcp://hello-world',
@@ -79,6 +95,22 @@ describe('E2E: MCP Resource Server', () => {
     });
 
     expect(result.contents[0].uri).toBe('mcp://hello-world');
+    expect(result.contents[0].mimeType).toBe('text/plain');
+    expect(result.contents[0].text).toBe('Hello World');
+
+    await client.close();
+  });
+
+  it('should call the dynamic resource', async () => {
+    const client = await createMCPClient(testPort);
+
+    const result: any = await client.readResource({
+      uri: 'mcp://hello-world-dynamic/Raphael_John',
+    });
+
+    expect(result.contents[0].uri).toBe(
+      'mcp://hello-world-dynamic/Raphael_John',
+    );
     expect(result.contents[0].mimeType).toBe('text/plain');
     expect(result.contents[0].text).toBe('Hello World');
 

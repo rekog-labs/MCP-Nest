@@ -41,7 +41,10 @@ export class McpExecutorService {
     mcpServer.server.setRequestHandler(ListResourcesRequestSchema, () => {
       return {
         resources: this.registry
-          .getResources()
+          .getStaticResources()
+          .map((resources) => resources.metadata),
+        resourceTemplates: this.registry
+          .getResourceTemplates()
           .map((resources) => resources.metadata),
       };
     });
@@ -49,6 +52,9 @@ export class McpExecutorService {
     mcpServer.server.setRequestHandler(
       ReadResourceRequestSchema,
       async (request) => {
+        // TODO: give support for dynamic resources, since they use uriTemplates (RFC 6570)
+        // Also, this isn't so documented in the spec
+        // https://modelcontextprotocol.io/docs/concepts/resources#resource-templates
         const uri = request.params.uri;
         const resourceInfo = this.registry.findResourceByUri(uri);
 

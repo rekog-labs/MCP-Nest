@@ -110,6 +110,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
           guards: [MockAuthGuard],
           capabilities: {
             resources: {},
+            resourceTemplates: {},
             tools: {
               'auth-hello-world': {
                 description:
