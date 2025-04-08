@@ -1,6 +1,6 @@
 {
   "name": "@kieling/nest-mcp",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "NestJS module for creating Model Context Protocol (MCP) servers and exposing tools using SSE",
   "main": "dist/index.js",
   "license": "MIT",
@@ -14,10 +14,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "version": "npm run format && git add -A src",
-    "release": "standard-version",
-    "postversion": "git push && git push --tags"
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
   },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": ">=1.4.1",
@@ -42,7 +39,6 @@
     "eslint-plugin-prettier": "^5.2.3",
     "express": "^4.21.2",
     "jest": "^29.7.0",
-    "standard-version": "^9.5.0",
     "ts-jest": "^29.2.5",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"

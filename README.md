@@ -2,6 +2,10 @@
 
 A NestJS module for exposing your services as an MCP (Model Context Protocol) server with Server-Sent Events (SSE) transport. This package simplifies exposing tools that clients can discover and execute via SSE.
 
+<p align="center">
+  <img src="./image.png" width="300">
+</p>
+
 ## Features
 
 - **SSE Transport**: Built-in `/sse` endpoint for streaming and `/messages` for handling tool execution
