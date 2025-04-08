@@ -27,7 +27,12 @@ export async function createMCPClient(
 ): Promise<Client> {
   const client = new Client(
     { name: 'example-client', version: '1.0.0' },
-    { capabilities: {} },
+    {
+      capabilities: {
+        tools: {},
+        resources: {},
+      },
+    },
   );
   const sseUrl = new URL(`http://localhost:${port}/sse`);
   const transport = new SSEClientTransport(sseUrl, sseArgs);

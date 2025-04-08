@@ -1,6 +1,5 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   McpOptions,
   McpAsyncOptions,
@@ -8,8 +7,8 @@ import {
 } from './interfaces/mcp-options.interface';
 
 import { createSseController } from './controllers/sse.controller.factory';
-import { McpToolRegistryService } from './services/mcp-tool-registry.service';
-import { McpToolsExecutorService } from './services/mcp-tools-executor.service';
+import { McpRegistryService } from './services/mcp-registry.service';
+import { McpExecutorService } from './services/mcp-executor.service';
 
 @Module({})
 export class McpModule {
@@ -37,10 +36,10 @@ export class McpModule {
           useValue: options,
         },
         // Register both the registry (singleton) and executor (request-scoped) services
-        McpToolRegistryService,
-        McpToolsExecutorService,
+        McpRegistryService,
+        McpExecutorService,
       ],
-      exports: [McpToolRegistryService, McpToolsExecutorService],
+      exports: [McpRegistryService, McpExecutorService],
     };
   }
 
@@ -54,10 +53,10 @@ export class McpModule {
       providers: [
         ...providers,
         // Register both the registry and executor services
-        McpToolRegistryService,
-        McpToolsExecutorService,
+        McpRegistryService,
+        McpExecutorService,
       ],
-      exports: ['MCP_SERVER', McpToolRegistryService, McpToolsExecutorService],
+      exports: [McpRegistryService, McpExecutorService],
     };
   }
 

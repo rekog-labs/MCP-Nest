@@ -96,7 +96,7 @@ export class AuthGreetingTool {
   }
 }
 
-describe('E2E: MCP Server with Authentication', () => {
+describe('E2E: MCP Server Tool with Authentication', () => {
   let app: INestApplication;
   let testPort: number;
 
@@ -109,6 +109,7 @@ describe('E2E: MCP Server with Authentication', () => {
           // Specify the MockAuthGuard to protect the messages endpoint
           guards: [MockAuthGuard],
           capabilities: {
+            resources: {},
             tools: {
               'auth-hello-world': {
                 description:

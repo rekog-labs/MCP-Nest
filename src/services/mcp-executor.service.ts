@@ -6,82 +6,25 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   CallToolRequestSchema,
   ErrorCode,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
   McpError,
   Progress,
+  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { Request } from 'express';
-import { McpToolRegistryService } from './mcp-tool-registry.service';
-
-export type Literal = boolean | null | number | string | undefined;
-
-export type SerializableValue =
-  | Literal
-  | SerializableValue[]
-  | { [key: string]: SerializableValue };
-
-export type TextContent = {
-  type: 'text';
-  text: string;
-};
-
-export const TextContentZodSchema = z
-  .object({
-    type: z.literal('text'),
-    /**
-     * The text content of the message.
-     */
-    text: z.string(),
-  })
-  .strict() satisfies z.ZodType<TextContent>;
-
-export type Content = TextContent;
-
-export const ContentZodSchema = z.discriminatedUnion('type', [
-  TextContentZodSchema,
-]) satisfies z.ZodType<Content>;
-
-export type ContentResult = {
-  content: Content[];
-  isError?: boolean;
-};
-
-export const ContentResultZodSchema = z
-  .object({
-    content: ContentZodSchema.array(),
-    isError: z.boolean().optional(),
-  })
-  .strict() satisfies z.ZodType<ContentResult>;
-
-/**
- * Enhanced execution context that includes user information
- */
-export type Context = {
-  reportProgress: (progress: Progress) => Promise<void>;
-  log: {
-    debug: (message: string, data?: SerializableValue) => void;
-    error: (message: string, data?: SerializableValue) => void;
-    info: (message: string, data?: SerializableValue) => void;
-    warn: (message: string, data?: SerializableValue) => void;
-  };
-};
-
-class UserError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'UserError';
-  }
-}
+import { McpRegistryService } from './mcp-registry.service';
+import { Context, SerializableValue } from 'src/interfaces/mcp-tool.interface';
 
 /**
  * Request-scoped service for executing MCP tools
  */
 @Injectable({ scope: Scope.REQUEST })
-export class McpToolsExecutorService {
+export class McpExecutorService {
   // Don't inject the request directly in the constructor
   constructor(
     private readonly moduleRef: ModuleRef,
-    private readonly toolRegistry: McpToolRegistryService,
+    private readonly registry: McpRegistryService,
   ) {}
 
   /**
@@ -90,8 +33,81 @@ export class McpToolsExecutorService {
    * @param request - The current HTTP request object
    */
   registerRequestHandlers(mcpServer: McpServer, httpRequest: Request) {
+    this.registerTools(mcpServer, httpRequest);
+    this.registerResources(mcpServer, httpRequest);
+  }
+
+  private registerResources(mcpServer: McpServer, httpRequest: Request) {
+    mcpServer.server.setRequestHandler(ListResourcesRequestSchema, () => {
+      const resources = this.registry.getResources().map((resource) => ({
+        name: resource.metadata.name,
+        uri: resource.metadata.uri,
+      }));
+
+      return {
+        resources,
+      };
+    });
+
+    mcpServer.server.setRequestHandler(
+      ReadResourceRequestSchema,
+      async (request) => {
+        const uri = request.params.uri;
+        const resourceInfo = this.registry.findResourceByUri(uri);
+
+        if (!resourceInfo) {
+          throw new McpError(
+            ErrorCode.MethodNotFound,
+            `Unknown resource: ${uri}`,
+          );
+        }
+
+        try {
+          // Resolve the resource instance for the current request
+          const contextId = ContextIdFactory.getByRequest(httpRequest);
+          this.moduleRef.registerRequestByContextId(httpRequest, contextId);
+
+          const resourceInstance = await this.moduleRef.resolve(
+            resourceInfo.providerClass as Type<any>,
+            contextId,
+            { strict: false },
+          );
+
+          if (!resourceInstance) {
+            throw new McpError(
+              ErrorCode.MethodNotFound,
+              `Unknown resource: ${uri}`,
+            );
+          }
+
+          // Create the execution context with user information
+          const context = this.createContext(mcpServer, request);
+
+          // Call the resource method
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          const result = await resourceInstance[resourceInfo.methodName].call(
+            resourceInstance,
+            request.params,
+            context,
+            httpRequest,
+          );
+
+          // Handle different result types
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+          return result;
+        } catch (error) {
+          return {
+            content: [{ type: 'text', text: `Error: ${error}` }],
+            isError: true,
+          };
+        }
+      },
+    );
+  }
+
+  private registerTools(mcpServer: McpServer, httpRequest) {
     mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
-      const tools = this.toolRegistry.getTools().map((tool) => ({
+      const tools = this.registry.getTools().map((tool) => ({
         name: tool.metadata.name,
         description: tool.metadata.description,
         inputSchema: tool.metadata.parameters
@@ -109,7 +125,7 @@ export class McpToolsExecutorService {
     mcpServer.server.setRequestHandler(
       CallToolRequestSchema,
       async (request) => {
-        const toolInfo = this.toolRegistry.findTool(request.params.name);
+        const toolInfo = this.registry.findTool(request.params.name);
 
         if (!toolInfo) {
           throw new McpError(
@@ -126,7 +142,7 @@ export class McpToolsExecutorService {
           if (!result.success) {
             throw new McpError(
               ErrorCode.InvalidParams,
-              `Invalid ${request.params.name} parameters: ${JSON.stringify(result.error.format())}`,
+              `Invalid ${toolInfo.metadata.name} parameters: ${JSON.stringify(result.error.format())}`,
             );
           }
           parsedParams = result.data;
@@ -163,24 +179,9 @@ export class McpToolsExecutorService {
           );
 
           // Handle different result types
-          if (typeof result === 'string') {
-            return ContentResultZodSchema.parse({
-              content: [{ type: 'text', text: result }],
-            });
-          } else if (result && typeof result === 'object' && 'type' in result) {
-            return ContentResultZodSchema.parse({
-              content: [result],
-            });
-          } else {
-            return ContentResultZodSchema.parse(result);
-          }
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+          return result;
         } catch (error) {
-          if (error instanceof UserError) {
-            return {
-              content: [{ type: 'text', text: error.message }],
-              isError: true,
-            };
-          }
           return {
             content: [{ type: 'text', text: `Error: ${error}` }],
             isError: true,
@@ -194,13 +195,15 @@ export class McpToolsExecutorService {
    * Create the execution context with user data from the request
    * @param mcpServer - The MCP server instance
    * @param progressToken - Optional progress token for reporting progress
-   * @param request - The current HTTP request
+   * @param mcpRequest - The current HTTP request
    */
   private createContext(
     mcpServer: McpServer,
-    toolRequest: z.infer<typeof CallToolRequestSchema>,
+    mcpRequest: z.infer<
+      typeof CallToolRequestSchema | typeof ReadResourceRequestSchema
+    >,
   ): Context {
-    const progressToken = toolRequest.params?._meta?.progressToken;
+    const progressToken = mcpRequest.params?._meta?.progressToken;
     return {
       reportProgress: async (progress: Progress) => {
         if (progressToken) {
@@ -213,7 +216,6 @@ export class McpToolsExecutorService {
           });
         }
       },
-
       log: {
         debug: (message: string, context?: SerializableValue) => {
           void mcpServer.server.sendLoggingMessage({
