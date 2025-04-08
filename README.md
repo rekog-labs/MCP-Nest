@@ -86,6 +86,19 @@ export class GreetingTool {
 
 You are done!
 
+## API Endpoints
+
+- `GET /sse`: SSE connection endpoint (Protected by guards if configured)
+- `POST /messages`: Tool execution endpoint (Protected by guards if configured)
+
+### Tips
+
+It's possible to use the module with global prefix, but the recommended way is to exclude those endpoints with:
+
+```typescript
+app.setGlobalPrefix('/api', { exclude: ['sse', 'messages'] });
+```
+
 ## Authentication
 
 You can secure your MCP endpoints using standard NestJS Guards.
@@ -121,12 +134,3 @@ export class AppModule {}
 ```
 
 That's it! The rest is the same as NestJS Guards.
-
-## Client Connection
-
-Clients need to provide the necessary credentials (e.g., Authorization header) when connecting if authentication is enabled.
-
-## API Endpoints
-
-- `GET /sse`: SSE connection endpoint (Protected by guards if configured)
-- `POST /messages`: Tool execution endpoint (Protected by guards if configured)
