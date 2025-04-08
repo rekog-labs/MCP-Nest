@@ -87,6 +87,22 @@ describe('E2E: MCP Resource Server', () => {
     await client.close();
   });
 
+  it('should list dynamic resources', async () => {
+    const client = await createMCPClient(testPort);
+    const resources = await client.listResourceTemplates();
+
+    expect(
+      resources.resourceTemplates.find((r) => r.name === 'hello-world-dynamic'),
+    ).toEqual({
+      name: 'hello-world-dynamic',
+      uriTemplate: 'mcp://hello-world-dynamic/{userName}',
+      description: 'A simple greeting dynamic resource',
+      mimeType: 'text/plain',
+    });
+
+    await client.close();
+  });
+
   it('should call the resource', async () => {
     const client = await createMCPClient(testPort);
 

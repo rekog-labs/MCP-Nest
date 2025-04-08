@@ -17,7 +17,7 @@ A NestJS module for creating an MCP (Model Context Protocol) server with Server-
 ## Installation
 
 ```bash
-npm install @kieling/nest-mcp @modelcontextprotocol/sdk zod
+npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod
 ```
 
 ## Quick Start
@@ -27,7 +27,7 @@ npm install @kieling/nest-mcp @modelcontextprotocol/sdk zod
 ```typescript
 // app.module.ts
 import { Module } from '@nestjs/common';
-import { McpModule } from '@kieling/nest-mcp';
+import { McpModule } from '@rekog/mcp-nest';
 import { GreetingTool } from './greeting.tool';
 
 @Module({
@@ -47,7 +47,7 @@ export class AppModule {}
 ```typescript
 // greeting.tool.ts
 import { Injectable } from '@nestjs/common';
-import { Tool, Context } from '@kieling/nest-mcp';
+import { Tool, Context } from '@rekog/mcp-nest';
 import { z } from 'zod';
 import { Progress } from '@modelcontextprotocol/sdk/types';
 
@@ -88,6 +88,7 @@ export class GreetingTool {
     description: 'A simple greeting resource',
     mimeType: 'text/plain',
   })
+  // Different from the SDK, we put the parameters and URI in the same object.
   async getCurrentSchema({ uri, userName }) {
     return {
       content: [
@@ -134,7 +135,7 @@ Pass your guard(s) to the `McpModule.forRoot` configuration. The guard(s) will b
 ```typescript
 // app.module.ts
 import { Module } from '@nestjs/common';
-import { McpModule } from '@kieling/nest-mcp';
+import { McpModule } from '@rekog/mcp-nest';
 import { GreetingTool } from './greeting.tool';
 import { AuthGuard } from './auth.guard';
 
