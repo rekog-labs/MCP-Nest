@@ -36,22 +36,11 @@ export class McpModule {
           provide: 'MCP_OPTIONS',
           useValue: options,
         },
-        {
-          provide: 'MCP_SERVER',
-          useFactory: (mcpOptions: McpOptions) => {
-            const server = new McpServer(
-              { name: mcpOptions.name, version: mcpOptions.version },
-              { capabilities: mcpOptions.capabilities || { tools: {} } },
-            );
-            return server;
-          },
-          inject: ['MCP_OPTIONS'],
-        },
         // Register both the registry (singleton) and executor (request-scoped) services
         McpToolRegistryService,
         McpToolsExecutorService,
       ],
-      exports: ['MCP_SERVER', McpToolRegistryService, McpToolsExecutorService],
+      exports: [McpToolRegistryService, McpToolsExecutorService],
     };
   }
 
@@ -64,17 +53,6 @@ export class McpModule {
       controllers: [],
       providers: [
         ...providers,
-        {
-          provide: 'MCP_SERVER',
-          useFactory: (mcpOptions: McpOptions) => {
-            const server = new McpServer(
-              { name: mcpOptions.name, version: mcpOptions.version },
-              { capabilities: mcpOptions.capabilities || { tools: {} } },
-            );
-            return server;
-          },
-          inject: ['MCP_OPTIONS'],
-        },
         // Register both the registry and executor services
         McpToolRegistryService,
         McpToolsExecutorService,
