@@ -21,6 +21,6 @@
     "esModuleInterop": true,
     "noFallthroughCasesInSwitch": false
   },
-  "include": ["src/**/*", "tests/**/*"],
+  "include": ["src/**/*", "tests/**/*", "playground/**/*"],
   "exclude": ["node_modules", "dist"]
 }
