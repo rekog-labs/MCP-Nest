@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CanActivate } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
+import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
@@ -103,9 +103,10 @@ export function createSseController(
       }
 
       // Resolve the request-scoped tool executor service
+      const contextId = ContextIdFactory.getByRequest(req);
       const executor = await this.moduleRef.resolve(
         McpExecutorService,
-        undefined,
+        contextId,
         { strict: false },
       );
 

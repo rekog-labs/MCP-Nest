@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Injectable, Scope, Type } from '@nestjs/common';
+import { Injectable, Logger, Scope, Type } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -15,12 +15,15 @@ import {
 import { Request } from 'express';
 import { McpRegistryService } from './mcp-registry.service';
 import { Context, SerializableValue } from 'src/interfaces/mcp-tool.interface';
+import { inspect } from 'util';
 
 /**
  * Request-scoped service for executing MCP tools
  */
 @Injectable({ scope: Scope.REQUEST })
 export class McpExecutorService {
+  private logger = new Logger(McpExecutorService.name);
+
   // Don't inject the request directly in the constructor
   constructor(
     private readonly moduleRef: ModuleRef,
@@ -51,6 +54,8 @@ export class McpExecutorService {
     mcpServer.server.setRequestHandler(
       ReadResourceRequestSchema,
       async (request) => {
+        this.logger.debug('ReadResourceRequestSchema is being called');
+
         // Support for dynamic resources, since they use uriTemplates (RFC 6570)
         // https://modelcontextprotocol.io/docs/concepts/resources#resource-templates
         const uri = request.params.uri;
@@ -100,11 +105,18 @@ export class McpExecutorService {
             httpRequest,
           );
 
+          this.logger.debug(
+            `ReadResourceRequestSchema result is being returned: ${inspect(
+              result,
+            )}`,
+          );
+
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return result;
         } catch (error) {
+          this.logger.error(error);
           return {
-            content: [{ type: 'text', text: `Error: ${error}` }],
+            contents: [{ uri, mimeType: 'text/plain', text: error.message }],
             isError: true,
           };
         }
@@ -189,7 +201,7 @@ export class McpExecutorService {
           return result;
         } catch (error) {
           return {
-            content: [{ type: 'text', text: `Error: ${error}` }],
+            content: [{ type: 'text', text: error.message }],
             isError: true,
           };
         }

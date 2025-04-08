@@ -62,6 +62,16 @@ export class GreetingToolResource {
       ],
     };
   }
+
+  @Resource({
+    name: 'hello-world-dynamic-multiple-paths-error',
+    description: 'A simple greeting dynamic resource with multiple paths',
+    mimeType: 'text/plain',
+    uri: 'mcp://hello-world-dynamic-multiple-paths-error/{userId}/{userName}',
+  })
+  async sayHelloMultiplePathsDynamicError() {
+    throw new Error('any error');
+  }
 }
 
 describe('E2E: MCP Resource Server', () => {
@@ -142,6 +152,27 @@ describe('E2E: MCP Resource Server', () => {
     );
     expect(result.contents[0].mimeType).toBe('text/plain');
     expect(result.contents[0].text).toBe('Hello Raphael_John from 123');
+
+    await client.close();
+  });
+
+  it('should return an error when the resource is not found', async () => {
+    const client = await createMCPClient(testPort);
+
+    const result: any = await client.readResource({
+      uri: 'mcp://hello-world-dynamic-multiple-paths-error/123/Raphael_John',
+    });
+
+    expect(result).toEqual({
+      contents: [
+        {
+          uri: 'mcp://hello-world-dynamic-multiple-paths-error/123/Raphael_John',
+          mimeType: 'text/plain',
+          text: 'any error',
+        },
+      ],
+      isError: true,
+    });
 
     await client.close();
   });

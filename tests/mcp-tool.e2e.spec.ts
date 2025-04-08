@@ -59,6 +59,15 @@ export class GreetingTool {
       ],
     };
   }
+
+  @Tool({
+    name: 'hello-world-error',
+    description: 'A sample tool that get the user by id',
+    parameters: z.object({}),
+  })
+  async sayHelloError() {
+    throw new Error('any error');
+  }
 }
 
 @Injectable({ scope: Scope.REQUEST })
@@ -205,6 +214,21 @@ describe('E2E: MCP ToolServer', () => {
 
     expect(result.content[0].type).toBe('text');
     expect(result.content[0].text).toContain('any-value');
+
+    await client.close();
+  });
+
+  it('should call the tool and receive an error', async () => {
+    const client = await createMCPClient(testPort);
+    const result: any = await client.callTool({
+      name: 'hello-world-error',
+      arguments: {},
+    });
+
+    expect(result).toEqual({
+      content: [{ type: 'text', text: 'any error' }],
+      isError: true,
+    });
 
     await client.close();
   });
