@@ -1,4 +1,4 @@
-# Nest MCP
+# NestJS MCP Server Module
 
 A NestJS module for creating an MCP (Model Context Protocol) server with Server-Sent Events (SSE) transport.
 
