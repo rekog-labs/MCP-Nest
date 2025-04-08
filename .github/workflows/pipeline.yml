@@ -43,14 +43,19 @@ jobs:
         registry-url: 'https://registry.npmjs.org'
     - name: Install dependencies
       run: npm ci
-    - name: Generate changelog and bump version
+    - name: Generate changelog
+      id: changelog
       run: npm run release
-    - name: Bump version
-      run: |
-        npm version patch -m "ci: bump version to %s [skip ci]"
-    - name: Push version bump
-      run: |
-        git push origin HEAD --follow-tags
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Create release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.changelog.outputs.version }}
+        release_name: ${{ steps.changelog.outputs.version }}
+        body: ${{ steps.changelog.outputs.changelog }}
     - name: Build
       run: npm run build
     - name: Publish to npm
