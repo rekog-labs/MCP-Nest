@@ -23,5 +23,8 @@ export interface ToolOptions {
  * @returns {MethodDecorator} - The decorator
  */
 export const Tool = (options: ToolOptions) => {
+  if (options.parameters === undefined) {
+    options.parameters = z.object({});
+  }
   return SetMetadata(MCP_TOOL_METADATA_KEY, options);
 };
