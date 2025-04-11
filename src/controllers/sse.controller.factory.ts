@@ -50,7 +50,8 @@ export function createSseController(
     @Get(sseEndpoint)
     async sse(@Res() res: Response) {
       const transport = new SSEServerTransport(
-        `${globalApiPrefix}/${messagesEndpoint}`,
+        // Remove potential double slashes from the path
+        `${globalApiPrefix}/${messagesEndpoint}`.replace(/\/+/g, '/'),
         res,
       );
       const sessionId = transport.sessionId;
