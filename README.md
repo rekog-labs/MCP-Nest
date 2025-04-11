@@ -1,4 +1,5 @@
 # NestJS MCP Server Module
+[![smithery badge](https://smithery.ai/badge/@rekog-labs/MCP-Nest)](https://smithery.ai/server/@rekog-labs/MCP-Nest)
 
 A NestJS module for creating an MCP (Model Context Protocol) server with Server-Sent Events (SSE) transport.
 
@@ -16,6 +17,15 @@ A NestJS module for creating an MCP (Model Context Protocol) server with Server-
 
 ## Installation
 
+### Installing via Smithery
+
+To install NestJS MCP Server Module for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@rekog-labs/MCP-Nest):
+
+```bash
+npx -y @smithery/cli install @rekog-labs/MCP-Nest --client claude
+```
+
+### Manual Installation
 ```bash
 npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod
 ```
