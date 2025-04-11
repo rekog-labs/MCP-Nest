@@ -63,6 +63,7 @@ export function createSseController(
             tools: {},
             resources: {},
             resourceTemplates: {},
+            prompts: {},
           },
         },
       );

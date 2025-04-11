@@ -111,6 +111,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
           capabilities: {
             resources: {},
             resourceTemplates: {},
+            prompts: {},
             tools: {
               'auth-hello-world': {
                 description:

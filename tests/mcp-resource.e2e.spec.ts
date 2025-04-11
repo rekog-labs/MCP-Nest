@@ -159,7 +159,7 @@ describe('E2E: MCP Resource Server', () => {
   it('should return an error when the resource is not found', async () => {
     const client = await createMCPClient(testPort);
 
-    const result: any = await client.readResource({
+    const result = await client.readResource({
       uri: 'mcp://hello-world-dynamic-multiple-paths-error/123/Raphael_John',
     });
 

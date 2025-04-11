@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { McpModule } from '../src';
 import { GreetingResource } from './greeting.resource';
 import { GreetingTool } from './greeting.tool';
+import { GreetingPrompt } from './greeting.prompt';
 
 @Module({
   imports: [
@@ -11,7 +12,7 @@ import { GreetingTool } from './greeting.tool';
       version: '0.0.1',
     }),
   ],
-  providers: [GreetingResource, GreetingTool],
+  providers: [GreetingResource, GreetingTool, GreetingPrompt],
 })
 class AppModule {}
 

@@ -5,8 +5,6 @@ import { z } from 'zod';
 
 @Injectable()
 export class GreetingTool {
-  constructor() {}
-
   @Tool({
     name: 'hello-world',
     description:

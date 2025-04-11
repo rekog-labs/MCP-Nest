@@ -32,6 +32,7 @@ export async function createMCPClient(
         tools: {},
         resources: {},
         resourceTemplates: {},
+        prompts: {},
       },
     },
   );

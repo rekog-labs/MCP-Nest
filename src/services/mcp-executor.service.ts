@@ -6,10 +6,13 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   CallToolRequestSchema,
   ErrorCode,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   McpError,
   Progress,
+  PromptArgument,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { Request } from 'express';
@@ -37,6 +40,105 @@ export class McpExecutorService {
   registerRequestHandlers(mcpServer: McpServer, httpRequest: Request) {
     this.registerTools(mcpServer, httpRequest);
     this.registerResources(mcpServer, httpRequest);
+    this.registerPrompts(mcpServer, httpRequest);
+  }
+
+  private registerPrompts(mcpServer: McpServer, httpRequest: Request) {
+    mcpServer.server.setRequestHandler(ListPromptsRequestSchema, () => {
+      this.logger.debug('ListPromptsRequestSchema is being called');
+
+      const prompts = this.registry.getPrompts().map((prompt) => ({
+        name: prompt.metadata.name,
+        description: prompt.metadata.description,
+        arguments: prompt.metadata.parameters
+          ? Object.entries(prompt.metadata.parameters.shape).map(
+              ([name, field]): PromptArgument => ({
+                name,
+                description: field.description,
+                required: !field.isOptional(),
+              }),
+            )
+          : [],
+      }));
+
+      return {
+        prompts,
+      };
+    });
+
+    mcpServer.server.setRequestHandler(
+      GetPromptRequestSchema,
+      async (request) => {
+        this.logger.debug('GetPromptRequestSchema is being called');
+
+        const name = request.params.name;
+        const promptInfo = this.registry.findPrompt(name);
+
+        if (!promptInfo) {
+          throw new McpError(
+            ErrorCode.MethodNotFound,
+            `Unknown prompt: ${name}`,
+          );
+        }
+
+        const schema = promptInfo.metadata.parameters;
+        let parsedParams = request.params.arguments;
+
+        if (schema && schema instanceof z.ZodType) {
+          const result = schema.safeParse(request.params.arguments);
+          if (!result.success) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              `Invalid ${promptInfo.metadata.name} parameters: ${JSON.stringify(result.error.format())}`,
+            );
+          }
+          parsedParams = result.data as Record<string, any>;
+        }
+
+        try {
+          // Resolve the resource instance for the current request
+          const contextId = ContextIdFactory.getByRequest(httpRequest);
+          this.moduleRef.registerRequestByContextId(httpRequest, contextId);
+
+          const promptInstance = await this.moduleRef.resolve(
+            promptInfo.providerClass as Type<any>,
+            contextId,
+            { strict: false },
+          );
+
+          if (!promptInstance) {
+            throw new McpError(
+              ErrorCode.MethodNotFound,
+              `Unknown prompt: ${name}`,
+            );
+          }
+
+          // Create the execution context with user information
+          const context = this.createContext(mcpServer, request);
+
+          const methodName = promptInfo.methodName;
+
+          // Call the resource method
+          const result = await promptInstance[methodName].call(
+            promptInstance,
+            parsedParams,
+            context,
+            httpRequest,
+          );
+
+          this.logger.debug(result, 'GetPromptRequestSchema result');
+
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+          return result;
+        } catch (error) {
+          this.logger.error(error);
+          return {
+            contents: [{ mimeType: 'text/plain', text: error.message }],
+            isError: true,
+          };
+        }
+      },
+    );
   }
 
   private registerResources(mcpServer: McpServer, httpRequest: Request) {
@@ -219,7 +321,9 @@ export class McpExecutorService {
   private createContext(
     mcpServer: McpServer,
     mcpRequest: z.infer<
-      typeof CallToolRequestSchema | typeof ReadResourceRequestSchema
+      | typeof CallToolRequestSchema
+      | typeof ReadResourceRequestSchema
+      | typeof GetPromptRequestSchema
     >,
   ): Context {
     const progressToken = mcpRequest.params?._meta?.progressToken;
