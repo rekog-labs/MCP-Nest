@@ -71,31 +71,17 @@ export class McpExecutorService {
       async (request) => {
         this.logger.debug('GetPromptRequestSchema is being called');
 
-        const name = request.params.name;
-        const promptInfo = this.registry.findPrompt(name);
+        try {
+          const name = request.params.name;
+          const promptInfo = this.registry.findPrompt(name);
 
-        if (!promptInfo) {
-          throw new McpError(
-            ErrorCode.MethodNotFound,
-            `Unknown prompt: ${name}`,
-          );
-        }
-
-        const schema = promptInfo.metadata.parameters;
-        let parsedParams = request.params.arguments;
-
-        if (schema && schema instanceof z.ZodType) {
-          const result = schema.safeParse(request.params.arguments);
-          if (!result.success) {
+          if (!promptInfo) {
             throw new McpError(
-              ErrorCode.InvalidParams,
-              `Invalid ${promptInfo.metadata.name} parameters: ${JSON.stringify(result.error.format())}`,
+              ErrorCode.MethodNotFound,
+              `Unknown prompt: ${name}`,
             );
           }
-          parsedParams = result.data as Record<string, any>;
-        }
 
-        try {
           // Resolve the resource instance for the current request
           const contextId = ContextIdFactory.getByRequest(httpRequest);
           this.moduleRef.registerRequestByContextId(httpRequest, contextId);
@@ -121,7 +107,7 @@ export class McpExecutorService {
           // Call the resource method
           const result = await promptInstance[methodName].call(
             promptInstance,
-            parsedParams,
+            request.params.arguments,
             context,
             httpRequest,
           );
@@ -253,20 +239,6 @@ export class McpExecutorService {
           );
         }
 
-        const schema = toolInfo.metadata.parameters;
-        let parsedParams = request.params.arguments;
-
-        if (schema && schema instanceof z.ZodType) {
-          const result = schema.safeParse(request.params.arguments);
-          if (!result.success) {
-            throw new McpError(
-              ErrorCode.InvalidParams,
-              `Invalid ${toolInfo.metadata.name} parameters: ${JSON.stringify(result.error.format())}`,
-            );
-          }
-          parsedParams = result.data;
-        }
-
         try {
           // Resolve the tool instance for the current request
           const contextId = ContextIdFactory.getByRequest(httpRequest);
@@ -292,7 +264,7 @@ export class McpExecutorService {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           const result = await toolInstance[toolInfo.methodName].call(
             toolInstance,
-            parsedParams,
+            request.params.arguments,
             context,
             httpRequest,
           );

@@ -90,4 +90,19 @@ describe('E2E: MCP Prompt Server', () => {
 
     await client.close();
   });
+
+  it('should validate the arguments', async () => {
+    const client = await createMCPClient(testPort);
+
+    try {
+      await client.getPrompt({
+        name: 'hello-world',
+        arguments: { name: 123 } as any,
+      });
+    } catch (error) {
+      expect(error).toBeDefined();
+      expect(error.message).toContain('Expected string, received number');
+    }
+    await client.close();
+  });
 });

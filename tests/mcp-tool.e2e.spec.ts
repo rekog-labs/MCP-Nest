@@ -218,6 +218,22 @@ describe('E2E: MCP ToolServer', () => {
     await client.close();
   });
 
+  it('should validate the arguments', async () => {
+    const client = await createMCPClient(testPort);
+
+    try {
+      await client.callTool({
+        name: 'hello-world',
+        arguments: { name: 123 } as any,
+      });
+    } catch (error) {
+      expect(error).toBeDefined();
+      expect(error.message).toContain('Expected string, received number');
+    }
+
+    await client.close();
+  });
+
   it('should call the tool and receive an error', async () => {
     const client = await createMCPClient(testPort);
     const result: any = await client.callTool({
