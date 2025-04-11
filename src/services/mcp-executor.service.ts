@@ -185,7 +185,6 @@ export class McpExecutorService {
           const methodName = resourceInfo.resource.methodName;
 
           // Call the resource method
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           const result = await resourceInstance[methodName].call(
             resourceInstance,
             requestParams,
@@ -261,7 +260,6 @@ export class McpExecutorService {
           }
 
           // Call the tool method
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
           const result = await toolInstance[toolInfo.methodName].call(
             toolInstance,
             request.params.arguments,
