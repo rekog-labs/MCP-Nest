@@ -122,6 +122,8 @@ export class SsePingService implements OnModuleInit, OnModuleDestroy {
           this.logger.debug(
             `Connection ${sessionId} is no longer writable, removing`,
           );
+         // TODO: After non writable connections are discovered it'd be useful to cleanup transports/mcp servers
+         // for that connection in  sse.controller.factory.ts
           this.removeConnection(sessionId);
         }
       } catch (error) {
