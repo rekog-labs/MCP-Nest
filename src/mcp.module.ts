@@ -9,6 +9,7 @@ import {
 import { createSseController } from './controllers/sse.controller.factory';
 import { McpRegistryService } from './services/mcp-registry.service';
 import { McpExecutorService } from './services/mcp-executor.service';
+import { SsePingService } from './services/sse-ping.service';
 
 @Module({})
 export class McpModule {
@@ -35,11 +36,12 @@ export class McpModule {
           provide: 'MCP_OPTIONS',
           useValue: options,
         },
-        // Register both the registry (singleton) and executor (request-scoped) services
+        // Register services
         McpRegistryService,
         McpExecutorService,
+        SsePingService,
       ],
-      exports: [McpRegistryService, McpExecutorService],
+      exports: [McpRegistryService, McpExecutorService, SsePingService],
     };
   }
 
@@ -52,11 +54,12 @@ export class McpModule {
       controllers: [],
       providers: [
         ...providers,
-        // Register both the registry and executor services
+        // Register services
         McpRegistryService,
         McpExecutorService,
+        SsePingService,
       ],
-      exports: [McpRegistryService, McpExecutorService],
+      exports: [McpRegistryService, McpExecutorService, SsePingService],
     };
   }
 

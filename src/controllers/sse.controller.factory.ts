@@ -8,6 +8,7 @@ import {
   Res,
   Type,
   UseGuards,
+  OnModuleInit,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CanActivate } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { McpOptions } from '../interfaces';
 import { McpRegistryService } from '../services/mcp-registry.service';
 import { McpExecutorService } from '../services/mcp-executor.service';
+import { SsePingService } from '../services/sse-ping.service';
 
 /**
  * Creates a controller for handling SSE connections and tool executions
@@ -29,7 +31,7 @@ export function createSseController(
   guards: Type<CanActivate>[] = [],
 ) {
   @Controller()
-  class SseController {
+  class SseController implements OnModuleInit {
     // Note: Currently, storing transports and servers in memory makes this not viable for scaling out.
     // Redis can be used for this purpose, but considering that HTTP Streamable succeeds SSE then we can drop keeping this in memory.
 
@@ -42,7 +44,19 @@ export function createSseController(
       @Inject('MCP_OPTIONS') public readonly options: McpOptions,
       public readonly moduleRef: ModuleRef,
       public readonly toolRegistry: McpRegistryService,
+      public readonly pingService: SsePingService,
     ) {}
+
+    /**
+     * Initialize the controller and configure ping service
+     */
+    onModuleInit() {
+      // Configure ping service with options
+      this.pingService.configure({
+        pingEnabled: this.options.sse?.pingEnabled !== false, // Enable by default
+        pingIntervalMs: this.options.sse?.pingIntervalMs,
+      });
+    }
 
     /**
      * SSE connection endpoint
@@ -73,10 +87,14 @@ export function createSseController(
       this.transports.set(sessionId, transport);
       this.mcpServers.set(sessionId, mcpServer);
 
+      // Register the connection with the ping service
+      this.pingService.registerConnection(sessionId, transport, res);
+
       transport.onclose = () => {
         // Clean up when the connection closes
         this.transports.delete(sessionId);
         this.mcpServers.delete(sessionId);
+        this.pingService.removeConnection(sessionId);
       };
 
       await mcpServer.connect(transport);

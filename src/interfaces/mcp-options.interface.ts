@@ -9,6 +9,10 @@ export interface McpOptions {
   globalApiPrefix?: string;
   capabilities?: Record<string, any>;
   guards?: Type<CanActivate>[];
+  sse?: {
+    pingEnabled?: boolean;
+    pingIntervalMs?: number;
+  };
 }
 
 export interface McpOptionsFactory {
