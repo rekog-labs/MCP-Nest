@@ -1,15 +1,21 @@
-import { NestFactory } from '@nestjs/core';
 import { Module } from '@nestjs/common';
-import { McpModule } from '../src';
+import { NestFactory } from '@nestjs/core';
+import { randomUUID } from 'crypto';
+import { McpModule, McpTransportType } from '../src';
+import { GreetingPrompt } from './greeting.prompt';
 import { GreetingResource } from './greeting.resource';
 import { GreetingTool } from './greeting.tool';
-import { GreetingPrompt } from './greeting.prompt';
 
 @Module({
   imports: [
     McpModule.forRoot({
       name: 'playground-mcp-server',
       version: '0.0.1',
+      streamableHttp: {
+        enableJsonResponse: true,
+        sessionIdGenerator: () => randomUUID(),
+      },
+      transport: McpTransportType.BOTH,
     }),
   ],
   providers: [GreetingResource, GreetingTool, GreetingPrompt],

@@ -2,18 +2,18 @@ import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { INestApplication, Inject, Injectable, Scope } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
-import { Context, Tool } from '../src';
+import { Context, McpTransportType, Tool } from '../src';
 import { McpModule } from '../src/mcp.module';
-import { createMCPClient } from './utils';
+import { createMCPClient, createStreamableMCPClient } from './utils';
 import { REQUEST } from '@nestjs/core';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
-// Mock user repository
 @Injectable()
 class MockUserRepository {
-  async findOne(id: string) {
+  async findByName(name: string) {
     return Promise.resolve({
-      id,
-      name: 'Repository User',
+      id: 'user123',
+      name: 'Repository User Name ' + name,
       orgMemberships: [
         {
           orgId: 'org123',
@@ -26,22 +26,19 @@ class MockUserRepository {
   }
 }
 
-// Greeting tool that uses the authentication context
 @Injectable()
 export class GreetingTool {
   constructor(private readonly userRepository: MockUserRepository) {}
 
   @Tool({
     name: 'hello-world',
-    description: 'A sample tool that get the user by id',
+    description: 'A sample tool that gets the user by name',
     parameters: z.object({
       name: z.string().default('World'),
     }),
   })
-  async sayHello({ id }, context: Context) {
-    const user = await this.userRepository.findOne(id);
-
-    // Report progress for demonstration
+  async sayHello({ name }, context: Context) {
+    const user = await this.userRepository.findByName(name);
     for (let i = 0; i < 5; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
       await context.reportProgress({
@@ -49,7 +46,6 @@ export class GreetingTool {
         total: 100,
       } as Progress);
     }
-
     return {
       content: [
         {
@@ -62,7 +58,7 @@ export class GreetingTool {
 
   @Tool({
     name: 'hello-world-error',
-    description: 'A sample tool that get the user by id',
+    description: 'A sample tool that throws an error',
     parameters: z.object({}),
   })
   async sayHelloError() {
@@ -76,15 +72,13 @@ export class GreetingToolRequestScoped {
 
   @Tool({
     name: 'hello-world-scoped',
-    description: 'A sample tool that get the user by id',
+    description: 'A sample request-scoped tool that gets the user by name',
     parameters: z.object({
       name: z.string().default('World'),
     }),
   })
-  async sayHello({ id }, context: Context) {
-    const user = await this.userRepository.findOne(id);
-
-    // Report progress for demonstration
+  async sayHello({ name }, context: Context) {
+    const user = await this.userRepository.findByName(name);
     for (let i = 0; i < 5; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
       await context.reportProgress({
@@ -92,7 +86,6 @@ export class GreetingToolRequestScoped {
         total: 100,
       } as Progress);
     }
-
     return {
       content: [
         {
@@ -110,7 +103,7 @@ export class ToolRequestScoped {
 
   @Tool({
     name: 'get-request-scoped',
-    description: 'A sample tool that get the request',
+    description: 'A sample tool that gets a header from the request',
     parameters: z.object({}),
   })
   async getRequest() {
@@ -135,6 +128,7 @@ describe('E2E: MCP ToolServer', () => {
         McpModule.forRoot({
           name: 'test-mcp-server',
           version: '0.0.1',
+          transport: McpTransportType.BOTH,
           guards: [],
         }),
       ],
@@ -150,102 +144,148 @@ describe('E2E: MCP ToolServer', () => {
     await app.listen(0);
 
     const server = app.getHttpServer();
-    testPort = server.address().port;
+    if (!server.address()) {
+      throw new Error('Server address not found after listen');
+    }
+    testPort = (server.address() as import('net').AddressInfo).port;
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  it('should list tools', async () => {
-    const client = await createMCPClient(testPort);
-    const tools = await client.listTools();
+  const runClientTests = (
+    clientType: 'http+sse' | 'streamable http',
+    clientCreator: (port: number, options?: any) => Promise<Client>,
+    requestScopedHeaderValue: string,
+  ) => {
+    describe(`using ${clientType} client (${clientCreator.name})`, () => {
+      it('should list tools', async () => {
+        const client = await clientCreator(testPort);
+        try {
+          const tools = await client.listTools();
+          expect(tools.tools.length).toBeGreaterThan(0);
+          expect(
+            tools.tools.find((t) => t.name === 'hello-world'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'hello-world-scoped'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'get-request-scoped'),
+          ).toBeDefined();
+        } finally {
+          await client.close();
+        }
+      });
 
-    // Verify that the authenticated tool is available
-    expect(tools.tools.length).toBeGreaterThan(0);
-    expect(tools.tools.find((t) => t.name === 'hello-world')).toBeDefined();
+      it.each([{ tool: 'hello-world' }, { tool: 'hello-world-scoped' }])(
+        'should call the tool $tool and receive results',
+        async ({ tool }) => {
+          const client = await clientCreator(testPort);
+          try {
+            let progressCount = 1;
+            const result: any = await client.callTool(
+              { name: tool, arguments: { name: 'userRepo123' } },
+              undefined,
+              {
+                onprogress: (progress: Progress) => {
+                  expect(progress.progress).toBeGreaterThan(0);
+                  expect(progress.total).toBe(100);
+                  progressCount++;
+                },
+              },
+            );
 
-    await client.close();
-  });
-
-  it.each([{ tool: 'hello-world' }, { tool: 'hello-world-scoped' }])(
-    'should call the tool and receive progress notifications for $tool',
-    async ({ tool }) => {
-      const client = await createMCPClient(testPort);
-
-      let progressCount = 1;
-      const result: any = await client.callTool(
-        {
-          name: tool,
-          arguments: { id: 'userRepo123' },
-        },
-        undefined,
-        {
-          onprogress: () => {
-            progressCount++;
-          },
+            expect(progressCount).toBe(5);
+            expect(result.content[0].type).toBe('text');
+            expect(result.content[0].text).toContain(
+              'Hello, Repository User Name userRepo123!',
+            );
+          } finally {
+            await client.close();
+          }
         },
       );
 
-      // Verify that progress notifications were received
-      expect(progressCount).toBe(5);
+      it('should call the tool get-request-scoped and receive header', async () => {
+        const client = await clientCreator(testPort, {
+          requestInit: {
+            headers: { 'any-header': requestScopedHeaderValue },
+          },
+        });
+        try {
+          const result: any = await client.callTool({
+            name: 'get-request-scoped',
+            arguments: {},
+          });
 
-      // Verify that authentication context was available to the tool
-      expect(result.content[0].type).toBe('text');
-      expect(result.content[0].text).toContain('Hello, Repository User!');
-
-      await client.close();
-    },
-  );
-
-  it('should call the tool and receive progress notifications for get-request-scoped', async () => {
-    const client = await createMCPClient(testPort, {
-      requestInit: {
-        headers: {
-          'any-header': 'any-value',
-        },
-      },
-    });
-
-    const result: any = await client.callTool({
-      name: 'get-request-scoped',
-      arguments: {},
-    });
-
-    expect(result.content[0].type).toBe('text');
-    expect(result.content[0].text).toContain('any-value');
-
-    await client.close();
-  });
-
-  it('should validate the arguments', async () => {
-    const client = await createMCPClient(testPort);
-
-    try {
-      await client.callTool({
-        name: 'hello-world',
-        arguments: { name: 123 } as any,
+          expect(result.content[0].type).toBe('text');
+          expect(result.content[0].text).toContain(requestScopedHeaderValue);
+        } finally {
+          await client.close();
+        }
       });
-    } catch (error) {
-      expect(error).toBeDefined();
-      expect(error.message).toContain('Expected string, received number');
-    }
 
-    await client.close();
-  });
+      it('should reject invalid arguments for hello-world', async () => {
+        const client = await clientCreator(testPort);
 
-  it('should call the tool and receive an error', async () => {
-    const client = await createMCPClient(testPort);
-    const result: any = await client.callTool({
-      name: 'hello-world-error',
-      arguments: {},
+        try {
+          await client.callTool({
+            name: 'hello-world',
+            arguments: { name: 123 } as any, // Wrong type for 'name'
+          });
+        } catch (error) {
+          expect(error).toBeDefined();
+          expect(error.message).toContain('Expected string, received number');
+        }
+
+        await client.close();
+      });
+
+      it('should reject missing arguments for hello-world', async () => {
+        const client = await clientCreator(testPort);
+
+        try {
+          await client.callTool({
+            name: 'hello-world',
+            arguments: {} as any,
+          });
+        } catch (error) {
+          expect(error).toBeDefined();
+          expect(error.message).toContain('Required');
+        }
+
+        await client.close();
+      });
+
+      it('should call the tool and receive an error', async () => {
+        const client = await clientCreator(testPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'hello-world-error',
+            arguments: {},
+          });
+
+          // Both clients should return the standardized error format
+          expect(result).toEqual({
+            content: [{ type: 'text', text: 'any error' }],
+            isError: true,
+          });
+        } finally {
+          await client.close();
+        }
+      });
     });
+  };
 
-    expect(result).toEqual({
-      content: [{ type: 'text', text: 'any error' }],
-      isError: true,
-    });
+  // Run tests using the HTTP+SSE MCP client
+  runClientTests('http+sse', createMCPClient, 'any-value');
 
-    await client.close();
-  });
+  // Run tests using the Streamable HTTP MCP client
+  runClientTests(
+    'streamable http',
+    createStreamableMCPClient,
+    'streamable-value',
+  );
 });

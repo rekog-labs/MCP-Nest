@@ -1,117 +1,87 @@
-import { DynamicModule, Module, Provider } from '@nestjs/common';
+import { DynamicModule, Module, Provider, Type } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
-import {
-  McpOptions,
-  McpAsyncOptions,
-  McpOptionsFactory,
-} from './interfaces/mcp-options.interface';
-
 import { createSseController } from './controllers/sse.controller.factory';
-import { McpRegistryService } from './services/mcp-registry.service';
+import { createStreamableHttpController } from './controllers/streamable-http.controller.factory';
+import { McpOptions, McpTransportType } from './interfaces';
 import { McpExecutorService } from './services/mcp-executor.service';
+import { McpRegistryService } from './services/mcp-registry.service';
 import { SsePingService } from './services/sse-ping.service';
 
-@Module({})
+@Module({
+  imports: [DiscoveryModule],
+  providers: [McpRegistryService, McpExecutorService],
+})
 export class McpModule {
   static forRoot(options: McpOptions): DynamicModule {
+    const providers = this.createProvidersFromOptions(options);
+    const controllers = this.createControllersFromOptions(options);
+
+    return {
+      module: McpModule,
+      controllers,
+      providers,
+      exports: [McpRegistryService],
+    };
+  }
+
+  private static createControllersFromOptions(
+    options: McpOptions,
+  ): Type<any>[] {
     const sseEndpoint = options.sseEndpoint ?? 'sse';
     const messagesEndpoint = options.messagesEndpoint ?? 'messages';
+    const mcpEndpoint = options.mcpEndpoint ?? 'mcp';
     const globalApiPrefix = options.globalApiPrefix ?? '';
     const guards = options.guards ?? [];
+    const transportType = options.transport ?? McpTransportType.SSE;
+    const controllers: Type<any>[] = [];
 
-    // Create the controller with guards
-    const SseController = createSseController(
-      sseEndpoint,
-      messagesEndpoint,
-      globalApiPrefix,
-      guards,
-    );
-
-    return {
-      module: McpModule,
-      imports: [DiscoveryModule],
-      controllers: [SseController],
-      providers: [
-        {
-          provide: 'MCP_OPTIONS',
-          useValue: options,
-        },
-        // Register services
-        McpRegistryService,
-        McpExecutorService,
-        SsePingService,
-      ],
-      exports: [McpRegistryService, McpExecutorService, SsePingService],
-    };
-  }
-
-  static forRootAsync(options: McpAsyncOptions): DynamicModule {
-    const providers: Provider[] = this.createAsyncProviders(options);
-
-    return {
-      module: McpModule,
-      imports: [...(options.imports || []), DiscoveryModule],
-      controllers: [],
-      providers: [
-        ...providers,
-        // Register services
-        McpRegistryService,
-        McpExecutorService,
-        SsePingService,
-      ],
-      exports: [McpRegistryService, McpExecutorService, SsePingService],
-    };
-  }
-
-  /**
-   * Helper to create async providers that handle different options types
-   */
-  private static createAsyncProviders(options: McpAsyncOptions): Provider[] {
-    if (options.useExisting || options.useFactory) {
-      return [this.createAsyncOptionsProvider(options)];
-    }
-
-    if (!options.useClass) {
-      throw new Error(
-        'useClass must be defined when not using useExisting or useFactory',
+    if (
+      transportType === McpTransportType.SSE ||
+      transportType === McpTransportType.BOTH
+    ) {
+      const sseController = createSseController(
+        sseEndpoint,
+        messagesEndpoint,
+        globalApiPrefix,
+        guards,
       );
+      controllers.push(sseController);
     }
 
-    return [
-      this.createAsyncOptionsProvider(options),
+    if (
+      transportType === McpTransportType.STREAMABLE_HTTP ||
+      transportType === McpTransportType.BOTH
+    ) {
+      const streamableHttpController = createStreamableHttpController(
+        mcpEndpoint,
+        globalApiPrefix,
+        guards,
+      );
+      controllers.push(streamableHttpController);
+    }
+
+    return controllers;
+  }
+
+  private static createProvidersFromOptions(options: McpOptions): Provider[] {
+    const providers: Provider[] = [
       {
-        provide: options.useClass,
-        useClass: options.useClass,
-      } as Provider,
-    ];
-  }
-
-  /**
-   * Create the async options provider
-   */
-  private static createAsyncOptionsProvider(
-    options: McpAsyncOptions,
-  ): Provider {
-    if (options.useFactory) {
-      return {
         provide: 'MCP_OPTIONS',
-        useFactory: options.useFactory,
-        inject: options.inject || [],
-      };
+        useValue: options,
+      },
+      McpRegistryService,
+      McpExecutorService,
+    ];
+
+    const transportType = options.transport ?? McpTransportType.SSE;
+
+    if (
+      transportType === McpTransportType.SSE ||
+      transportType === McpTransportType.BOTH
+    ) {
+      providers.push(SsePingService);
     }
 
-    const injectionToken = options.useExisting || options.useClass;
-    if (!injectionToken) {
-      throw new Error(
-        'Either useExisting or useClass must be defined when not using useFactory',
-      );
-    }
-
-    return {
-      provide: 'MCP_OPTIONS',
-      useFactory: async (optionsFactory: McpOptionsFactory) =>
-        await optionsFactory.createMcpOptions(),
-      inject: [injectionToken],
-    };
+    return providers;
   }
 }

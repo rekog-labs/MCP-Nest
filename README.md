@@ -1,15 +1,23 @@
 # NestJS MCP Server Module
 
-A NestJS module for creating an MCP (Model Context Protocol) server with Server-Sent Events (SSE) transport.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/rekog-labs/MCP-Nest/main/image.png" height="200">
+</p>
 
 <p align="center">
-  <img src="./image.png" height="200">
+  <a href="https://www.npmjs.com/package/@rekog/mcp-nest" target="_blank"><img alt="npm version" src="https://img.shields.io/npm/v/@rekog/mcp-nest" /></a>
+  <a href="https://www.npmjs.com/package/@rekog/mcp-nest" target="_blank"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@rekog/mcp-nest" /></a>
+  <a href="https://www.npmjs.com/package/@rekog/mcp-nest" target="_blank"><img alt="NPM" src="https://img.shields.io/npm/l/@rekog/mcp-nest" /></a>
 </p>
+
+A NestJS module to effortlessly expose tools, resources, and prompts for AI, from your NestJS applications using the **Model Context Protocol (MCP)**.
+
+`@rekog/mcp-nest` handles the complexity of setting up MCP servers. You define tools, resources, and prompts in a way that's familiar in NestJS and leverage the full power of dependency injection to utilize your existing services.
 
 ## Features
 
-- 🚀 SSE Transport for streaming and tool execution
-- 🔍 Automatic `tool` and `resource` discovery and registration
+- 🚀 HTTP+SSE and Streamable HTTP Transport
+- 🔍 Automatic `tool`, `resource`, and `prompt` discovery and registration
 - 💯 Zod-based request validation
 - 📊 Progress notifications
 - 🔒 Guard-based authentication
@@ -47,7 +55,7 @@ export class AppModule {}
 ```typescript
 // greeting.tool.ts
 import { Injectable } from '@nestjs/common';
-import { Tool, Context } from '@rekog/mcp-nest';
+import { Tool, Resource, Context } from '@rekog/mcp-nest';
 import { z } from 'zod';
 import { Progress } from '@modelcontextprotocol/sdk/types';
 
