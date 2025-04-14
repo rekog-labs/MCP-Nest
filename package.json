@@ -1,6 +1,6 @@
 {
   "name": "@rekog/mcp-nest",
-  "version": "1.3.1",
+  "version": "1.4.0-beta.0",
   "description": "NestJS module for creating Model Context Protocol (MCP) servers and exposing tools using SSE",
   "main": "dist/index.js",
   "license": "MIT",
@@ -12,8 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "start:playground": "ts-node-dev --respawn ./playground/server.ts",
-    "test": "jest",
-    "test:watch": "jest --watch",
+    "test": "npx --node-options=--experimental-vm-modules jest",
+    "test:watch": "npx --node-options=--experimental-vm-modules jest --watch",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
   },
