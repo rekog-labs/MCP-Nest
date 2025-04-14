@@ -21,6 +21,7 @@ A NestJS module to effortlessly expose tools, resources, and prompts for AI, fro
 - 💯 Zod-based request validation
 - 📊 Progress notifications
 - 🔒 Guard-based authentication
+- ⏱️ Automatic SSE ping to maintain long connections
 
 ## Installation
 
@@ -161,3 +162,31 @@ export class AppModule {}
 ```
 
 That's it! The rest is the same as NestJS Guards.
+
+## SSE Ping Service
+
+The module includes an SSE ping service that helps maintain long-lived SSE connections by preventing browser/client timeouts. This is especially useful for clients such as IDE's using your MCP server remotely.
+
+### Configuration
+
+You can configure the SSE ping behavior when importing the module:
+
+```typescript
+// app.module.ts
+import { Module } from '@nestjs/common';
+import { McpModule } from '@rekog/mcp-nest';
+
+@Module({
+  imports: [
+    McpModule.forRoot({
+      name: 'my-mcp-server',
+      version: '1.0.0',
+      sse: {
+        pingEnabled: true,        // Default is true
+        pingIntervalMs: 30000,    // Default is 30 seconds (30000ms)
+      },
+    }),
+  ],
+})
+export class AppModule {}
+```
