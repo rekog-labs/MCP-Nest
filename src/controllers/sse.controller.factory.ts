@@ -9,6 +9,7 @@ import {
   Type,
   UseGuards,
   OnModuleInit,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CanActivate } from '@nestjs/common';
@@ -30,7 +31,9 @@ export function createSseController(
   globalApiPrefix: string,
   guards: Type<CanActivate>[] = [],
 ) {
-  @Controller()
+  @Controller({
+    version: VERSION_NEUTRAL,
+  })
   class SseController implements OnModuleInit {
     // Note: Currently, storing transports and servers in memory makes this not viable for scaling out.
     // Redis can be used for this purpose, but considering that HTTP Streamable succeeds SSE then we can drop keeping this in memory.
