@@ -34,6 +34,7 @@ export class McpModule {
     const guards = options.guards ?? [];
     const transportType = options.transport ?? McpTransportType.SSE;
     const controllers: Type<any>[] = [];
+    const decorators = options.decorators ?? [];
 
     if (
       transportType === McpTransportType.SSE ||
@@ -44,6 +45,7 @@ export class McpModule {
         messagesEndpoint,
         globalApiPrefix,
         guards,
+        decorators,
       );
       controllers.push(sseController);
     }
@@ -56,6 +58,7 @@ export class McpModule {
         mcpEndpoint,
         globalApiPrefix,
         guards,
+        decorators,
       );
       controllers.push(streamableHttpController);
     }
