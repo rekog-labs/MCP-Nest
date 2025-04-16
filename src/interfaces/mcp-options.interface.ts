@@ -17,6 +17,7 @@ export interface McpOptions {
   globalApiPrefix?: string;
   capabilities?: Record<string, any>;
   guards?: Type<CanActivate>[];
+  decorators?: ClassDecorator[];
   sse?: {
     pingEnabled?: boolean;
     pingIntervalMs?: number;

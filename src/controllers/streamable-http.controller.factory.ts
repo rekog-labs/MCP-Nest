@@ -10,6 +10,7 @@ import {
   UseGuards,
   OnModuleInit,
   Logger,
+  applyDecorators,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CanActivate } from '@nestjs/common';
@@ -29,8 +30,10 @@ export function createStreamableHttpController(
   endpoint: string,
   globalApiPrefix: string,
   guards: Type<CanActivate>[] = [],
+  decorators: ClassDecorator[] = [],
 ) {
   @Controller()
+  @applyDecorators(...decorators)
   class StreamableHttpController implements OnModuleInit {
     public readonly logger = new Logger(StreamableHttpController.name);
     public transports: { [sessionId: string]: StreamableHTTPServerTransport } =

@@ -10,6 +10,7 @@ import {
   UseGuards,
   OnModuleInit,
   VERSION_NEUTRAL,
+  applyDecorators,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CanActivate } from '@nestjs/common';
@@ -30,10 +31,12 @@ export function createSseController(
   messagesEndpoint: string,
   globalApiPrefix: string,
   guards: Type<CanActivate>[] = [],
+  decorators: ClassDecorator[] = [],
 ) {
   @Controller({
     version: VERSION_NEUTRAL,
   })
+  @applyDecorators(...decorators)
   class SseController implements OnModuleInit {
     // Note: Currently, storing transports and servers in memory makes this not viable for scaling out.
     // Redis can be used for this purpose, but considering that HTTP Streamable succeeds SSE then we can drop keeping this in memory.
