@@ -1,6 +1,6 @@
 {
   "name": "@rekog/mcp-nest",
-  "version": "1.4.0-beta.0",
+  "version": "1.4.0",
   "description": "NestJS module for creating Model Context Protocol (MCP) servers and exposing tools using SSE",
   "main": "dist/index.js",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
   },
   "peerDependencies": {
-    "@modelcontextprotocol/sdk": ">=1.4.1",
+    "@modelcontextprotocol/sdk": ">=1.10.0",
     "@nestjs/common": ">=9.0.0",
     "@nestjs/core": ">=9.0.0",
     "express": ">=4.0.0",
@@ -27,7 +27,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
-    "@modelcontextprotocol/sdk": "npm:mcp-test-sdk@^1.10.0",
+    "@modelcontextprotocol/sdk": "^1.10.0",
     "@nestjs/common": "^11.0.5",
     "@nestjs/core": "^11.0.5",
     "@nestjs/platform-express": "^11.0.5",
