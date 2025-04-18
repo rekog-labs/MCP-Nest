@@ -13,7 +13,10 @@ import { GreetingTool } from './greeting.tool';
       version: '0.0.1',
       streamableHttp: {
         enableJsonResponse: true,
-        sessionIdGenerator: () => randomUUID(),
+        // For stateful mode (default):
+        sessionIdGenerator: undefined,
+        // Uncomment the line below to enable stateless mode:
+        statelessMode: true,
       },
       transport: McpTransportType.BOTH,
     }),

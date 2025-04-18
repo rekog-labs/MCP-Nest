@@ -25,6 +25,7 @@ export interface McpOptions {
   streamableHttp?: {
     enableJsonResponse?: boolean;
     sessionIdGenerator?: () => string;
+    statelessMode?: boolean;
   };
 }
 
