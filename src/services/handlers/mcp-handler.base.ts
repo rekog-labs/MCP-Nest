@@ -8,7 +8,10 @@ import {
   Progress,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Context, SerializableValue } from 'src/interfaces/mcp-tool.interface';
+import {
+  Context,
+  SerializableValue,
+} from '../../interfaces/mcp-tool.interface';
 import { McpRegistryService } from '../mcp-registry.service';
 
 export abstract class McpHandlerBase {

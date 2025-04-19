@@ -4,7 +4,9 @@ import { CanActivate } from '@nestjs/common';
 export enum McpTransportType {
   SSE = 'sse',
   STREAMABLE_HTTP = 'streamable-http',
+  // TODO: change name since now we have stdio
   BOTH = 'both',
+  STDIO = 'stdio',
 }
 
 export interface McpOptions {

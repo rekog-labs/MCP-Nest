@@ -23,3 +23,11 @@ Streamable HTTP is still not supported in the MCP Inspector and has to be tried 
 ```sh
 npx tsx playground/http-streamable-client.ts
 ```
+
+### Trying out with STDIO client
+
+Currently, the MCP STDIO client is supported, but multiple args are not so easy to handle in the inspector. To make testing easier, you can run the following command:
+
+```sh
+npx ts-node-dev --respawn ./playground/stdio-client.ts
+```
