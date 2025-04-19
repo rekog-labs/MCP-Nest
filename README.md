@@ -16,7 +16,7 @@ A NestJS module to effortlessly expose tools, resources, and prompts for AI, fro
 
 ## Features
 
-- 🚀 HTTP+SSE and Streamable HTTP Transport
+- 🚀 HTTP+SSE, Streamable HTTP, and STDIO Transport
 - 🔍 Automatic `tool`, `resource`, and `prompt` discovery and registration
 - 💯 Zod-based request validation
 - 📊 Progress notifications
@@ -29,7 +29,7 @@ A NestJS module to effortlessly expose tools, resources, and prompts for AI, fro
 npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod
 ```
 
-## Quick Start
+## Quick Start for HTTP+SSE
 
 ### 1. Import Module
 
@@ -114,6 +114,31 @@ export class GreetingTool {
 
 You are done!
 
+## Quick Start for STDIO
+
+The main difference is that you need to provide the `transport` option when importing the module.
+
+```typescript
+McpModule.forRoot({
+  name: 'my-mcp-server',
+  version: '1.0.0',
+  transport: McpTransportType.STDIO,
+});
+```
+
+The rest is the same, you can define tools, resources, and prompts as usual. An example of a standalone NestJS application using the STDIO transport is the following:
+
+```typescript
+async function bootstrap() {
+  const app = await NestFactory.createApplicationContext(AppModule);
+  return app.close();
+}
+
+void bootstrap();
+```
+
+Easy. Now you can access using a MCP Stdio Client.
+
 ## API Endpoints
 
 - `GET /sse`: SSE connection endpoint (Protected by guards if configured)
@@ -182,8 +207,8 @@ import { McpModule } from '@rekog/mcp-nest';
       name: 'my-mcp-server',
       version: '1.0.0',
       sse: {
-        pingEnabled: true,        // Default is true
-        pingIntervalMs: 30000,    // Default is 30 seconds (30000ms)
+        pingEnabled: true, // Default is true
+        pingIntervalMs: 30000, // Default is 30 seconds (30000ms)
       },
     }),
   ],

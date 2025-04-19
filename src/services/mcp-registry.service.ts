@@ -10,9 +10,9 @@ import {
   MCP_TOOL_METADATA_KEY,
   ToolMetadata,
 } from '../decorators';
-import { ResourceMetadata } from 'src/decorators/resource.decorator';
+import { ResourceMetadata } from '../decorators/resource.decorator';
 import { match } from 'path-to-regexp';
-import { PromptMetadata } from 'src/decorators/prompt.decorator';
+import { PromptMetadata } from '../decorators/prompt.decorator';
 
 /**
  * Interface representing a discovered tool

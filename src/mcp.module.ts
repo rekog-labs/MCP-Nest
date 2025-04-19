@@ -6,6 +6,7 @@ import { McpOptions, McpTransportType } from './interfaces';
 import { McpExecutorService } from './services/mcp-executor.service';
 import { McpRegistryService } from './services/mcp-registry.service';
 import { SsePingService } from './services/sse-ping.service';
+import { createStdioController } from './controllers/stdio.controller.factory';
 
 @Module({
   imports: [DiscoveryModule],
@@ -61,6 +62,11 @@ export class McpModule {
         decorators,
       );
       controllers.push(streamableHttpController);
+    }
+
+    if (transportType === McpTransportType.STDIO) {
+      const stdioController = createStdioController();
+      controllers.push(stdioController);
     }
 
     return controllers;
