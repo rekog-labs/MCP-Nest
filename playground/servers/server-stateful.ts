@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { randomUUID } from 'crypto';
-import { McpModule, McpTransportType } from '../src';
-import { GreetingPrompt } from './greeting.prompt';
-import { GreetingResource } from './greeting.resource';
-import { GreetingTool } from './greeting.tool';
+import { McpModule } from '../../src';
+import { GreetingPrompt } from '../resources/greeting.prompt';
+import { GreetingResource } from '../resources/greeting.resource';
+import { GreetingTool } from '../resources/greeting.tool';
 
 @Module({
   imports: [
@@ -12,13 +12,10 @@ import { GreetingTool } from './greeting.tool';
       name: 'playground-mcp-server',
       version: '0.0.1',
       streamableHttp: {
-        enableJsonResponse: true,
-        // For stateful mode (default):
-        sessionIdGenerator: undefined,
-        // Uncomment the line below to enable stateless mode:
-        statelessMode: true,
+        enableJsonResponse: false,
+        sessionIdGenerator: () => randomUUID(),
+        statelessMode: false,
       },
-      transport: McpTransportType.BOTH,
     }),
   ],
   providers: [GreetingResource, GreetingTool, GreetingPrompt],

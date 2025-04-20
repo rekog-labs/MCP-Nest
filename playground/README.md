@@ -6,7 +6,7 @@ Easy way to test using the `npx @modelcontextprotocol/inspector`.
 
 ```sh
 # 1. start the playground
-npm run start:playground
+npx ts-node-dev --respawn ./playground/servers/http-sse.ts
 
 # 2. make your code changes
 

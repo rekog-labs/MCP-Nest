@@ -4,9 +4,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
 import { Context, McpTransportType, Tool } from '../src';
 import { McpModule } from '../src/mcp.module';
-import { createMCPClient, createStreamableMCPClient } from './utils';
+import { createSseClient, createStreamableClient } from './utils';
 import { REQUEST } from '@nestjs/core';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 class MockUserRepository {
@@ -128,8 +129,12 @@ describe('E2E: MCP ToolServer', () => {
         McpModule.forRoot({
           name: 'test-mcp-server',
           version: '0.0.1',
-          transport: McpTransportType.BOTH,
           guards: [],
+          streamableHttp: {
+            enableJsonResponse: false,
+            sessionIdGenerator: () => randomUUID(),
+            statelessMode: false,
+          },
         }),
       ],
       providers: [
@@ -280,12 +285,8 @@ describe('E2E: MCP ToolServer', () => {
   };
 
   // Run tests using the HTTP+SSE MCP client
-  runClientTests('http+sse', createMCPClient, 'any-value');
+  runClientTests('http+sse', createSseClient, 'any-value');
 
   // Run tests using the Streamable HTTP MCP client
-  runClientTests(
-    'streamable http',
-    createStreamableMCPClient,
-    'streamable-value',
-  );
+  runClientTests('streamable http', createStreamableClient, 'streamable-value');
 });

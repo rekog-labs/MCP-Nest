@@ -23,10 +23,6 @@ async function main(): Promise<void> {
     new URL('http://localhost:3030/mcp'),
   );
 
-  // Connect the client using the transport and initialize the server
-  await client.connect(transport);
-  console.log('Connected to MCP server');
-
   // TODO: Add support for notifications
   client.setNotificationHandler(
     LoggingMessageNotificationSchema,
@@ -54,6 +50,10 @@ async function main(): Promise<void> {
       );
     },
   );
+
+  // Connect the client using the transport and initialize the server
+  await client.connect(transport);
+  console.log('Connected to MCP server');
 
   // List and call tools
   await listTools(client);
@@ -98,6 +98,11 @@ async function callGreetTool(client: Client): Promise<void> {
     const greetResult = await client.request(
       greetRequest,
       CallToolResultSchema,
+      {
+        onprogress: (progress) => {
+          console.log(`Progress: ${progress.progress}`);
+        },
+      },
     );
     console.log('Greeting result:', greetResult.content[0].text);
   } catch (error) {

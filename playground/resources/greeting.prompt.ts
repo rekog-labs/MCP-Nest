@@ -1,5 +1,5 @@
 import { Injectable, Scope } from '@nestjs/common';
-import { Prompt } from '../src';
+import { Prompt } from '../../src';
 import { z } from 'zod';
 
 @Injectable({ scope: Scope.REQUEST })

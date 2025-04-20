@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { McpModule, McpTransportType } from '../src';
-import { GreetingTool } from './greeting.tool';
-import { GreetingResource } from './greeting.resource';
-import { GreetingPrompt } from './greeting.prompt';
+import { McpModule, McpTransportType } from '../../src';
+import { GreetingTool } from '../resources/greeting.tool';
+import { GreetingResource } from '../resources/greeting.resource';
+import { GreetingPrompt } from '../resources/greeting.prompt';
 
 @Module({
   imports: [
@@ -23,7 +23,9 @@ import { GreetingPrompt } from './greeting.prompt';
 class AppModule {}
 
 async function bootstrap() {
-  const app = await NestFactory.createApplicationContext(AppModule);
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: false,
+  });
   return app.close();
 }
 

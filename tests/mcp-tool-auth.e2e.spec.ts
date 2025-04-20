@@ -5,7 +5,7 @@ import { Context, Tool } from '../src';
 import { McpModule } from '../src/mcp.module';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { CanActivate, ExecutionContext } from '@nestjs/common';
-import { createMCPClient } from './utils';
+import { createSseClient } from './utils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 // Mock authentication guard
@@ -142,7 +142,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should list tools', async () => {
-    const client = await createMCPClient(testPort, {
+    const client = await createSseClient(testPort, {
       requestInit: {
         headers: {
           Authorization: 'Bearer token-xyz',
@@ -161,7 +161,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should inject authentication context into the tool', async () => {
-    const client = await createMCPClient(testPort, {
+    const client = await createSseClient(testPort, {
       requestInit: {
         headers: {
           Authorization: 'Bearer token-xyz',
@@ -201,7 +201,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
     // Connection should be rejected
     let client: Client | undefined;
     try {
-      client = await createMCPClient(testPort, {
+      client = await createSseClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer invalid-token',

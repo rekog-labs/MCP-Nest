@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Injectable } from '@nestjs/common';
 import { McpModule } from '../src/mcp.module';
-import { createMCPClient } from './utils';
+import { createSseClient } from './utils';
 import { Prompt } from '../src/decorators/prompt.decorator';
 import { z } from 'zod';
 
@@ -59,7 +59,7 @@ describe('E2E: MCP Prompt Server', () => {
   });
 
   it('should list prompts', async () => {
-    const client = await createMCPClient(testPort);
+    const client = await createSseClient(testPort);
     const prompts = await client.listPrompts();
 
     expect(prompts.prompts.find((p) => p.name === 'hello-world')).toEqual({
@@ -78,7 +78,7 @@ describe('E2E: MCP Prompt Server', () => {
   });
 
   it('should call the dynamic resource', async () => {
-    const client = await createMCPClient(testPort);
+    const client = await createSseClient(testPort);
 
     const result: any = await client.getPrompt({
       name: 'hello-world',
@@ -92,7 +92,7 @@ describe('E2E: MCP Prompt Server', () => {
   });
 
   it('should validate the arguments', async () => {
-    const client = await createMCPClient(testPort);
+    const client = await createSseClient(testPort);
 
     try {
       await client.getPrompt({

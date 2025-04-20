@@ -12,7 +12,7 @@ describe('Custom Decorators', () => {
       const decorators = [testCustomDecorator];
 
       // Act
-      const SseController = createSseController(
+      const sseController = createSseController(
         'test-sse-endpoint',
         'test-messages-endpoint',
         '/api',
@@ -21,22 +21,22 @@ describe('Custom Decorators', () => {
       );
 
       // Assert
-      expect(SseController).toBeDefined();
-      expect(Reflect.getMetadata('test:decorator', SseController)).toBeTruthy();
+      expect(sseController).toBeDefined();
+      expect(Reflect.getMetadata('test:decorator', sseController)).toBeTruthy();
     });
 
     it('should work without custom decorators', () => {
       // Act
-      const SseController = createSseController(
+      const sseController = createSseController(
         'test-sse-endpoint',
         'test-messages-endpoint',
         '/api',
       );
 
       // Assert
-      expect(SseController).toBeDefined();
+      expect(sseController).toBeDefined();
       expect(
-        Reflect.getMetadata('test:decorator', SseController),
+        Reflect.getMetadata('test:decorator', sseController),
       ).toBeUndefined();
     });
   });
@@ -47,7 +47,7 @@ describe('Custom Decorators', () => {
       const decorators = [testCustomDecorator];
 
       // Act
-      const StreamableController = createStreamableHttpController(
+      const streamableController = createStreamableHttpController(
         'test-http-endpoint',
         '/api',
         [],
@@ -55,9 +55,9 @@ describe('Custom Decorators', () => {
       );
 
       // Assert
-      expect(StreamableController).toBeDefined();
+      expect(streamableController).toBeDefined();
       expect(
-        Reflect.getMetadata('test:decorator', StreamableController),
+        Reflect.getMetadata('test:decorator', streamableController),
       ).toBeTruthy();
     });
 

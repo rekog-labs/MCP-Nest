@@ -50,7 +50,7 @@ export function createSseController(
       @Inject('MCP_OPTIONS') public readonly options: McpOptions,
       public readonly moduleRef: ModuleRef,
       public readonly toolRegistry: McpRegistryService,
-      public readonly pingService: SsePingService,
+      @Inject(SsePingService) public readonly pingService: SsePingService,
     ) {}
 
     /**
@@ -59,7 +59,7 @@ export function createSseController(
     onModuleInit() {
       // Configure ping service with options
       this.pingService.configure({
-        pingEnabled: this.options.sse?.pingEnabled !== false, // Enable by default
+        pingEnabled: this.options.sse?.pingEnabled, // Enable by default
         pingIntervalMs: this.options.sse?.pingIntervalMs,
       });
     }
@@ -86,6 +86,7 @@ export function createSseController(
             resourceTemplates: {},
             prompts: {},
           },
+          instructions: this.options.instructions || '',
         },
       );
 

@@ -1,5 +1,5 @@
 import { Injectable, Scope } from '@nestjs/common';
-import { Resource } from '../src';
+import { Resource } from '../../src';
 
 @Injectable({ scope: Scope.REQUEST })
 export class GreetingResource {

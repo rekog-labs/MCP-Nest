@@ -23,6 +23,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { McpOptions } from '../interfaces';
 import { McpExecutorService } from '../services/mcp-executor.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
+import { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 
 /**
  * Creates a controller for handling Streamable HTTP connections and tool executions
@@ -151,6 +152,47 @@ export function createStreamableHttpController(
     ): Promise<void> {
       if (!this.statelessTransport || !this.statelessMcpServer) {
         await this.initializeStatelessMode();
+      }
+
+      // ToDo: This will likely change.
+      // Handle initialize requests directly
+      if (this.isInitializeRequest(body)) {
+        // Check and respond here
+        const acceptHeader = (req.headers['accept'] as string) || '';
+        const isEventStream = acceptHeader.includes('text/event-stream');
+        if (isEventStream) {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.flushHeaders?.();
+        } else {
+          res.setHeader('Content-Type', 'application/json');
+        }
+        const payload: JSONRPCMessage = {
+          jsonrpc: '2.0',
+          id: (body as any).id,
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: this.options.capabilities || {},
+            instructions: this.options.instructions || '',
+            serverInfo: {
+              name: this.options.name,
+              version: this.options.version,
+            },
+          },
+        };
+        if (isEventStream) {
+          const messageId = randomUUID() + '_' + Date.now();
+          res.write(
+            'event: message\nid: ' +
+              messageId +
+              '\ndata: ' +
+              JSON.stringify(payload) +
+              '\n\n',
+          );
+          res.end();
+        } else {
+          res.json(payload);
+        }
+        return;
       }
 
       // Resolve the request-scoped tool executor service

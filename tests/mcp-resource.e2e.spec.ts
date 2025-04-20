@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Injectable } from '@nestjs/common';
 import { McpModule } from '../src/mcp.module';
-import { createMCPClient } from './utils';
+import { createSseClient } from './utils';
 import { Resource } from '../src';
 
 @Injectable()
@@ -102,7 +102,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should list resources', async () => {
-    const client = await createMCPClient(testPort);
+    const client = await createSseClient(testPort);
     const resources = await client.listResources();
 
     expect(resources.resources.find((r) => r.name === 'hello-world')).toEqual({
@@ -125,7 +125,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should call the dynamic resource', async () => {
-    const client = await createMCPClient(testPort);
+    const client = await createSseClient(testPort);
 
     const result: any = await client.readResource({
       uri: 'mcp://hello-world-dynamic/Raphael_John',
@@ -141,7 +141,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should call the dynamic resource with multiple paths', async () => {
-    const client = await createMCPClient(testPort);
+    const client = await createSseClient(testPort);
 
     const result: any = await client.readResource({
       uri: 'mcp://hello-world-dynamic-multiple-paths/123/Raphael_John',
@@ -157,7 +157,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should return an error when the resource is not found', async () => {
-    const client = await createMCPClient(testPort);
+    const client = await createSseClient(testPort);
 
     const result = await client.readResource({
       uri: 'mcp://hello-world-dynamic-multiple-paths-error/123/Raphael_John',

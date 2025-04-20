@@ -1,23 +1,25 @@
-import { ModuleMetadata, Type } from '@nestjs/common';
-import { CanActivate } from '@nestjs/common';
+import { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
+import { CanActivate, Type } from '@nestjs/common';
 
 export enum McpTransportType {
   SSE = 'sse',
   STREAMABLE_HTTP = 'streamable-http',
-  // TODO: change name since now we have stdio
-  BOTH = 'both',
   STDIO = 'stdio',
 }
 
 export interface McpOptions {
+  // When and if, additional properties are introduced in ServerOptions or ServerInfo,
+  // consider deprecating these fields in favor of using ServerOptions and ServerInfo directly.
   name: string;
   version: string;
-  transport?: McpTransportType;
+  capabilities?: ServerCapabilities;
+  instructions?: string;
+
+  transport?: McpTransportType | McpTransportType[];
   sseEndpoint?: string;
   messagesEndpoint?: string;
   mcpEndpoint?: string;
   globalApiPrefix?: string;
-  capabilities?: Record<string, any>;
   guards?: Type<CanActivate>[];
   decorators?: ClassDecorator[];
   sse?: {
@@ -27,17 +29,9 @@ export interface McpOptions {
   streamableHttp?: {
     enableJsonResponse?: boolean;
     sessionIdGenerator?: () => string;
+    /**
+     * @experimental: The current implementation does not fully comply with the MCP Specification.
+     */
     statelessMode?: boolean;
   };
-}
-
-export interface McpOptionsFactory {
-  createMcpOptions(): Promise<McpOptions> | McpOptions;
-}
-
-export interface McpAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
-  useExisting?: Type<McpOptionsFactory>;
-  useClass?: Type<McpOptionsFactory>;
-  useFactory?: (...args: any[]) => Promise<McpOptions> | McpOptions;
-  inject?: any[];
 }

@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
-    "start:playground": "ts-node-dev --respawn ./playground/server.ts",
+    "start:playground": "ts-node-dev --respawn playground/servers/server.ts",
     "test": "npx --node-options=--experimental-vm-modules jest",
     "test:watch": "npx --node-options=--experimental-vm-modules jest --watch",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",

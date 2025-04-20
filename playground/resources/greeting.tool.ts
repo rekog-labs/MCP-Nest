@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Context, Tool } from '../src';
+import { Context, Tool } from '../../src';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
@@ -18,7 +18,7 @@ export class GreetingTool {
 
     const totalSteps = 5;
     for (let i = 0; i < totalSteps; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Send a progress update.
       await context.reportProgress({

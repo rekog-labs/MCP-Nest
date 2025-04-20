@@ -19,7 +19,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
  * });
  * ```
  */
-export async function createMCPClient(
+export async function createSseClient(
   port: number,
   sseArgs: {
     eventSourceInit?: EventSourceInit;
@@ -60,7 +60,7 @@ export async function createMCPClient(
  * });
  * ```
  */
-export async function createStreamableMCPClient(
+export async function createStreamableClient(
   port: number,
   options: {
     endpoint?: string;

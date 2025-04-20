@@ -1,12 +1,13 @@
 import { DynamicModule, Module, Provider, Type } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
-import { createSseController } from './controllers/sse.controller.factory';
-import { createStreamableHttpController } from './controllers/streamable-http.controller.factory';
 import { McpOptions, McpTransportType } from './interfaces';
 import { McpExecutorService } from './services/mcp-executor.service';
 import { McpRegistryService } from './services/mcp-registry.service';
 import { SsePingService } from './services/sse-ping.service';
-import { createStdioController } from './controllers/stdio.controller.factory';
+import { StdioService } from './transport/stdio.service';
+import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
+import { createSseController } from './transport/sse.controller.factory';
+import { randomUUID } from 'crypto';
 
 @Module({
   imports: [DiscoveryModule],
@@ -14,8 +15,31 @@ import { createStdioController } from './controllers/stdio.controller.factory';
 })
 export class McpModule {
   static forRoot(options: McpOptions): DynamicModule {
-    const providers = this.createProvidersFromOptions(options);
-    const controllers = this.createControllersFromOptions(options);
+    const defaultOptions: Partial<McpOptions> = {
+      transport: [
+        McpTransportType.SSE,
+        McpTransportType.STREAMABLE_HTTP,
+        McpTransportType.STDIO,
+      ],
+      sseEndpoint: 'sse',
+      messagesEndpoint: 'messages',
+      mcpEndpoint: 'mcp',
+      globalApiPrefix: '',
+      guards: [],
+      decorators: [],
+      streamableHttp: {
+        enableJsonResponse: true,
+        sessionIdGenerator: undefined,
+        statelessMode: true,
+      },
+      sse: {
+        pingEnabled: true,
+        pingIntervalMs: 30000,
+      },
+    };
+    const mergedOptions = { ...defaultOptions, ...options } as McpOptions;
+    const providers = this.createProvidersFromOptions(mergedOptions);
+    const controllers = this.createControllersFromOptions(mergedOptions);
 
     return {
       module: McpModule,
@@ -33,14 +57,13 @@ export class McpModule {
     const mcpEndpoint = options.mcpEndpoint ?? 'mcp';
     const globalApiPrefix = options.globalApiPrefix ?? '';
     const guards = options.guards ?? [];
-    const transportType = options.transport ?? McpTransportType.SSE;
+    const transports = Array.isArray(options.transport)
+      ? options.transport
+      : [options.transport ?? McpTransportType.SSE];
     const controllers: Type<any>[] = [];
     const decorators = options.decorators ?? [];
 
-    if (
-      transportType === McpTransportType.SSE ||
-      transportType === McpTransportType.BOTH
-    ) {
+    if (transports.includes(McpTransportType.SSE)) {
       const sseController = createSseController(
         sseEndpoint,
         messagesEndpoint,
@@ -51,10 +74,7 @@ export class McpModule {
       controllers.push(sseController);
     }
 
-    if (
-      transportType === McpTransportType.STREAMABLE_HTTP ||
-      transportType === McpTransportType.BOTH
-    ) {
+    if (transports.includes(McpTransportType.STREAMABLE_HTTP)) {
       const streamableHttpController = createStreamableHttpController(
         mcpEndpoint,
         globalApiPrefix,
@@ -64,9 +84,8 @@ export class McpModule {
       controllers.push(streamableHttpController);
     }
 
-    if (transportType === McpTransportType.STDIO) {
-      const stdioController = createStdioController();
-      controllers.push(stdioController);
+    if (transports.includes(McpTransportType.STDIO)) {
+      // STDIO transport is handled by injectable StdioService, no controller
     }
 
     return controllers;
@@ -82,13 +101,16 @@ export class McpModule {
       McpExecutorService,
     ];
 
-    const transportType = options.transport ?? McpTransportType.SSE;
+    const transports = Array.isArray(options.transport)
+      ? options.transport
+      : [options.transport ?? McpTransportType.SSE];
 
-    if (
-      transportType === McpTransportType.SSE ||
-      transportType === McpTransportType.BOTH
-    ) {
+    if (transports.includes(McpTransportType.SSE)) {
       providers.push(SsePingService);
+    }
+
+    if (transports.includes(McpTransportType.STDIO)) {
+      providers.push(StdioService);
     }
 
     return providers;

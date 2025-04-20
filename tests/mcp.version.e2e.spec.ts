@@ -8,7 +8,7 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { McpModule } from '../src/mcp.module';
 import request from 'supertest';
-import { createMCPClient } from './utils';
+import { createSseClient } from './utils';
 
 @Controller({
   version: VERSION_NEUTRAL,
@@ -55,7 +55,7 @@ describe('E2E: MCP Version', () => {
   });
 
   it('should access SSE endpoint without version prefix', async () => {
-    const client = await createMCPClient(testPort);
+    const client = await createSseClient(testPort);
     const tools = await client.listTools();
 
     expect(tools.tools.length).toBe(0);
