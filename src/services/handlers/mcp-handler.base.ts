@@ -33,6 +33,11 @@ export abstract class McpHandlerBase {
       | typeof GetPromptRequestSchema
     >,
   ): Context {
+    // handless stateless traffic where notifications and progress are not supported
+    if ((mcpServer.server.transport as any)._sessionId === undefined) {
+      return this.createStatelessContext();
+    }
+
     const progressToken = mcpRequest.params?._meta?.progressToken;
     return {
       reportProgress: async (progress: Progress) => {
@@ -70,6 +75,36 @@ export abstract class McpHandlerBase {
             level: 'warning',
             data: { message, context },
           });
+        },
+      },
+    };
+  }
+
+  protected createStatelessContext(): Context {
+    const warn = (fn: string) => {
+      this.logger.warn(`Stateless context: '${fn}' is not supported.`);
+    };
+    return {
+      // eslint-disable-next-line @typescript-eslint/require-await,@typescript-eslint/no-unused-vars
+      reportProgress: async (_progress: Progress) => {
+        warn('reportProgress not supported in stateless');
+      },
+      log: {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        debug: (_message: string, _data?: SerializableValue) => {
+          warn('server report logging not supported in stateless');
+        },
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        error: (_message: string, _data?: SerializableValue) => {
+          warn('server report logging not supported in stateless');
+        },
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        info: (_message: string, _data?: SerializableValue) => {
+          warn('server report logging not supported in stateless');
+        },
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        warn: (_message: string, _data?: SerializableValue) => {
+          warn('server report logging not supported in stateless');
         },
       },
     };
