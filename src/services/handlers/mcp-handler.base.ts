@@ -34,7 +34,7 @@ export abstract class McpHandlerBase {
     >,
   ): Context {
     // handless stateless traffic where notifications and progress are not supported
-    if ((mcpServer.server.transport as any)._sessionId === undefined) {
+    if ((mcpServer.server.transport as any).sessionId === undefined) {
       return this.createStatelessContext();
     }
 

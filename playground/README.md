@@ -5,8 +5,8 @@ Easy way to test using the `npx @modelcontextprotocol/inspector`.
 ### Using
 
 ```sh
-# 1. start the playground
-npx ts-node-dev --respawn ./playground/servers/http-sse.ts
+# 1. start the playground server
+npx ts-node-dev --respawn ./playground/servers/server-stateful.ts
 
 # 2. make your code changes
 
@@ -21,7 +21,7 @@ The last command will print the MCP Inspector URL. Open it in your browser, chan
 Streamable HTTP is still not supported in the MCP Inspector and has to be tried out by running the following command:
 
 ```sh
-npx tsx playground/http-streamable-client.ts
+ npx ts-node-dev --respawn ./playground/clients/http-streamable-client.ts
 ```
 
 ### Trying out with STDIO client
