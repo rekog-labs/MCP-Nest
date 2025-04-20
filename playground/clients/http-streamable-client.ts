@@ -58,8 +58,6 @@ async function main(): Promise<void> {
   // List and call tools
   await listTools(client);
 
-  await listTools(client);
-
   await callGreetTool(client);
   console.log(
     '\nKeeping connection open to receive notifications. Press Ctrl+C to exit.',
