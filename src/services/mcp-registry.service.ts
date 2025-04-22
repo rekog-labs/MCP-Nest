@@ -90,6 +90,10 @@ export class McpRegistryService implements OnApplicationBootstrap {
   ) {
     const metadata: T = Reflect.getMetadata(metadataKey, methodRef);
 
+    if (!metadata.name) {
+      metadata.name = methodName;
+    }
+
     this.discoveredTools.push({
       type,
       metadata,
