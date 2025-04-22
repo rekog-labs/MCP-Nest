@@ -5,7 +5,7 @@ export type ResourceOptions =
   // https://modelcontextprotocol.io/docs/concepts/resources#direct-resources
   {
     uri: string; // Unique identifier for the resource
-    name: string; // Human-readable name
+    name?: string; // Human-readable name
     description?: string; // Optional description
     mimeType?: string; // Optional MIME type
   };
