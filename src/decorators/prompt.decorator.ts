@@ -9,7 +9,7 @@ type PromptArgsRawShape = {
 };
 
 export interface PromptMetadata {
-  name: string;
+  name?: string;
   description: string;
   parameters?: ZodObject<PromptArgsRawShape>;
 }
