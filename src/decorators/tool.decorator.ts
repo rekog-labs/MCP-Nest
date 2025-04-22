@@ -9,7 +9,7 @@ export interface ToolMetadata {
 }
 
 export interface ToolOptions {
-  name: string;
+  name?: string;
   description: string;
   parameters?: z.ZodTypeAny;
 }
