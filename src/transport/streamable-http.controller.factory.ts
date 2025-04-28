@@ -76,7 +76,7 @@ export function createStreamableHttpController(
       // Create a singleton transport for all requests
       this.statelessTransport = new StreamableHTTPServerTransport({
         // statelessMode: true, // TODO: Uncomment when this PR is merged and released: https://github.com/modelcontextprotocol/typescript-sdk/pull/362
-        sessionIdGenerator: () => undefined,
+        sessionIdGenerator: undefined,
         enableJsonResponse:
           this.options.streamableHttp?.enableJsonResponse || false,
       });
