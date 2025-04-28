@@ -8,10 +8,7 @@ import {
   Progress,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import {
-  Context,
-  SerializableValue,
-} from '../../interfaces/mcp-tool.interface';
+import { Context, SerializableValue } from '../../interfaces';
 import { McpRegistryService } from '../mcp-registry.service';
 
 export abstract class McpHandlerBase {
@@ -35,7 +32,7 @@ export abstract class McpHandlerBase {
   ): Context {
     // handless stateless traffic where notifications and progress are not supported
     if ((mcpServer.server.transport as any).sessionId === undefined) {
-      return this.createStatelessContext();
+      return this.createStatelessContext(mcpServer, mcpRequest);
     }
 
     const progressToken = mcpRequest.params?._meta?.progressToken;
@@ -77,10 +74,19 @@ export abstract class McpHandlerBase {
           });
         },
       },
+      mcpServer,
+      mcpRequest,
     };
   }
 
-  protected createStatelessContext(): Context {
+  protected createStatelessContext(
+    mcpServer: McpServer,
+    mcpRequest: z.infer<
+      | typeof CallToolRequestSchema
+      | typeof ReadResourceRequestSchema
+      | typeof GetPromptRequestSchema
+    >,
+  ): Context {
     const warn = (fn: string) => {
       this.logger.warn(`Stateless context: '${fn}' is not supported.`);
     };
@@ -107,6 +113,8 @@ export abstract class McpHandlerBase {
           warn('server report logging not supported in stateless');
         },
       },
+      mcpServer,
+      mcpRequest,
     };
   }
 }
