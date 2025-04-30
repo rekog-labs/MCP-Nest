@@ -142,7 +142,7 @@ async function bootstrap() {
 void bootstrap();
 ```
 
-Next, you can use the MCP server with an MCP Stdio Client ([see example](playground/clients/stdio-client.ts)), or after building your prject you can use it with the following MCP Client configuration:
+Next, you can use the MCP server with an MCP Stdio Client ([see example](playground/clients/stdio-client.ts)), or after building your project you can use it with the following MCP Client configuration:
 
 ```json
 {
