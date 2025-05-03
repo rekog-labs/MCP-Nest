@@ -5,6 +5,7 @@ export enum McpTransportType {
   SSE = 'sse',
   STREAMABLE_HTTP = 'streamable-http',
   STDIO = 'stdio',
+  IN_MEMORY = 'in-memory',
 }
 
 export interface McpOptions {
