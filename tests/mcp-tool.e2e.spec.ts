@@ -43,6 +43,14 @@ export class GreetingTool {
     }),
   })
   async sayHello({ name }, context: Context) {
+    // Validate that mcpServer and mcpRequest properties exist
+    if (!context.mcpServer) {
+      throw new Error('mcpServer is not defined in the context');
+    }
+    if (!context.mcpRequest) {
+      throw new Error('mcpRequest is not defined in the context');
+    }
+
     const user = await this.userRepository.findByName(name);
     for (let i = 0; i < 5; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -125,12 +133,15 @@ export class ToolRequestScoped {
 
 describe('E2E: MCP ToolServer', () => {
   let app: INestApplication;
-  let testPort: number;
+  let statelessApp: INestApplication;
+  let statefulServerPort: number;
+  let statelessServerPort: number;
 
   // Set timeout for all tests in this describe block to 15000ms
   jest.setTimeout(15000);
 
   beforeAll(async () => {
+    // Create stateful server (original)
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         McpModule.forRoot({
@@ -159,21 +170,63 @@ describe('E2E: MCP ToolServer', () => {
     if (!server.address()) {
       throw new Error('Server address not found after listen');
     }
-    testPort = (server.address() as import('net').AddressInfo).port;
+    statefulServerPort = (server.address() as import('net').AddressInfo).port;
+
+    // Create stateless server
+    const statelessModuleFixture: TestingModule =
+      await Test.createTestingModule({
+        imports: [
+          McpModule.forRoot({
+            name: 'test-stateless-mcp-server',
+            version: '0.0.1',
+            guards: [],
+            transport: McpTransportType.STREAMABLE_HTTP,
+            streamableHttp: {
+              enableJsonResponse: true,
+              sessionIdGenerator: undefined,
+              statelessMode: true,
+            },
+          }),
+        ],
+        providers: [
+          GreetingTool,
+          GreetingToolRequestScoped,
+          MockUserRepository,
+          ToolRequestScoped,
+        ],
+      }).compile();
+
+    statelessApp = statelessModuleFixture.createNestApplication();
+    await statelessApp.listen(0);
+
+    const statelessServer = statelessApp.getHttpServer();
+    if (!statelessServer.address()) {
+      throw new Error('Stateless server address not found after listen');
+    }
+    statelessServerPort = (
+      statelessServer.address() as import('net').AddressInfo
+    ).port;
   });
 
   afterAll(async () => {
     await app.close();
+    await statelessApp.close();
   });
 
   const runClientTests = (
     clientType: 'http+sse' | 'streamable http' | 'stdio',
     clientCreator: (port: number, options?: any) => Promise<Client>,
     requestScopedHeaderValue: string,
+    stateless = false,
   ) => {
     describe(`using ${clientType} client (${clientCreator.name})`, () => {
+      let port: number;
+
+      beforeAll(async () => {
+        port = stateless ? statelessServerPort : statefulServerPort;
+      });
       it('should list tools', async () => {
-        const client = await clientCreator(testPort);
+        const client = await clientCreator(port);
         try {
           const tools = await client.listTools();
           expect(tools.tools.length).toBeGreaterThan(0);
@@ -194,7 +247,7 @@ describe('E2E: MCP ToolServer', () => {
       it.each([{ tool: 'hello-world' }, { tool: 'hello-world-scoped' }])(
         'should call the tool $tool and receive results',
         async ({ tool }) => {
-          const client = await clientCreator(testPort);
+          const client = await clientCreator(port);
           try {
             let progressCount = 1;
             const result: any = await client.callTool(
@@ -209,7 +262,7 @@ describe('E2E: MCP ToolServer', () => {
               },
             );
 
-            if (clientType != 'stdio') {
+            if (clientType != 'stdio' && !stateless) {
               // stdio has no support for progress
               expect(progressCount).toBe(5);
             }
@@ -224,7 +277,7 @@ describe('E2E: MCP ToolServer', () => {
       );
 
       it('should call the tool get-request-scoped and receive header', async () => {
-        const client = await clientCreator(testPort, {
+        const client = await clientCreator(port, {
           requestInit: {
             headers: { 'any-header': requestScopedHeaderValue },
           },
@@ -243,7 +296,7 @@ describe('E2E: MCP ToolServer', () => {
       });
 
       it('should reject invalid arguments for hello-world', async () => {
-        const client = await clientCreator(testPort);
+        const client = await clientCreator(port);
 
         try {
           await client.callTool({
@@ -259,7 +312,7 @@ describe('E2E: MCP ToolServer', () => {
       });
 
       it('should reject missing arguments for hello-world', async () => {
-        const client = await clientCreator(testPort);
+        const client = await clientCreator(port);
 
         try {
           await client.callTool({
@@ -275,7 +328,7 @@ describe('E2E: MCP ToolServer', () => {
       });
 
       it('should call the tool and receive an error', async () => {
-        const client = await clientCreator(testPort);
+        const client = await clientCreator(port);
         try {
           const result: any = await client.callTool({
             name: 'hello-world-error',
@@ -297,8 +350,16 @@ describe('E2E: MCP ToolServer', () => {
   // Run tests using the HTTP+SSE MCP client
   runClientTests('http+sse', createSseClient, 'any-value');
 
-  // Run tests using the Streamable HTTP MCP client
+  // Run tests using the [Stateful] Streamable HTTP MCP client
   runClientTests('streamable http', createStreamableClient, 'streamable-value');
+
+  // Run tests using the [Stateless] Streamable HTTP MCP client
+  runClientTests(
+    'streamable http',
+    createStreamableClient,
+    'stateless-streamable-value',
+    true,
+  );
 
   runClientTests(
     'stdio',

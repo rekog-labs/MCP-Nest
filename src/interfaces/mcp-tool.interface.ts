@@ -1,5 +1,11 @@
-import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import { McpHandlerBase } from '../services/handlers/mcp-handler.base';
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  Progress,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 export type Literal = boolean | null | number | string | undefined;
 
@@ -7,6 +13,13 @@ export type SerializableValue =
   | Literal
   | SerializableValue[]
   | { [key: string]: SerializableValue };
+
+export type McpRequestSchema =
+  | typeof CallToolRequestSchema
+  | typeof ReadResourceRequestSchema
+  | typeof GetPromptRequestSchema;
+
+export type McpRequest = z.infer<McpRequestSchema>;
 
 /**
  * Enhanced execution context that includes user information
@@ -19,6 +32,6 @@ export type Context = {
     info: (message: string, data?: SerializableValue) => void;
     warn: (message: string, data?: SerializableValue) => void;
   };
-  mcpServer: Parameters<McpHandlerBase['createContext']>[0];
-  mcpRequest: Parameters<McpHandlerBase['createContext']>[1];
+  mcpServer: McpServer;
+  mcpRequest: McpRequest;
 };
