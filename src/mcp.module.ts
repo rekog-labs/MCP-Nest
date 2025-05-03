@@ -7,6 +7,7 @@ import { SsePingService } from './services/sse-ping.service';
 import { createSseController } from './transport/sse.controller.factory';
 import { StdioService } from './transport/stdio.service';
 import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
+import { InMemoryService } from './transport/in-memory.service';
 
 @Module({
   imports: [DiscoveryModule],
@@ -19,6 +20,7 @@ export class McpModule {
         McpTransportType.SSE,
         McpTransportType.STREAMABLE_HTTP,
         McpTransportType.STDIO,
+        McpTransportType.IN_MEMORY,
       ],
       sseEndpoint: 'sse',
       messagesEndpoint: 'messages',
@@ -87,6 +89,10 @@ export class McpModule {
       // STDIO transport is handled by injectable StdioService, no controller
     }
 
+    if (transports.includes(McpTransportType.IN_MEMORY)) {
+      // IN_MEMORY transport is handled by injectable InMemoryService, no controller
+    }
+
     return controllers;
   }
 
@@ -110,6 +116,10 @@ export class McpModule {
 
     if (transports.includes(McpTransportType.STDIO)) {
       providers.push(StdioService);
+    }
+
+    if (transports.includes(McpTransportType.IN_MEMORY)) {
+      providers.push(InMemoryService);
     }
 
     return providers;
