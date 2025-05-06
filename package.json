@@ -27,7 +27,8 @@
     "@nestjs/core": ">=9.0.0",
     "express": ">=4.0.0",
     "reflect-metadata": ">=0.1.14",
-    "zod": ">=3.0.0"
+    "zod": ">=3.0.0",
+    "zod-to-json-schema": ">=3.23.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
