@@ -112,7 +112,7 @@ export function createStreamableHttpController(
     /**
      * Main HTTP endpoint for both initialization and subsequent requests
      */
-    @Post(endpoint)
+    @Post(`${globalApiPrefix}/${endpoint}`.replace(/\/+/g, '/'))
     @UseGuards(...guards)
     async handlePostRequest(
       @Req() req: Request,
