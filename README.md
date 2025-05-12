@@ -249,6 +249,12 @@ The `McpModule.forRoot()` method accepts an `McpOptions` object to configure the
 | `streamableHttp.sessionIdGenerator` | A function to generate unique session IDs when running in stateful mode. Required if `statelessMode` is `false`.                            | `undefined`                                                          |
 | `streamableHttp.statelessMode` | If `true`, the `STREAMABLE_HTTP` transport operates statelessly (no sessions). If `false`, it operates statefully, requiring a `sessionIdGenerator`. | `true`                                                               |
 
+## Related Projects
+
+- **[Gmail MCP Server](https://github.com/sowonlabs/mcp-servers/tree/main/packages/gmail)**
+- **[Google Calendar MCP Server](https://github.com/sowonlabs/mcp-servers/tree/main/packages/google-calendar)**
+- **[Google Drive MCP Server](https://github.com/sowonlabs/mcp-servers/tree/main/packages/google-drive)**
+
 <!-- Badges -->
 [ci-url]: https://github.com/rekog-labs/MCP-Nest/actions/workflows/pipeline.yml
 [ci-image]: https://github.com/rekog-labs/MCP-Nest/actions/workflows/pipeline.yml/badge.svg
