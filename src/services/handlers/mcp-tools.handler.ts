@@ -26,6 +26,9 @@ export class McpToolsHandler extends McpHandlerBase {
         inputSchema: tool.metadata.parameters
           ? zodToJsonSchema(tool.metadata.parameters)
           : undefined,
+        outputSchema: tool.metadata.outputSchema
+          ? zodToJsonSchema(tool.metadata.outputSchema)
+          : undefined,
       }));
 
       return {

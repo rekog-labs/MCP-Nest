@@ -13,6 +13,14 @@ export class GreetingTool {
     parameters: z.object({
       name: z.string().default('World'),
     }),
+    outputSchema: z.object({
+      content: z.array(
+        z.object({
+          type: z.literal('text'),
+          text: z.string(),
+        })
+      ),
+    }),
   })
   async sayHello({ name }, context: Context, request: Request) {
     const userAgent = request.get('user-agent') || 'Unknown';
