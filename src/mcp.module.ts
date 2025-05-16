@@ -3,14 +3,17 @@ import { DiscoveryModule } from '@nestjs/core';
 import { McpOptions, McpTransportType } from './interfaces';
 import { McpExecutorService } from './services/mcp-executor.service';
 import { McpRegistryService } from './services/mcp-registry.service';
+import { McpClientService } from './services/mcp-client.service';
 import { SsePingService } from './services/sse-ping.service';
 import { createSseController } from './transport/sse.controller.factory';
 import { StdioService } from './transport/stdio.service';
 import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
+import { InMemoryService } from './transport/in-memory.service';
 
 @Module({
   imports: [DiscoveryModule],
-  providers: [McpRegistryService, McpExecutorService],
+  providers: [McpRegistryService, McpExecutorService, McpClientService],
+  exports: [McpClientService],
 })
 export class McpModule {
   static forRoot(options: McpOptions): DynamicModule {
@@ -19,6 +22,7 @@ export class McpModule {
         McpTransportType.SSE,
         McpTransportType.STREAMABLE_HTTP,
         McpTransportType.STDIO,
+        McpTransportType.IN_MEMORY,
       ],
       sseEndpoint: 'sse',
       messagesEndpoint: 'messages',
@@ -38,13 +42,20 @@ export class McpModule {
     };
     const mergedOptions = { ...defaultOptions, ...options } as McpOptions;
     const providers = this.createProvidersFromOptions(mergedOptions);
-    const controllers = this.createControllersFromOptions(mergedOptions);
+    const controllers = this.createControllersFromOptions(mergedOptions); // If IN_MEMORY transport is used, add McpClientService to providers
+    if (
+      Array.isArray(mergedOptions.transport)
+        ? mergedOptions.transport.includes(McpTransportType.IN_MEMORY)
+        : mergedOptions.transport === McpTransportType.IN_MEMORY
+    ) {
+      providers.push(InMemoryService, McpClientService);
+    }
 
     return {
       module: McpModule,
       controllers,
       providers,
-      exports: [McpRegistryService],
+      exports: [McpRegistryService, InMemoryService, McpClientService],
     };
   }
 
@@ -87,9 +98,12 @@ export class McpModule {
       // STDIO transport is handled by injectable StdioService, no controller
     }
 
+    if (transports.includes(McpTransportType.IN_MEMORY)) {
+      // IN_MEMORY transport is handled by injectable InMemoryService, no controller
+    }
+
     return controllers;
   }
-
   private static createProvidersFromOptions(options: McpOptions): Provider[] {
     const providers: Provider[] = [
       {
@@ -110,6 +124,10 @@ export class McpModule {
 
     if (transports.includes(McpTransportType.STDIO)) {
       providers.push(StdioService);
+    }
+
+    if (transports.includes(McpTransportType.IN_MEMORY)) {
+      providers.push(InMemoryService, McpClientService);
     }
 
     return providers;
