@@ -133,6 +133,7 @@ export class ToolRequestScoped {
 
 @Injectable()
 class OutputSchemaTool {
+  constructor() {}
   @Tool({
     name: 'output-schema-tool',
     description: 'A tool to test outputSchema',
@@ -144,7 +145,14 @@ class OutputSchemaTool {
     }),
   })
   async execute({ input }) {
-    return { result: `Echo: ${input}` };
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({result: input}),
+        },
+      ],
+    };
   }
 }
 
@@ -262,6 +270,21 @@ describe('E2E: MCP ToolServer', () => {
           await client.close();
         }
       });
+      
+      it('should list tools with outputSchema', async () => {
+        const client = await clientCreator(port);
+        try {
+          const tools = await client.listTools();
+          console.log('tools:', JSON.stringify(tools, null, 2));
+          expect(tools.tools.length).toBeGreaterThan(0);
+          const outputSchemaTool = tools.tools.find(t => t.name === 'output-schema-tool');
+          expect(outputSchemaTool).toBeDefined();
+          expect(outputSchemaTool?.outputSchema).toBeDefined();
+          expect(outputSchemaTool?.outputSchema).toHaveProperty('properties.result');
+        } finally {
+          await client.close();
+        }
+      });
 
       it.each([{ tool: 'hello-world' }, { tool: 'hello-world-scoped' }])(
         'should call the tool $tool and receive results',
@@ -362,16 +385,6 @@ describe('E2E: MCP ToolServer', () => {
         } finally {
           await client.close();
         }
-      });
-
-      it('should list tools with outputSchema', async () => {
-        const client = await createSseClient(port);
-        const tools = await client.listTools();
-        const outputSchemaTool = tools.tools.find(t => t.name === 'output-schema-tool');
-        expect(outputSchemaTool).toBeDefined();
-        expect(outputSchemaTool?.outputSchema).toBeDefined();
-        expect(outputSchemaTool?.outputSchema).toHaveProperty('properties.result');
-        await client.close();
       });
     });
   };

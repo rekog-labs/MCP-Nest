@@ -120,6 +120,31 @@ export class ToolRequestScoped {
     };
   }
 }
+
+@Injectable()
+class OutputSchemaTool {
+  constructor() { }
+  @Tool({
+    name: 'output-schema-tool',
+    description: 'A tool to test outputSchema',
+    parameters: z.object({
+      input: z.string().describe('Example input'),
+    }),
+    outputSchema: z.object({
+      result: z.string().describe('Example result'),
+    }),
+  })
+  async execute({ input }) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({result: input}),
+        },
+      ],
+    };
+  }
+}
 // --- End of existing classes ---
 
 // --- Create a simple module and bootstrap function for the STDIO server ---
@@ -137,6 +162,7 @@ export class ToolRequestScoped {
     GreetingToolRequestScoped,
     MockUserRepository,
     ToolRequestScoped,
+    OutputSchemaTool,
   ],
 })
 class StdioTestAppModule {}
