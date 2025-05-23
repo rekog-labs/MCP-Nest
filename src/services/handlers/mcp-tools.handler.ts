@@ -20,16 +20,34 @@ export class McpToolsHandler extends McpHandlerBase {
 
   registerHandlers(mcpServer: McpServer, httpRequest: Request) {
     mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
-      const tools = this.registry.getTools().map((tool) => ({
-        name: tool.metadata.name,
-        description: tool.metadata.description,
-        inputSchema: tool.metadata.parameters
-          ? zodToJsonSchema(tool.metadata.parameters)
-          : undefined,
-        outputSchema: tool.metadata.outputSchema
-          ? zodToJsonSchema(tool.metadata.outputSchema)
-          : undefined,
-      }));
+      const tools = this.registry.getTools().map((tool) => {
+        // Create base schema
+        const toolSchema = {
+          name: tool.metadata.name,
+          description: tool.metadata.description,
+          annotations: tool.metadata.annotations,
+        };
+
+        // Add input schema if defined
+        if (tool.metadata.parameters) {
+          toolSchema['inputSchema'] = zodToJsonSchema(tool.metadata.parameters);
+        }
+
+        // Add output schema if defined, ensuring it has type: 'object'
+        if (tool.metadata.outputSchema) {
+          const outputSchema = zodToJsonSchema(tool.metadata.outputSchema);
+
+          // Create a new object that explicitly includes type: 'object'
+          const jsonSchema = {
+            ...outputSchema,
+            type: 'object',
+          };
+
+          toolSchema['outputSchema'] = jsonSchema;
+        }
+
+        return toolSchema;
+      });
 
       return {
         tools,

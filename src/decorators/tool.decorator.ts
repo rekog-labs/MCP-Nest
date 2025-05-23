@@ -7,6 +7,15 @@ export interface ToolMetadata {
   description: string;
   parameters?: z.ZodTypeAny;
   outputSchema?: z.ZodTypeAny;
+  annotations?: ToolAnnotations;
+}
+
+export interface ToolAnnotations {
+  title?: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
 }
 
 export interface ToolOptions {
@@ -14,6 +23,7 @@ export interface ToolOptions {
   description?: string;
   parameters?: z.ZodTypeAny;
   outputSchema?: z.ZodTypeAny;
+  annotations?: ToolAnnotations;
 }
 
 /**

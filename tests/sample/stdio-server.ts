@@ -64,6 +64,30 @@ export class GreetingTool {
   async sayHelloError() {
     throw new Error('any error');
   }
+
+  @Tool({
+    name: 'hello-world-with-annotations',
+    description: 'A sample tool with annotations',
+    parameters: z.object({
+      name: z.string().default('World'),
+    }),
+    annotations: {
+      title: 'Say Hello',
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
+  })
+  async sayHelloWithAnnotations({ name }, context: Context) {
+    const user = await this.userRepository.findByName(name);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Hello with annotations, ${user.name}!`,
+        },
+      ],
+    };
+  }
 }
 
 @Injectable({ scope: Scope.REQUEST })
@@ -123,7 +147,7 @@ export class ToolRequestScoped {
 
 @Injectable()
 class OutputSchemaTool {
-  constructor() { }
+  constructor() {}
   @Tool({
     name: 'output-schema-tool',
     description: 'A tool to test outputSchema',
@@ -139,7 +163,7 @@ class OutputSchemaTool {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({result: input}),
+          text: JSON.stringify({ result: input }),
         },
       ],
     };

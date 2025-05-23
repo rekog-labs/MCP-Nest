@@ -77,6 +77,30 @@ export class GreetingTool {
   async sayHelloError() {
     throw new Error('any error');
   }
+
+  @Tool({
+    name: 'hello-world-with-annotations',
+    description: 'A sample tool with annotations',
+    parameters: z.object({
+      name: z.string().default('World'),
+    }),
+    annotations: {
+      title: 'Say Hello',
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
+  })
+  async sayHelloWithAnnotations({ name }, context: Context) {
+    const user = await this.userRepository.findByName(name);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Hello with annotations, ${user.name}!`,
+        },
+      ],
+    };
+  }
 }
 
 @Injectable({ scope: Scope.REQUEST })
@@ -149,7 +173,7 @@ class OutputSchemaTool {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({result: input}),
+          text: JSON.stringify({ result: input }),
         },
       ],
     };
@@ -270,17 +294,39 @@ describe('E2E: MCP ToolServer', () => {
           await client.close();
         }
       });
-      
+
       it('should list tools with outputSchema', async () => {
         const client = await clientCreator(port);
         try {
           const tools = await client.listTools();
           console.log('tools:', JSON.stringify(tools, null, 2));
           expect(tools.tools.length).toBeGreaterThan(0);
-          const outputSchemaTool = tools.tools.find(t => t.name === 'output-schema-tool');
+          const outputSchemaTool = tools.tools.find(
+            (t) => t.name === 'output-schema-tool',
+          );
           expect(outputSchemaTool).toBeDefined();
           expect(outputSchemaTool?.outputSchema).toBeDefined();
-          expect(outputSchemaTool?.outputSchema).toHaveProperty('properties.result');
+          expect(outputSchemaTool?.outputSchema).toHaveProperty(
+            'properties.result',
+          );
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should list tools with annotations', async () => {
+        const client = await clientCreator(port);
+        try {
+          const tools = await client.listTools();
+          expect(tools.tools.length).toBeGreaterThan(0);
+          const annotatedTool = tools.tools.find(
+            (t) => t.name === 'hello-world-with-annotations',
+          );
+          expect(annotatedTool).toBeDefined();
+          expect(annotatedTool?.annotations).toBeDefined();
+          expect(annotatedTool?.annotations?.title).toBe('Say Hello');
+          expect(annotatedTool?.annotations?.readOnlyHint).toBe(true);
+          expect(annotatedTool?.annotations?.openWorldHint).toBe(false);
         } finally {
           await client.close();
         }
