@@ -18,9 +18,16 @@ export class GreetingTool {
         z.object({
           type: z.literal('text'),
           text: z.string(),
-        })
+        }),
       ),
     }),
+    annotations: {
+      title: 'Greeting Tool',
+      destructiveHint: false,
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
   })
   async sayHello({ name }, context: Context, request: Request) {
     const userAgent = request.get('user-agent') || 'Unknown';
