@@ -120,7 +120,7 @@ export class GreetingTool {
 You are done!
 
 > [!TIP]
-> The above example shows how HTTP `Request` headers are accessed within MCP Tools. This is useful for identifying users, adding client-specific logic, and many other use cases. For more examples, see the [Authentication Tests](./tests/mcp-tool-auth.spec.ts).
+> The above example shows how HTTP `Request` headers are accessed within MCP Tools. This is useful for identifying users, adding client-specific logic, and many other use cases. For more examples, see the [Authentication Tests](./tests/mcp-tool-auth.e2e.spec.ts).
 
 ## Quick Start for STDIO
 
