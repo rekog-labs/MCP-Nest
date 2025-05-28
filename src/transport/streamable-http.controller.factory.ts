@@ -29,7 +29,6 @@ import { buildMcpCapabilities } from '../utils/capabilities-builder';
  */
 export function createStreamableHttpController(
   endpoint: string,
-  globalApiPrefix: string,
   guards: Type<CanActivate>[] = [],
   decorators: ClassDecorator[] = [],
 ) {
@@ -104,7 +103,7 @@ export function createStreamableHttpController(
     /**
      * Main HTTP endpoint for both initialization and subsequent requests
      */
-    @Post(`${globalApiPrefix}/${endpoint}`.replace(/\/+/g, '/'))
+    @Post(endpoint)
     @UseGuards(...guards)
     async handlePostRequest(
       @Req() req: Request,
@@ -286,7 +285,7 @@ export function createStreamableHttpController(
     /**
      * GET endpoint for SSE streams - not supported in stateless mode
      */
-    @Get(`${globalApiPrefix}/${endpoint}`.replace(/\/+/g, '/'))
+    @Get(endpoint)
     @UseGuards(...guards)
     async handleGetRequest(@Req() req: Request, @Res() res: Response) {
       if (this.isStatelessMode) {
@@ -316,7 +315,7 @@ export function createStreamableHttpController(
     /**
      * DELETE endpoint for terminating sessions - not supported in stateless mode
      */
-    @Delete(`${globalApiPrefix}/${endpoint}`.replace(/\/+/g, '/'))
+    @Delete(endpoint)
     @UseGuards(...guards)
     async handleDeleteRequest(@Req() req: Request, @Res() res: Response) {
       if (this.isStatelessMode) {

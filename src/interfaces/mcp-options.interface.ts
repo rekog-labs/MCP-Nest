@@ -19,6 +19,9 @@ export interface McpOptions {
   sseEndpoint?: string;
   messagesEndpoint?: string;
   mcpEndpoint?: string;
+  /**
+   * @deprecated Use `app.setGlobalPrefix()` instead.
+   */
   globalApiPrefix?: string;
   guards?: Type<CanActivate>[];
   decorators?: ClassDecorator[];

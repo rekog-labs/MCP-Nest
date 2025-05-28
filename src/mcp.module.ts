@@ -7,6 +7,7 @@ import { SsePingService } from './services/sse-ping.service';
 import { createSseController } from './transport/sse.controller.factory';
 import { StdioService } from './transport/stdio.service';
 import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
+import { normalizeEndpoint } from './utils/normalize-endpoint';
 
 @Module({
   imports: [DiscoveryModule],
@@ -23,7 +24,6 @@ export class McpModule {
       sseEndpoint: 'sse',
       messagesEndpoint: 'messages',
       mcpEndpoint: 'mcp',
-      globalApiPrefix: '',
       guards: [],
       decorators: [],
       streamableHttp: {
@@ -37,6 +37,11 @@ export class McpModule {
       },
     };
     const mergedOptions = { ...defaultOptions, ...options } as McpOptions;
+    mergedOptions.sseEndpoint = normalizeEndpoint(mergedOptions.sseEndpoint);
+    mergedOptions.messagesEndpoint = normalizeEndpoint(
+      mergedOptions.messagesEndpoint,
+    );
+    mergedOptions.mcpEndpoint = normalizeEndpoint(mergedOptions.mcpEndpoint);
     const providers = this.createProvidersFromOptions(mergedOptions);
     const controllers = this.createControllersFromOptions(mergedOptions);
 
@@ -54,7 +59,6 @@ export class McpModule {
     const sseEndpoint = options.sseEndpoint ?? 'sse';
     const messagesEndpoint = options.messagesEndpoint ?? 'messages';
     const mcpEndpoint = options.mcpEndpoint ?? 'mcp';
-    const globalApiPrefix = options.globalApiPrefix ?? '';
     const guards = options.guards ?? [];
     const transports = Array.isArray(options.transport)
       ? options.transport
@@ -66,7 +70,6 @@ export class McpModule {
       const sseController = createSseController(
         sseEndpoint,
         messagesEndpoint,
-        globalApiPrefix,
         guards,
         decorators,
       );
@@ -76,7 +79,6 @@ export class McpModule {
     if (transports.includes(McpTransportType.STREAMABLE_HTTP)) {
       const streamableHttpController = createStreamableHttpController(
         mcpEndpoint,
-        globalApiPrefix,
         guards,
         decorators,
       );

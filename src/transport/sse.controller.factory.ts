@@ -14,7 +14,7 @@ import {
   VERSION_NEUTRAL,
   applyDecorators,
 } from '@nestjs/common';
-import { ContextIdFactory, ModuleRef } from '@nestjs/core';
+import { ApplicationConfig, ContextIdFactory, ModuleRef } from '@nestjs/core';
 import type { Request, Response } from 'express';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -24,6 +24,7 @@ import { McpOptions } from '../interfaces';
 import { McpExecutorService } from '../services/mcp-executor.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
 import { SsePingService } from '../services/sse-ping.service';
+import { normalizeEndpoint } from '../utils/normalize-endpoint';
 
 /**
  * Creates a controller for handling SSE connections and tool executions
@@ -31,7 +32,6 @@ import { SsePingService } from '../services/sse-ping.service';
 export function createSseController(
   sseEndpoint: string,
   messagesEndpoint: string,
-  globalApiPrefix: string,
   guards: Type<CanActivate>[] = [],
   decorators: ClassDecorator[] = [],
 ) {
@@ -51,6 +51,7 @@ export function createSseController(
 
     constructor(
       @Inject('MCP_OPTIONS') public readonly options: McpOptions,
+      public readonly applicationConfig: ApplicationConfig,
       public readonly moduleRef: ModuleRef,
       public readonly toolRegistry: McpRegistryService,
       @Inject(SsePingService) public readonly pingService: SsePingService,
@@ -73,8 +74,9 @@ export function createSseController(
     @Get(sseEndpoint)
     async sse(@Res() res: Response) {
       const transport = new SSEServerTransport(
-        // Remove potential double slashes from the path
-        `${globalApiPrefix}/${messagesEndpoint}`.replace(/\/+/g, '/'),
+        normalizeEndpoint(
+          `${this.applicationConfig.getGlobalPrefix()}/${messagesEndpoint}`,
+        ),
         res,
       );
       const sessionId = transport.sessionId;
