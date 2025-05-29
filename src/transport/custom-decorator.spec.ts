@@ -15,7 +15,6 @@ describe('Custom Decorators', () => {
       const sseController = createSseController(
         'test-sse-endpoint',
         'test-messages-endpoint',
-        '/api',
         [],
         decorators,
       );
@@ -30,7 +29,6 @@ describe('Custom Decorators', () => {
       const sseController = createSseController(
         'test-sse-endpoint',
         'test-messages-endpoint',
-        '/api',
       );
 
       // Assert
@@ -49,7 +47,6 @@ describe('Custom Decorators', () => {
       // Act
       const streamableController = createStreamableHttpController(
         'test-http-endpoint',
-        '/api',
         [],
         decorators,
       );
@@ -63,10 +60,8 @@ describe('Custom Decorators', () => {
 
     it('should work without custom decorators', () => {
       // Act
-      const StreamableController = createStreamableHttpController(
-        'test-http-endpoint',
-        '/api',
-      );
+      const StreamableController =
+        createStreamableHttpController('test-http-endpoint');
 
       // Assert
       expect(StreamableController).toBeDefined();
