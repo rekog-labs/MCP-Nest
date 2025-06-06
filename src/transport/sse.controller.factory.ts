@@ -51,6 +51,7 @@ export function createSseController(
 
     constructor(
       @Inject('MCP_OPTIONS') public readonly options: McpOptions,
+      @Inject('MCP_MODULE_ID') public readonly mcpModuleId: string,
       public readonly applicationConfig: ApplicationConfig,
       public readonly moduleRef: ModuleRef,
       public readonly toolRegistry: McpRegistryService,
@@ -83,6 +84,7 @@ export function createSseController(
 
       // Create a new MCP server instance with dynamic capabilities
       const capabilities = buildMcpCapabilities(
+        this.mcpModuleId,
         this.toolRegistry,
         this.options,
       );

@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Injectable, Scope } from '@nestjs/common';
+import { Inject, Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { Request } from 'express';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -14,18 +14,22 @@ import { McpHandlerBase } from './mcp-handler.base';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
-  constructor(moduleRef: ModuleRef, registry: McpRegistryService) {
+  constructor(
+    moduleRef: ModuleRef,
+    registry: McpRegistryService,
+    @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
+  ) {
     super(moduleRef, registry, McpToolsHandler.name);
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: Request) {
-    if (this.registry.getTools().length === 0) {
+    if (this.registry.getTools(this.mcpModuleId).length === 0) {
       this.logger.debug('No tools registered, skipping tool handlers');
       return;
     }
 
     mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
-      const tools = this.registry.getTools().map((tool) => {
+      const tools = this.registry.getTools(this.mcpModuleId).map((tool) => {
         // Create base schema
         const toolSchema = {
           name: tool.metadata.name,
@@ -64,7 +68,10 @@ export class McpToolsHandler extends McpHandlerBase {
       async (request) => {
         this.logger.debug('CallToolRequestSchema is being called');
 
-        const toolInfo = this.registry.findTool(request.params.name);
+        const toolInfo = this.registry.findTool(
+          this.mcpModuleId,
+          request.params.name,
+        );
 
         if (!toolInfo) {
           throw new McpError(

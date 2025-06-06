@@ -4,7 +4,11 @@ import {
   Logger,
   OnApplicationBootstrap,
 } from '@nestjs/common';
-import { DiscoveryService, MetadataScanner } from '@nestjs/core';
+import {
+  DiscoveryService,
+  MetadataScanner,
+  ModulesContainer,
+} from '@nestjs/core';
 import {
   MCP_PROMPT_METADATA_KEY,
   MCP_RESOURCE_METADATA_KEY,
@@ -14,6 +18,7 @@ import {
 import { ResourceMetadata } from '../decorators/resource.decorator';
 import { match } from 'path-to-regexp';
 import { PromptMetadata } from '../decorators/prompt.decorator';
+import { Module } from '@nestjs/core/injector/module';
 
 /**
  * Interface representing a discovered tool
@@ -31,11 +36,13 @@ export type DiscoveredTool<T extends object> = {
 @Injectable()
 export class McpRegistryService implements OnApplicationBootstrap {
   private readonly logger = new Logger(McpRegistryService.name);
-  private discoveredTools: DiscoveredTool<any>[] = [];
+  private discoveredToolsByMcpModuleId: Map<string, DiscoveredTool<any>[]> =
+    new Map();
 
   constructor(
     private readonly discovery: DiscoveryService,
     private readonly metadataScanner: MetadataScanner,
+    private readonly modulesContainer: ModulesContainer,
   ) {}
 
   onApplicationBootstrap() {
@@ -43,12 +50,59 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   /**
-   * Scans all providers and controllers for @Tool decorators
+   * Finds all modules that import the McpModule and then scans the providers and controllers in their subtrees
    */
   private discoverTools() {
-    this.logger.debug('Discovering tools, resources, and prompts...');
-    const providers = this.discovery.getProviders();
-    const controllers = this.discovery.getControllers();
+    const getImportedMcpModules = (module: Module) =>
+      Array.from(module.imports).filter(
+        (m) => (m.instance as any).__isMcpModule,
+      );
+
+    const pairs = Array.from(this.modulesContainer.values())
+      .map((module): [Module, Module[]] => [
+        module,
+        getImportedMcpModules(module),
+      ])
+      .filter(([, importedMcpModules]) => importedMcpModules.length > 0);
+
+    for (const [rootModule, mcpModules] of pairs) {
+      this.logger.debug(
+        `Discovering tools, resources, and prompts for module: ${rootModule.name}`,
+      );
+
+      const subtreeModules = this.collectSubtreeModules(rootModule);
+
+      for (const mcpModule of mcpModules) {
+        const mcpModuleId =
+          mcpModule.getProviderByKey<string>('MCP_MODULE_ID')?.instance;
+        this.discoverToolsForModuleSubtree(mcpModuleId, subtreeModules);
+      }
+    }
+  }
+
+  private collectSubtreeModules(root: Module): Module[] {
+    const subtreeModules: Module[] = [];
+    const collect = (module: Module) => {
+      subtreeModules.push(module);
+      module.imports.forEach((importedModule) => {
+        if (!subtreeModules.includes(importedModule)) {
+          collect(importedModule);
+        }
+      });
+    };
+    collect(root);
+    return subtreeModules;
+  }
+
+  /**
+   * Scans all providers and controllers for @Tool decorators
+   */
+  private discoverToolsForModuleSubtree(
+    mcpModuleId: string,
+    modules: Module[],
+  ) {
+    const providers = this.discovery.getProviders(undefined, modules);
+    const controllers = this.discovery.getControllers(undefined, modules);
     const allInstances = [...providers, ...controllers]
       .filter(
         (wrapper) =>
@@ -73,17 +127,17 @@ export class McpRegistryService implements OnApplicationBootstrap {
         const methodMetaKeys = Reflect.getOwnMetadataKeys(methodRef);
 
         if (methodMetaKeys.includes(MCP_TOOL_METADATA_KEY)) {
-          this.addDiscoveryTool(methodRef, token, methodName);
+          this.addDiscoveryTool(mcpModuleId, methodRef, token, methodName);
           discovered.tools.push(`${token.toString()}.${methodName}`);
         }
 
         if (methodMetaKeys.includes(MCP_RESOURCE_METADATA_KEY)) {
-          this.addDiscoveryResource(methodRef, token, methodName);
+          this.addDiscoveryResource(mcpModuleId, methodRef, token, methodName);
           discovered.resources.push(`${token.toString()}.${methodName}`);
         }
 
         if (methodMetaKeys.includes(MCP_PROMPT_METADATA_KEY)) {
-          this.addDiscoveryPrompt(methodRef, token, methodName);
+          this.addDiscoveryPrompt(mcpModuleId, methodRef, token, methodName);
           discovered.prompts.push(`${token.toString()}.${methodName}`);
         }
       });
@@ -106,6 +160,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
   private addDiscovery<T>(
     type: 'tool' | 'resource' | 'prompt',
     metadataKey: string,
+    mcpModuleId: string,
     methodRef: object,
     token: InjectionToken,
     methodName: string,
@@ -116,7 +171,11 @@ export class McpRegistryService implements OnApplicationBootstrap {
       metadata['name'] = methodName;
     }
 
-    this.discoveredTools.push({
+    if (!this.discoveredToolsByMcpModuleId.has(mcpModuleId)) {
+      this.discoveredToolsByMcpModuleId.set(mcpModuleId, []);
+    }
+
+    this.discoveredToolsByMcpModuleId.get(mcpModuleId)?.push({
       type,
       metadata,
       providerClass: token,
@@ -125,6 +184,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   private addDiscoveryPrompt(
+    mcpModuleId: string,
     methodRef: object,
     token: InjectionToken,
     methodName: string,
@@ -132,6 +192,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     this.addDiscovery<PromptMetadata>(
       'prompt',
       MCP_PROMPT_METADATA_KEY,
+      mcpModuleId,
       methodRef,
       token,
       methodName,
@@ -139,6 +200,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   private addDiscoveryTool(
+    mcpModuleId: string,
     methodRef: object,
     token: InjectionToken,
     methodName: string,
@@ -146,6 +208,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     this.addDiscovery<ToolMetadata>(
       'tool',
       MCP_TOOL_METADATA_KEY,
+      mcpModuleId,
       methodRef,
       token,
       methodName,
@@ -153,6 +216,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   private addDiscoveryResource(
+    mcpModuleId: string,
     methodRef: object,
     token: InjectionToken,
     methodName: string,
@@ -160,6 +224,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     this.addDiscovery<ResourceMetadata>(
       'resource',
       MCP_RESOURCE_METADATA_KEY,
+      mcpModuleId,
       methodRef,
       token,
       methodName,
@@ -169,43 +234,70 @@ export class McpRegistryService implements OnApplicationBootstrap {
   /**
    * Get all discovered tools
    */
-  getTools(): DiscoveredTool<ToolMetadata>[] {
-    return this.discoveredTools.filter((tool) => tool.type === 'tool');
+  getTools(mcpModuleId: string): DiscoveredTool<ToolMetadata>[] {
+    return (
+      this.discoveredToolsByMcpModuleId
+        .get(mcpModuleId)
+        ?.filter((tool) => tool.type === 'tool') ?? []
+    );
   }
 
   /**
    * Find a tool by name
    */
-  findTool(name: string): DiscoveredTool<ToolMetadata> | undefined {
-    return this.getTools().find((tool) => tool.metadata.name === name);
+  findTool(
+    mcpModuleId: string,
+    name: string,
+  ): DiscoveredTool<ToolMetadata> | undefined {
+    return this.getTools(mcpModuleId).find(
+      (tool) => tool.metadata.name === name,
+    );
   }
 
   /**
    * Get all discovered resources
    */
-  getResources(): DiscoveredTool<ResourceMetadata>[] {
-    return this.discoveredTools.filter((tool) => tool.type === 'resource');
+  getResources(mcpModuleId: string): DiscoveredTool<ResourceMetadata>[] {
+    return (
+      this.discoveredToolsByMcpModuleId
+        .get(mcpModuleId)
+        ?.filter((tool) => tool.type === 'resource') ?? []
+    );
   }
 
   /**
    * Find a resource by name
    */
-  findResource(name: string): DiscoveredTool<ResourceMetadata> | undefined {
-    return this.getResources().find((tool) => tool.metadata.name === name);
+  findResource(
+    mcpModuleId: string,
+    name: string,
+  ): DiscoveredTool<ResourceMetadata> | undefined {
+    return this.getResources(mcpModuleId).find(
+      (tool) => tool.metadata.name === name,
+    );
   }
 
   /**
    * Get all discovered prompts
    */
-  getPrompts(): DiscoveredTool<PromptMetadata>[] {
-    return this.discoveredTools.filter((tool) => tool.type === 'prompt');
+  getPrompts(mcpModuleId: string): DiscoveredTool<PromptMetadata>[] {
+    return (
+      this.discoveredToolsByMcpModuleId
+        .get(mcpModuleId)
+        ?.filter((tool) => tool.type === 'prompt') ?? []
+    );
   }
 
   /**
    * Find a prompt by name
    */
-  findPrompt(name: string): DiscoveredTool<PromptMetadata> | undefined {
-    return this.getPrompts().find((tool) => tool.metadata.name === name);
+  findPrompt(
+    mcpModuleId: string,
+    name: string,
+  ): DiscoveredTool<PromptMetadata> | undefined {
+    return this.getPrompts(mcpModuleId).find(
+      (tool) => tool.metadata.name === name,
+    );
   }
 
   private convertTemplate(template: string): string {
@@ -224,13 +316,16 @@ export class McpRegistryService implements OnApplicationBootstrap {
    * Find a resource by uri
    * @returns An object containing the found resource and extracted parameters, or undefined if no resource is found
    */
-  findResourceByUri(uri: string):
+  findResourceByUri(
+    mcpModuleId: string,
+    uri: string,
+  ):
     | {
         resource: DiscoveredTool<ResourceMetadata>;
         params: Record<string, string>;
       }
     | undefined {
-    const resources = this.getResources().map((tool) => ({
+    const resources = this.getResources(mcpModuleId).map((tool) => ({
       name: tool.metadata.name,
       uri: tool.metadata.uri,
     }));
@@ -246,7 +341,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
       const result = matcher(strippedInputUri);
 
       if (result) {
-        const foundResource = this.findResource(t.name);
+        const foundResource = this.findResource(mcpModuleId, t.name);
         if (!foundResource) continue;
 
         return {

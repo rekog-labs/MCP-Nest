@@ -18,6 +18,7 @@ export class StdioService implements OnApplicationBootstrap {
 
   constructor(
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,
+    @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     private readonly moduleRef: ModuleRef,
     private readonly toolRegistry: McpRegistryService,
   ) {}
@@ -29,7 +30,11 @@ export class StdioService implements OnApplicationBootstrap {
     this.logger.log('Bootstrapping MCP STDIO...');
 
     // Create a new MCP server instance with dynamic capabilities
-    const capabilities = buildMcpCapabilities(this.toolRegistry, this.options);
+    const capabilities = buildMcpCapabilities(
+      this.mcpModuleId,
+      this.toolRegistry,
+      this.options,
+    );
     this.logger.debug('Built MCP capabilities:', capabilities);
 
     // Create MCP server with dynamic capabilities

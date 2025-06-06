@@ -44,6 +44,7 @@ export function createStreamableHttpController(
 
     constructor(
       @Inject('MCP_OPTIONS') public readonly options: McpOptions,
+      @Inject('MCP_MODULE_ID') public readonly mcpModuleId: string,
       public readonly moduleRef: ModuleRef,
       public readonly toolRegistry: McpRegistryService,
     ) {
@@ -67,6 +68,7 @@ export function createStreamableHttpController(
 
       // Create a new MCP server instance with dynamic capabilities
       const capabilities = buildMcpCapabilities(
+        this.mcpModuleId,
         this.toolRegistry,
         this.options,
       );
@@ -206,6 +208,7 @@ export function createStreamableHttpController(
 
         // Create a new MCP server for this session with dynamic capabilities
         const capabilities = buildMcpCapabilities(
+          this.mcpModuleId,
           this.toolRegistry,
           this.options,
         );
