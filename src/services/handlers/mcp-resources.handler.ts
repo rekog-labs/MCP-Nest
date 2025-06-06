@@ -1,4 +1,4 @@
-import { Injectable, Scope } from '@nestjs/common';
+import { Inject, Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
@@ -13,12 +13,16 @@ import { McpHandlerBase } from './mcp-handler.base';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpResourcesHandler extends McpHandlerBase {
-  constructor(moduleRef: ModuleRef, registry: McpRegistryService) {
+  constructor(
+    moduleRef: ModuleRef,
+    registry: McpRegistryService,
+    @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
+  ) {
     super(moduleRef, registry, McpResourcesHandler.name);
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: Request) {
-    if (this.registry.getResources().length === 0) {
+    if (this.registry.getResources(this.mcpModuleId).length === 0) {
       this.logger.debug('No resources registered, skipping resource handlers');
       return;
     }
@@ -27,7 +31,7 @@ export class McpResourcesHandler extends McpHandlerBase {
       this.logger.debug('ListResourcesRequestSchema is being called');
       return {
         resources: this.registry
-          .getResources()
+          .getResources(this.mcpModuleId)
           .map((resources) => resources.metadata),
       };
     });
@@ -38,7 +42,10 @@ export class McpResourcesHandler extends McpHandlerBase {
         this.logger.debug('ReadResourceRequestSchema is being called');
 
         const uri = request.params.uri;
-        const resourceInfo = this.registry.findResourceByUri(uri);
+        const resourceInfo = this.registry.findResourceByUri(
+          this.mcpModuleId,
+          uri,
+        );
 
         if (!resourceInfo) {
           throw new McpError(

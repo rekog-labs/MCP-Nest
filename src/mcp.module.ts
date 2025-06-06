@@ -9,11 +9,18 @@ import { StdioService } from './transport/stdio.service';
 import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
 import { normalizeEndpoint } from './utils/normalize-endpoint';
 
+let instanceIdCounter = 0;
+
 @Module({
   imports: [DiscoveryModule],
   providers: [McpRegistryService, McpExecutorService],
 })
 export class McpModule {
+  /**
+   * To avoid import circular dependency issues, we use a marker property.
+   */
+  readonly __isMcpModule = true;
+
   static forRoot(options: McpOptions): DynamicModule {
     const defaultOptions: Partial<McpOptions> = {
       transport: [
@@ -42,7 +49,9 @@ export class McpModule {
       mergedOptions.messagesEndpoint,
     );
     mergedOptions.mcpEndpoint = normalizeEndpoint(mergedOptions.mcpEndpoint);
-    const providers = this.createProvidersFromOptions(mergedOptions);
+
+    const moduleId = `mcp-module-${instanceIdCounter++}`;
+    const providers = this.createProvidersFromOptions(mergedOptions, moduleId);
     const controllers = this.createControllersFromOptions(mergedOptions);
 
     return {
@@ -92,11 +101,18 @@ export class McpModule {
     return controllers;
   }
 
-  private static createProvidersFromOptions(options: McpOptions): Provider[] {
+  private static createProvidersFromOptions(
+    options: McpOptions,
+    moduleId: string,
+  ): Provider[] {
     const providers: Provider[] = [
       {
         provide: 'MCP_OPTIONS',
         useValue: options,
+      },
+      {
+        provide: 'MCP_MODULE_ID',
+        useValue: moduleId,
       },
       McpRegistryService,
       McpExecutorService,

@@ -1,4 +1,4 @@
-import { Injectable, Scope } from '@nestjs/common';
+import { Inject, Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
@@ -14,31 +14,37 @@ import { McpHandlerBase } from './mcp-handler.base';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpPromptsHandler extends McpHandlerBase {
-  constructor(moduleRef: ModuleRef, registry: McpRegistryService) {
+  constructor(
+    moduleRef: ModuleRef,
+    registry: McpRegistryService,
+    @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
+  ) {
     super(moduleRef, registry, McpPromptsHandler.name);
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: Request) {
-    if (this.registry.getPrompts().length === 0) {
+    if (this.registry.getPrompts(this.mcpModuleId).length === 0) {
       this.logger.debug('No prompts registered, skipping prompt handlers');
       return;
     }
     mcpServer.server.setRequestHandler(ListPromptsRequestSchema, () => {
       this.logger.debug('ListPromptsRequestSchema is being called');
 
-      const prompts = this.registry.getPrompts().map((prompt) => ({
-        name: prompt.metadata.name,
-        description: prompt.metadata.description,
-        arguments: prompt.metadata.parameters
-          ? Object.entries(prompt.metadata.parameters.shape).map(
-              ([name, field]): PromptArgument => ({
-                name,
-                description: field.description,
-                required: !field.isOptional(),
-              }),
-            )
-          : [],
-      }));
+      const prompts = this.registry
+        .getPrompts(this.mcpModuleId)
+        .map((prompt) => ({
+          name: prompt.metadata.name,
+          description: prompt.metadata.description,
+          arguments: prompt.metadata.parameters
+            ? Object.entries(prompt.metadata.parameters.shape).map(
+                ([name, field]): PromptArgument => ({
+                  name,
+                  description: field.description,
+                  required: !field.isOptional(),
+                }),
+              )
+            : [],
+        }));
 
       return {
         prompts,
@@ -52,7 +58,7 @@ export class McpPromptsHandler extends McpHandlerBase {
 
         try {
           const name = request.params.name;
-          const promptInfo = this.registry.findPrompt(name);
+          const promptInfo = this.registry.findPrompt(this.mcpModuleId, name);
 
           if (!promptInfo) {
             throw new McpError(
