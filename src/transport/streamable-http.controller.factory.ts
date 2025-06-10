@@ -90,7 +90,7 @@ export function createStreamableHttpController(
       const executor = await this.moduleRef.resolve(
         McpExecutorService,
         contextId,
-        { strict: false },
+        { strict: true },
       );
 
       // Register request handlers after connection
@@ -275,7 +275,7 @@ export function createStreamableHttpController(
       const executor = await this.moduleRef.resolve(
         McpExecutorService,
         contextId,
-        { strict: false },
+        { strict: true },
       );
 
       // Register request handlers with the user context from this specific request
