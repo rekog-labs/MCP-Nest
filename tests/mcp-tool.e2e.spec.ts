@@ -314,6 +314,19 @@ describe('E2E: MCP ToolServer', () => {
         }
       });
 
+      it('should list tools without outputSchema', async () => {
+        const client = await clientCreator(port);
+        try {
+          const tools = await client.listTools();
+          console.log('tools:', JSON.stringify(tools, null, 2));
+          expect(tools.tools.length).toBeGreaterThan(0);
+          const schemaTool = tools.tools.find((t) => t.name === 'hello-world');
+          expect(schemaTool?.outputSchema).not.toBeDefined();
+        } finally {
+          await client.close();
+        }
+      });
+
       it('should list tools with annotations', async () => {
         const client = await clientCreator(port);
         try {

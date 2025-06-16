@@ -39,8 +39,6 @@ export const Tool = (options: ToolOptions) => {
   if (options.parameters === undefined) {
     options.parameters = z.object({});
   }
-  if (options.outputSchema === undefined) {
-    options.outputSchema = z.any();
-  }
+
   return SetMetadata(MCP_TOOL_METADATA_KEY, options);
 };
