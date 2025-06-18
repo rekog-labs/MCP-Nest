@@ -144,7 +144,6 @@ export function createSseController(
       const executor = await this.moduleRef.resolve(
         McpExecutorService,
         contextId,
-        { strict: false },
       );
 
       // Register request handlers with the user context from this specific request
