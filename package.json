@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json --sourceMap --inlineSources",
     "prepare": "npm run build",
-    "start:playground": "ts-node-dev --respawn playground/servers/server.ts",
+    "start:playground": "ts-node-dev --respawn playground/servers/server-stateful.ts",
     "test": "npx --node-options=--experimental-vm-modules jest",
     "test:watch": "npx --node-options=--experimental-vm-modules jest --watch",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",

@@ -1,0 +1,54 @@
+# Basic proxy configuration
+base_url: "http://localhost:3030"
+listen_port: 8080
+port: 3030
+
+# Path configuration
+paths:
+  sse: "/sse"
+  messages: "/messages"
+
+# Transport mode
+transport_mode: "sse"
+
+# CORS configuration
+cors:
+  allowed_origins:
+    - "http://127.0.0.1:6274"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+  allowed_headers:
+    - "Authorization"
+    - "Content-Type"
+  allow_credentials: true
+
+# Path mappings for Auth0 endpoints
+path_mapping:
+  /token: /oauth/token
+  /register: /oidc/register
+
+# Auth0 configuration
+default:
+  base_url: "https://dev-y6sikgx3n3shy7ci.eu.auth0.com"
+  jwks_url: "https://dev-y6sikgx3n3shy7ci.eu.auth0.com/.well-known/jwks.json"
+  path:
+    /.well-known/oauth-authorization-server:
+      response:
+        issuer: "https://dev-y6sikgx3n3shy7ci.eu.auth0.com/"
+        jwks_uri: "https://dev-y6sikgx3n3shy7ci.eu.auth0.com/.well-known/jwks.json"
+        authorization_endpoint: "https://dev-y6sikgx3n3shy7ci.eu.auth0.com/authorize?audience=urn:test-nest-mcp" # Only if you created an API with this identifier
+        response_types_supported:
+          - "code"
+        grant_types_supported:
+          - "authorization_code"
+          - "refresh_token"
+        code_challenge_methods_supported:
+          - "S256"
+          - "plain"
+    /token:
+      addBodyParams:
+        - name: "audience"
+          value: "urn:test-nest-mcp"  # Only if you created an API with this identifier
