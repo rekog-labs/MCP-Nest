@@ -1,0 +1,58 @@
+# Basic proxy configuration
+listen_port: 9091
+base_url: "http://localhost:3030"
+port: 3030
+
+# Path configuration
+paths:
+  sse: "/sse"
+  messages: "/messages"
+  streamable_http: "/mcp"
+
+# Transport mode
+transport_mode: "sse"
+
+# CORS configuration
+cors:
+  allowed_origins:
+  - "http://127.0.0.1:6274"
+  - "http://localhost:6274"
+  - "https://claude.ai"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+  allowed_headers:
+    - "Authorization"
+    - "Content-Type"
+    - "mcp-protocol-version"
+  allow_credentials: true
+
+# Path mappings for Keycloak endpoints
+path_mapping:
+  /token: /realms/mcp/protocol/openid-connect/token
+  /register: /realms/mcp/clients-registrations/openid-connect
+
+# Keycloak configuration
+default:
+  base_url: "http://localhost:8080"
+  jwks_url: "http://localhost:8080/realms/mcp/protocol/openid-connect/certs"
+  path:
+    /.well-known/oauth-authorization-server:
+      response:
+        issuer: "http://localhost:8080/realms/mcp"
+        jwks_uri: "http://localhost:8080/realms/mcp/protocol/openid-connect/certs"
+        authorization_endpoint: "http://localhost:8080/realms/mcp/protocol/openid-connect/auth?audience=mcp_proxy"
+        response_types_supported:
+          - "code"
+        grant_types_supported:
+          - "authorization_code"
+          - "refresh_token"
+        code_challenge_methods_supported:
+          - "S256"
+          - "plain"
+    /token:
+      addBodyParams:
+        - name: "audience"
+          value: "mcp_proxy"
