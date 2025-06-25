@@ -32,6 +32,7 @@ import { normalizeEndpoint } from '../utils/normalize-endpoint';
 export function createSseController(
   sseEndpoint: string,
   messagesEndpoint: string,
+  apiPrefix: string,
   guards: Type<CanActivate>[] = [],
   decorators: ClassDecorator[] = [],
 ) {
@@ -77,7 +78,7 @@ export function createSseController(
     async sse(@Res() res: Response) {
       const transport = new SSEServerTransport(
         normalizeEndpoint(
-          `${this.applicationConfig.getGlobalPrefix()}/${messagesEndpoint}`,
+          `${apiPrefix}/${this.applicationConfig.getGlobalPrefix()}/${messagesEndpoint}`,
         ),
         res,
       );

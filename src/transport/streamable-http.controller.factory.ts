@@ -23,12 +23,14 @@ import { McpOptions } from '../interfaces';
 import { McpExecutorService } from '../services/mcp-executor.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
 import { buildMcpCapabilities } from '../utils/capabilities-builder';
+import { normalizeEndpoint } from '../utils/normalize-endpoint';
 
 /**
  * Creates a controller for handling Streamable HTTP connections and tool executions
  */
 export function createStreamableHttpController(
   endpoint: string,
+  apiPrefix: string,
   guards: Type<CanActivate>[] = [],
   decorators: ClassDecorator[] = [],
 ) {
@@ -105,7 +107,7 @@ export function createStreamableHttpController(
     /**
      * Main HTTP endpoint for both initialization and subsequent requests
      */
-    @Post(endpoint)
+    @Post(`${normalizeEndpoint(`${apiPrefix}/${endpoint}`)}`)
     @UseGuards(...guards)
     async handlePostRequest(
       @Req() req: Request,
@@ -288,7 +290,7 @@ export function createStreamableHttpController(
     /**
      * GET endpoint for SSE streams - not supported in stateless mode
      */
-    @Get(endpoint)
+    @Get(`${normalizeEndpoint(`${apiPrefix}/${endpoint}`)}`)
     @UseGuards(...guards)
     async handleGetRequest(@Req() req: Request, @Res() res: Response) {
       if (this.isStatelessMode) {
@@ -318,7 +320,7 @@ export function createStreamableHttpController(
     /**
      * DELETE endpoint for terminating sessions - not supported in stateless mode
      */
-    @Delete(endpoint)
+    @Delete(`${normalizeEndpoint(`${apiPrefix}/${endpoint}`)}`)
     @UseGuards(...guards)
     async handleDeleteRequest(@Req() req: Request, @Res() res: Response) {
       if (this.isStatelessMode) {

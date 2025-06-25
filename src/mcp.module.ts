@@ -53,7 +53,6 @@ export class McpModule {
     const moduleId = `mcp-module-${instanceIdCounter++}`;
     const providers = this.createProvidersFromOptions(mergedOptions, moduleId);
     const controllers = this.createControllersFromOptions(mergedOptions);
-
     return {
       module: McpModule,
       controllers,
@@ -74,11 +73,13 @@ export class McpModule {
       : [options.transport ?? McpTransportType.SSE];
     const controllers: Type<any>[] = [];
     const decorators = options.decorators ?? [];
+    const apiPrefix = options.apiPrefix ?? '';
 
     if (transports.includes(McpTransportType.SSE)) {
       const sseController = createSseController(
         sseEndpoint,
         messagesEndpoint,
+        apiPrefix,
         guards,
         decorators,
       );
@@ -88,6 +89,7 @@ export class McpModule {
     if (transports.includes(McpTransportType.STREAMABLE_HTTP)) {
       const streamableHttpController = createStreamableHttpController(
         mcpEndpoint,
+        apiPrefix,
         guards,
         decorators,
       );

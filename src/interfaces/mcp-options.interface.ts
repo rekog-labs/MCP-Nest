@@ -20,9 +20,10 @@ export interface McpOptions {
   messagesEndpoint?: string;
   mcpEndpoint?: string;
   /**
-   * @deprecated Use `app.setGlobalPrefix()` instead.
+   * @deprecated Use `app.setGlobalPrefix()` for global api prefix. Use apiPrefix to attach a prefix to the handshake.
    */
-  globalApiPrefix?: string;
+  globalApiPrefix?: never;
+  apiPrefix?: string;
   guards?: Type<CanActivate>[];
   decorators?: ClassDecorator[];
   sse?: {
