@@ -11,7 +11,7 @@ import { Request } from 'express';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
-import { ZodTypeAny } from 'zod'; // Import Zod types if not already
+import { ZodTypeAny } from 'zod';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
