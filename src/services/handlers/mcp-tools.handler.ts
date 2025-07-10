@@ -145,6 +145,7 @@ export class McpToolsHandler extends McpHandlerBase {
 
           const transformedResult = this.formatToolResult(result, toolInfo.metadata.outputSchema);
 
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           this.logger.debug(transformedResult, 'CallToolRequestSchema result');
 
           return transformedResult;
