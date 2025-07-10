@@ -339,10 +339,6 @@ describe('E2E: MCP ToolServer', () => {
           const tools = await client.listTools();
           console.log('tools:', JSON.stringify(tools, null, 2));
           expect(tools.tools.length).toBeGreaterThan(0);
-
-          console.log(JSON.stringify(tools, null, 2));
-
-
           const outputSchemaTool = tools.tools.find(
             (t) => t.name === 'output-schema-tool',
           );
@@ -488,41 +484,41 @@ describe('E2E: MCP ToolServer', () => {
         }
       });
 
-      // it('should transform non-MCP-compliant response into MCP-compliant payload', async () => {
-      //   const client = await clientCreator(port);
-      //   try {
-      //     const result: any = await client.callTool({
-      //       name: 'not-mcp-greeting',
-      //       arguments: { name: 'TestUser' },
-      //     });
-      //     expect(result).toHaveProperty('content');
-      //     expect(Array.isArray(result.content)).toBe(true);
-      //     expect(result.content[0].type).toBe('text');
-      //     expect(result.content[0].text).toContain('greeting');
-      //     expect(result.content[0].text).toContain('Hello, TestUser!');
-      //   } finally {
-      //     await client.close();
-      //   }
-      // });
+      it('should transform non-MCP-compliant response into MCP-compliant payload', async () => {
+        const client = await clientCreator(port);
+        try {
+          const result: any = await client.callTool({
+            name: 'not-mcp-greeting',
+            arguments: { name: 'TestUser' },
+          });
+          expect(result).toHaveProperty('content');
+          expect(Array.isArray(result.content)).toBe(true);
+          expect(result.content[0].type).toBe('text');
+          expect(result.content[0].text).toContain('greeting');
+          expect(result.content[0].text).toContain('Hello, TestUser!');
+        } finally {
+          await client.close();
+        }
+      });
 
-      // it('should transform non-MCP-compliant response with outputSchema into MCP-compliant payload with structuredContent', async () => {
-      //   const client = await clientCreator(port);
-      //   try {
-      //     const result: any = await client.callTool({
-      //       name: 'not-mcp-structured-greeting',
-      //       arguments: { name: 'TestUser' },
-      //     });
-      //     expect(result).toHaveProperty('structuredContent');
-      //     expect(result.structuredContent).toEqual({ greeting: 'Hello, TestUser!' });
-      //     expect(result).toHaveProperty('content');
-      //     expect(Array.isArray(result.content)).toBe(true);
-      //     expect(result.content[0].type).toBe('text');
-      //     expect(result.content[0].text).toContain('greeting');
-      //     expect(result.content[0].text).toContain('Hello, TestUser!');
-      //   } finally {
-      //     await client.close();
-      //   }
-      // });
+      it('should transform non-MCP-compliant response with outputSchema into MCP-compliant payload with structuredContent', async () => {
+        const client = await clientCreator(port);
+        try {
+          const result: any = await client.callTool({
+            name: 'not-mcp-structured-greeting',
+            arguments: { name: 'TestUser' },
+          });
+          expect(result).toHaveProperty('structuredContent');
+          expect(result.structuredContent).toEqual({ greeting: 'Hello, TestUser!' });
+          expect(result).toHaveProperty('content');
+          expect(Array.isArray(result.content)).toBe(true);
+          expect(result.content[0].type).toBe('text');
+          expect(result.content[0].text).toContain('greeting');
+          expect(result.content[0].text).toContain('Hello, TestUser!');
+        } finally {
+          await client.close();
+        }
+      });
     });
   };
 

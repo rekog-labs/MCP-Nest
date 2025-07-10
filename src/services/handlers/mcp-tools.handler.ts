@@ -38,7 +38,6 @@ export class McpToolsHandler extends McpHandlerBase {
     }
 
     if (outputSchema) {
-      // Validate result against outputSchema
       const validation = outputSchema.safeParse(result);
       if (!validation.success) {
         return {
@@ -49,7 +48,6 @@ export class McpToolsHandler extends McpHandlerBase {
           isError: true,
         };
       }
-      // If valid, proceed as before
       return {
         structuredContent: result,
         content: this.buildDefaultContentBlock(result),
@@ -147,7 +145,7 @@ export class McpToolsHandler extends McpHandlerBase {
 
           const transformedResult = this.formatToolResult(result, toolInfo.metadata.outputSchema);
 
-          this.logger.debug(transformedResult, 'CallToolRequestSchema result_____');
+          this.logger.debug(transformedResult, 'CallToolRequestSchema result');
 
           return transformedResult;
         } catch (error) {
