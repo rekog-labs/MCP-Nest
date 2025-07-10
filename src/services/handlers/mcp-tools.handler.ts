@@ -11,6 +11,7 @@ import { Request } from 'express';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
+import { ZodTypeAny } from 'zod'; // Import Zod types if not already
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -20,6 +21,44 @@ export class McpToolsHandler extends McpHandlerBase {
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
   ) {
     super(moduleRef, registry, McpToolsHandler.name);
+  }
+
+  private buildDefaultContentBlock(result: any) {
+    return [
+      {
+        type: 'text',
+        text: JSON.stringify(result, null, 2),
+      },
+    ];
+  }
+
+  private formatToolResult(result: any, outputSchema?: ZodTypeAny): any {
+    if (result && typeof result === 'object' && Array.isArray(result.content)) {
+      return result;
+    }
+
+    if (outputSchema) {
+      // Validate result against outputSchema
+      const validation = outputSchema.safeParse(result);
+      if (!validation.success) {
+        return {
+          content: [{
+            type: 'text',
+            text: `Tool result does not match outputSchema: ${validation.error.message}`,
+          }],
+          isError: true,
+        };
+      }
+      // If valid, proceed as before
+      return {
+        structuredContent: result,
+        content: this.buildDefaultContentBlock(result),
+      };
+    }
+
+    return {
+      content: this.buildDefaultContentBlock(result),
+    };
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: Request) {
@@ -106,10 +145,11 @@ export class McpToolsHandler extends McpHandlerBase {
             httpRequest,
           );
 
-          this.logger.debug(result, 'CallToolRequestSchema result');
+          const transformedResult = this.formatToolResult(result, toolInfo.metadata.outputSchema);
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-          return result;
+          this.logger.debug(transformedResult, 'CallToolRequestSchema result_____');
+
+          return transformedResult;
         } catch (error) {
           this.logger.error(error);
           return {

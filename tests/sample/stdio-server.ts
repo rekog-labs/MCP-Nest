@@ -167,6 +167,32 @@ class OutputSchemaTool {
   }
 }
 
+@Injectable()
+class NotMcpCompliantGreetingTool {
+  @Tool({
+    name: 'not-mcp-greeting',
+    description: 'Returns a plain object, not MCP-compliant',
+    parameters: z.object({ name: z.string().default('World') }),
+  })
+  async greet({ name }) {
+    return { greeting: `Hello, ${name}!` };
+  }
+}
+
+@Injectable()
+class NotMcpCompliantStructuredGreetingTool {
+  @Tool({
+    name: 'not-mcp-structured-greeting',
+    description: 'Returns a plain object with outputSchema',
+    parameters: z.object({ name: z.string().default('World') }),
+    outputSchema: z.object({ greeting: z.string() }),
+  })
+  async greet({ name }) {
+    return { greeting: `Hello, ${name}!` };
+  }
+}
+
+
 @Module({
   imports: [
     McpModule.forRoot({
@@ -182,6 +208,8 @@ class OutputSchemaTool {
     MockUserRepository,
     ToolRequestScoped,
     OutputSchemaTool,
+    NotMcpCompliantGreetingTool,
+    NotMcpCompliantStructuredGreetingTool,
   ],
 })
 class StdioTestAppModule {}
