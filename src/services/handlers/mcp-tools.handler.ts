@@ -40,13 +40,10 @@ export class McpToolsHandler extends McpHandlerBase {
     if (outputSchema) {
       const validation = outputSchema.safeParse(result);
       if (!validation.success) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Tool result does not match outputSchema: ${validation.error.message}`,
-          }],
-          isError: true,
-        };
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Tool result does not match outputSchema: ${validation.error.message}`
+        );
       }
       return {
         structuredContent: result,

@@ -192,6 +192,21 @@ class NotMcpCompliantStructuredGreetingTool {
   }
 }
 
+@Injectable()
+class InvalidOutputSchemaTool {
+  @Tool({
+    name: 'invalid-output-schema-tool',
+    description: 'Returns an object that does not match its outputSchema',
+    parameters: z.object({}),
+    outputSchema: z.object({
+      foo: z.string(),
+    }),
+  })
+  async execute() {
+    return { bar: 123 };
+  }
+}
+
 
 @Module({
   imports: [
@@ -210,6 +225,7 @@ class NotMcpCompliantStructuredGreetingTool {
     OutputSchemaTool,
     NotMcpCompliantGreetingTool,
     NotMcpCompliantStructuredGreetingTool,
+    InvalidOutputSchemaTool,
   ],
 })
 class StdioTestAppModule {}
