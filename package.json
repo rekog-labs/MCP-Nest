@@ -1,65 +1,24 @@
 {
   "name": "@rekog/mcp-nest",
   "version": "1.6.2",
-  "description": "NestJS module for creating Model Context Protocol (MCP) servers",
-  "main": "dist/index.js",
+  "description": "NestJS module for creating Model Context Protocol (MCP) servers - monorepo",
+  "private": true,
   "license": "MIT",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist",
-    "src",
-    "README.md",
-    "LICENSE"
+  "workspaces": [
+    "packages/*"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/rekog-labs/MCP-Nest"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json --sourceMap --inlineSources",
+    "build": "npm run build --workspace=packages/mcp-nest",
+    "publish": "npm publish --access public --tag alpha --workspace=packages/mcp-nest",
     "prepare": "npm run build",
-    "start:playground": "ts-node-dev --respawn playground/servers/server-stateful.ts",
-    "test": "npx --node-options=--experimental-vm-modules jest",
-    "test:watch": "npx --node-options=--experimental-vm-modules jest --watch",
-    "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
-  },
-  "peerDependencies": {
-    "@modelcontextprotocol/sdk": ">=1.10.0",
-    "@nestjs/common": ">=9.0.0",
-    "@nestjs/core": ">=9.0.0",
-    "express": ">=4.0.0",
-    "reflect-metadata": ">=0.1.14",
-    "zod": "^3.0.0",
-    "zod-to-json-schema": ">=3.23.0"
-  },
-  "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
-    "@eslint/js": "^9.18.0",
-    "@modelcontextprotocol/sdk": "^1.13.0",
-    "@nestjs/common": "^11.1.1",
-    "@nestjs/core": "^11.1.1",
-    "@nestjs/platform-express": "^11.1.1",
-    "@nestjs/testing": "^11.1.1",
-    "@types/express": "^5.0.2",
-    "@types/jest": "^29.5.14",
-    "@types/node": "^22.10.10",
-    "@types/supertest": "^6.0.3",
-    "eslint": "^9.18.0",
-    "eslint-config-prettier": "^10.0.1",
-    "eslint-plugin-prettier": "^5.2.3",
-    "express": "^4.21.2",
-    "jest": "^29.7.0",
-    "supertest": "^7.1.0",
-    "ts-jest": "^29.2.5",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
-  },
-  "dependencies": {
-    "path-to-regexp": "^8.2.0"
+    "start:playground": "npm run start:playground --workspace=packages/mcp-nest",
+    "test": "npm run test --workspace=packages/mcp-nest",
+    "test:watch": "npm run test:watch --workspace=packages/mcp-nest",
+    "lint": "npm run lint --workspace=packages/mcp-nest",
+    "format": "npm run format --workspace=packages/mcp-nest"
   }
 }

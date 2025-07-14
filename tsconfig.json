@@ -10,9 +10,7 @@
     "target": "ES2021",
     "sourceMap": true,
     "inlineSources": true,
-    "outDir": "./dist",
     "baseUrl": "./",
-    "rootDir": "./",
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,
@@ -22,11 +20,6 @@
     "esModuleInterop": true,
     "noFallthroughCasesInSwitch": false
   },
-  "include": [
-    "src/**/*",
-    "tests/**/*",
-    "playground/**/*"
-  ],
   "exclude": [
     "node_modules",
     "dist"
