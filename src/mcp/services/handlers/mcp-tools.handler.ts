@@ -42,7 +42,7 @@ export class McpToolsHandler extends McpHandlerBase {
       if (!validation.success) {
         throw new McpError(
           ErrorCode.InternalError,
-          `Tool result does not match outputSchema: ${validation.error.message}`
+          `Tool result does not match outputSchema: ${validation.error.message}`,
         );
       }
       return {
@@ -140,7 +140,10 @@ export class McpToolsHandler extends McpHandlerBase {
             httpRequest,
           );
 
-          const transformedResult = this.formatToolResult(result, toolInfo.metadata.outputSchema);
+          const transformedResult = this.formatToolResult(
+            result,
+            toolInfo.metadata.outputSchema,
+          );
 
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           this.logger.debug(transformedResult, 'CallToolRequestSchema result');

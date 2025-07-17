@@ -529,7 +529,9 @@ describe('E2E: MCP ToolServer', () => {
             arguments: { name: 'TestUser' },
           });
           expect(result).toHaveProperty('structuredContent');
-          expect(result.structuredContent).toEqual({ greeting: 'Hello, TestUser!' });
+          expect(result.structuredContent).toEqual({
+            greeting: 'Hello, TestUser!',
+          });
           expect(result).toHaveProperty('content');
           expect(Array.isArray(result.content)).toBe(true);
           expect(result.content[0].type).toBe('text');
@@ -550,7 +552,9 @@ describe('E2E: MCP ToolServer', () => {
           expect(result).toHaveProperty('content');
           expect(Array.isArray(result.content)).toBe(true);
           expect(result.content[0].type).toBe('text');
-          expect(result.content[0].text).toContain('Tool result does not match');
+          expect(result.content[0].text).toContain(
+            'Tool result does not match',
+          );
           expect(result).toHaveProperty('isError', true);
         } finally {
           await client.close();

@@ -1,0 +1,70 @@
+To try the stateful OAuth server there is some setup before you can run it. Follow the steps below and then run this command.
+
+```
+ts-node-dev --respawn playground/servers/server-stateful-oauth.ts
+```
+
+### 1. OAuth Application Setup
+
+You need to register an OAuth application with a provider like Google or GitHub. This will give you the `Client ID` and `Client Secret` required to run the server.
+
+**The most important step is to set the correct "Authorized redirect URI".** For local development, this must be:
+
+`http://localhost:3000/auth/callback`
+
+<details>
+<summary><strong>➡️ How to create a Google OAuth Client</strong></summary>
+
+1.  Go to the [Google Cloud Console Credentials page](https://console.cloud.google.com/apis/credentials).
+2.  Click **+ CREATE CREDENTIALS** and select **OAuth client ID**.
+3.  If prompted, configure your consent screen first. For "User Type", you can select **External**. Fill in the required app name, user support email, and developer contact information.
+4.  For the **Application type**, select **Web application**.
+5.  Give it a name, e.g., "MCP Auth Test".
+6.  Under **Authorized redirect URIs**, click **+ ADD URI** and enter `http://localhost:3000/auth/callback`.
+7.  Click **CREATE**.
+8.  A dialog will appear with your **Client ID** and **Client Secret**. Copy these values.
+</details>
+
+<details>
+<summary><strong>➡️ How to create a GitHub OAuth App</strong></summary>
+
+1.  Go to your GitHub account settings.
+2.  Navigate to **Developer settings** > **OAuth Apps**.
+3.  Click **New OAuth App**.
+4.  Fill in the details:
+    *   **Application name**: e.g., "MCP Auth Test"
+    *   **Homepage URL**: `http://localhost:3000`
+    *   **Authorization callback URL**: `http://localhost:3000/auth/callback`
+5.  Click **Register application**.
+6.  On the next page, you will see your **Client ID**.
+7.  Click **Generate a new client secret** and copy the value.
+</details>
+
+### 2. Environment Configuration
+
+Create a `.env` file in the root of the project. Copy the contents of `.env.example` (if it exists) or use the template below.
+
+```env
+# The public URL of your server. For local testing, this is localhost:3000.
+SERVER_URL=http://localhost:3000
+
+# A long, random, and secret string (at least 32 characters).
+# You can generate one here: https://www.uuidgenerator.net/
+JWT_SECRET=your-super-strong-and-long-jwt-secret-key
+
+# Set to 'production' to enable secure cookies.
+NODE_ENV=production
+
+# --- Choose ONE OAuth Provider ---
+
+# For Google
+GOOGLE_CLIENT_ID=<your-google-client-id>
+GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+
+# For GitHub (uncomment and use these if you prefer GitHub)
+# GITHUB_CLIENT_ID=<your-github-client-id>
+# GITHUB_CLIENT_SECRET=<your-github-client-secret>
+```
+
+Replace the placeholder values with the credentials you obtained in the previous step.
+

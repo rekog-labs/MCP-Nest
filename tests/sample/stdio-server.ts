@@ -207,7 +207,6 @@ class InvalidOutputSchemaTool {
   }
 }
 
-
 @Module({
   imports: [
     McpModule.forRoot({
