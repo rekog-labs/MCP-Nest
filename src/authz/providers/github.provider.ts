@@ -1,12 +1,12 @@
 import { OAuthProviderConfig } from './oauth-provider.interface';
+import { Strategy } from 'passport-github';
 
-// Note: You'll need to install passport-github2
-// npm install passport-github2 @types/passport-github2
+// Note: You'll need to install passport-github
+// npm install passport-github @types/passport-github
 
 export const GitHubOAuthProvider: OAuthProviderConfig = {
   name: 'github',
-  displayName: 'GitHub',
-  strategy: require('passport-github').Strategy,
+  strategy: Strategy,
   strategyOptions: ({ serverUrl, clientId, clientSecret }) => ({
     clientID: clientId,
     clientSecret: clientSecret,
