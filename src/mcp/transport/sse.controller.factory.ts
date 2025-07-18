@@ -73,7 +73,7 @@ export function createSseController(
     /**
      * SSE connection endpoint
      */
-    @Get(sseEndpoint)
+    @Get(normalizeEndpoint(`${apiPrefix}/${sseEndpoint}`))
     @UseGuards(...guards)
     async sse(@Res() res: Response) {
       const transport = new SSEServerTransport(
@@ -121,7 +121,7 @@ export function createSseController(
     /**
      * Tool execution endpoint - protected by the provided guards
      */
-    @Post(messagesEndpoint)
+    @Post(normalizeEndpoint(`${apiPrefix}/${messagesEndpoint}`))
     @UseGuards(...guards)
     async messages(
       @Req() req: Request,
