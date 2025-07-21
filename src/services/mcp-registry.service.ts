@@ -12,6 +12,7 @@ import {
 import {
   MCP_PROMPT_METADATA_KEY,
   MCP_RESOURCE_METADATA_KEY,
+  MCP_RESOURCE_TEMPLATE_METADATA_KEY,
   MCP_TOOL_METADATA_KEY,
   ToolMetadata,
 } from '../decorators';
@@ -19,12 +20,13 @@ import { ResourceMetadata } from '../decorators/resource.decorator';
 import { match } from 'path-to-regexp';
 import { PromptMetadata } from '../decorators/prompt.decorator';
 import { Module } from '@nestjs/core/injector/module';
+import { ResourceTemplateMetadata } from 'src/decorators/resource-template.decorator';
 
 /**
  * Interface representing a discovered tool
  */
 export type DiscoveredTool<T extends object> = {
-  type: 'tool' | 'resource' | 'prompt';
+  type: 'tool' | 'resource' | 'resource-template' | 'prompt';
   metadata: T;
   providerClass: InjectionToken;
   methodName: string;
@@ -67,7 +69,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
     for (const [rootModule, mcpModules] of pairs) {
       this.logger.debug(
-        `Discovering tools, resources, and prompts for module: ${rootModule.name}`,
+        `Discovering tools, resources, resource templates, and prompts for module: ${rootModule.name}`,
       );
 
       const subtreeModules = this.collectSubtreeModules(rootModule);
@@ -118,8 +120,9 @@ export class McpRegistryService implements OnApplicationBootstrap {
     const discovered: {
       tools: string[];
       resources: string[];
+      resourceTemplates: string[];
       prompts: string[];
-    } = { tools: [], resources: [], prompts: [] };
+    } = { tools: [], resources: [], resourceTemplates: [], prompts: [] };
 
     allInstances.forEach(({ instance, token }) => {
       this.metadataScanner.getAllMethodNames(instance).forEach((methodName) => {
@@ -136,6 +139,18 @@ export class McpRegistryService implements OnApplicationBootstrap {
           discovered.resources.push(`${token.toString()}.${methodName}`);
         }
 
+        if (methodMetaKeys.includes(MCP_RESOURCE_TEMPLATE_METADATA_KEY)) {
+          this.addDiscoveryResourceTemplate(
+            mcpModuleId,
+            methodRef,
+            token,
+            methodName,
+          );
+          discovered.resourceTemplates.push(
+            `${token.toString()}.${methodName}`,
+          );
+        }
+
         if (methodMetaKeys.includes(MCP_PROMPT_METADATA_KEY)) {
           this.addDiscoveryPrompt(mcpModuleId, methodRef, token, methodName);
           discovered.prompts.push(`${token.toString()}.${methodName}`);
@@ -150,6 +165,13 @@ export class McpRegistryService implements OnApplicationBootstrap {
       `Discovered resources: ${discovered.resources.length ? discovered.resources.join(', ') : 'none'}`,
     );
     this.logger.debug(
+      `Discovered resource templates: ${
+        discovered.resourceTemplates.length
+          ? discovered.resourceTemplates.join(', ')
+          : 'none'
+      }`,
+    );
+    this.logger.debug(
       `Discovered prompts: ${discovered.prompts.length ? discovered.prompts.join(', ') : 'none'}`,
     );
   }
@@ -158,7 +180,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
    * Adds a discovered tool to the registry
    */
   private addDiscovery<T>(
-    type: 'tool' | 'resource' | 'prompt',
+    type: 'tool' | 'resource' | 'resource-template' | 'prompt',
     metadataKey: string,
     mcpModuleId: string,
     methodRef: object,
@@ -231,6 +253,22 @@ export class McpRegistryService implements OnApplicationBootstrap {
     );
   }
 
+  private addDiscoveryResourceTemplate(
+    mcpModuleId: string,
+    methodRef: object,
+    token: InjectionToken,
+    methodName: string,
+  ) {
+    this.addDiscovery<ResourceTemplateMetadata>(
+      'resource-template',
+      MCP_RESOURCE_TEMPLATE_METADATA_KEY,
+      mcpModuleId,
+      methodRef,
+      token,
+      methodName,
+    );
+  }
+
   /**
    * Get all discovered tools
    */
@@ -273,6 +311,31 @@ export class McpRegistryService implements OnApplicationBootstrap {
     name: string,
   ): DiscoveredTool<ResourceMetadata> | undefined {
     return this.getResources(mcpModuleId).find(
+      (tool) => tool.metadata.name === name,
+    );
+  }
+
+  /**
+   * Get all discovered resource templates
+   */
+  getResourceTemplates(
+    mcpModuleId: string,
+  ): DiscoveredTool<ResourceTemplateMetadata>[] {
+    return (
+      this.discoveredToolsByMcpModuleId
+        .get(mcpModuleId)
+        ?.filter((tool) => tool.type === 'resource-template') ?? []
+    );
+  }
+
+  /**
+   * Find a resource by name
+   */
+  findResourceTemplate(
+    mcpModuleId: string,
+    name: string,
+  ): DiscoveredTool<ResourceTemplateMetadata> | undefined {
+    return this.getResourceTemplates(mcpModuleId).find(
       (tool) => tool.metadata.name === name,
     );
   }
@@ -346,6 +409,53 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
         return {
           resource: foundResource,
+          params: result.params as Record<string, string>,
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Find a resource template by uri
+   * @returns An object containing the found resource template and extracted parameters, or undefined if no resource template is found
+   */
+  findResourceTemplateByUri(
+    mcpModuleId: string,
+    uri: string,
+  ):
+    | {
+        resourceTemplate: DiscoveredTool<ResourceTemplateMetadata>;
+        params: Record<string, string>;
+      }
+    | undefined {
+    const resourceTemplates = this.getResourceTemplates(mcpModuleId).map(
+      (tool) => ({
+        name: tool.metadata.name,
+        uriTemplate: tool.metadata.uriTemplate,
+      }),
+    );
+
+    const strippedInputUri = this.convertUri(uri);
+
+    for (const t of resourceTemplates) {
+      if (!t.uriTemplate) continue;
+
+      const rawTemplate = t.uriTemplate;
+      const templatePath = this.convertTemplate(this.convertUri(rawTemplate));
+      const matcher = match(templatePath, { decode: decodeURIComponent });
+      const result = matcher(strippedInputUri);
+
+      if (result) {
+        const foundResourceTemplate = this.findResourceTemplate(
+          mcpModuleId,
+          t.name,
+        );
+        if (!foundResourceTemplate) continue;
+
+        return {
+          resourceTemplate: foundResourceTemplate,
           params: result.params as Record<string, string>,
         };
       }
