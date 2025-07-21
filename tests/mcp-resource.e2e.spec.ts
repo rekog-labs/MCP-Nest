@@ -145,14 +145,14 @@ describe('E2E: MCP Resource Server', () => {
     const client = await createSseClient(testPort);
 
     const result = await client.readResource({
-      uri: 'mcp://hello-world-dynamic/Raphael',
+      uri: 'mcp://hello-world-dynamic/Raphael_John',
     });
 
     expect(result.contents[0].uri).toBe(
-      'mcp://hello-world-dynamic/Raphael',
+      'mcp://hello-world-dynamic/Raphael_John',
     );
     expect(result.contents[0].mimeType).toBe('text/plain');
-    expect(result.contents[0].text).toBe('Hello Raphael');
+    expect(result.contents[0].text).toBe('Hello Raphael_John');
 
     await client.close();
   });
