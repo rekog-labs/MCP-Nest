@@ -23,14 +23,11 @@ export function buildMcpCapabilities(
     };
   }
 
-  if (registry.getResources(mcpModuleId).length > 0) {
+  if (
+    registry.getResources(mcpModuleId).length > 0 ||
+    registry.getResourceTemplates(mcpModuleId).length > 0
+  ) {
     capabilities.resources = capabilities.resources || {
-      listChanged: true,
-    };
-  }
-
-  if (registry.getResourceTemplates(mcpModuleId).length > 0) {
-    capabilities.resourceTemplates = capabilities.resourceTemplates || {
       listChanged: true,
     };
   }
