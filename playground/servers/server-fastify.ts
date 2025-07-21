@@ -81,17 +81,6 @@ async function bootstrap() {
     const adapter = new fastifyPlatform.FastifyAdapter();
     app = await NestFactory.create(AppModule, adapter);
     framework = 'Fastify';
-
-    // Enable CORS for testing with Fastify
-    try {
-      const fastifyCors = await import('@fastify/cors');
-      await app.register(fastifyCors.default, {
-        origin: true,
-        credentials: true,
-      });
-    } catch {
-      console.warn('CORS configuration skipped - @fastify/cors not available');
-    }
   } catch (error) {
     // Fallback to Express if Fastify is not available
     console.warn(

@@ -33,10 +33,16 @@
     "@modelcontextprotocol/sdk": ">=1.10.0",
     "@nestjs/common": ">=9.0.0",
     "@nestjs/core": ">=9.0.0",
+    "@nestjs/platform-fastify": "^11.1.5",
     "express": ">=4.0.0",
     "reflect-metadata": ">=0.1.14",
     "zod": "^3.0.0",
     "zod-to-json-schema": ">=3.23.0"
+  },
+  "peerDependenciesMeta": {
+    "@nestjs/platform-fastify": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -62,8 +68,6 @@
     "typescript-eslint": "^8.20.0"
   },
   "dependencies": {
-    "@fastify/cors": "^11.0.1",
-    "@nestjs/platform-fastify": "^11.1.5",
     "path-to-regexp": "^8.2.0"
   }
 }
