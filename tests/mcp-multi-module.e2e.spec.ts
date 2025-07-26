@@ -1,7 +1,7 @@
 import { INestApplication, Injectable, Module } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Tool } from '../src';
-import { McpModule } from '../src/mcp.module';
+import { McpModule } from '../src/mcp/mcp.module';
 import { createStreamableClient } from './utils';
 
 @Injectable()

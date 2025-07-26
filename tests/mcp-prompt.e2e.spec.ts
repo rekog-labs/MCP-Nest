@@ -1,9 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Injectable } from '@nestjs/common';
-import { McpModule } from '../src/mcp.module';
+import { McpModule } from '../src/mcp/mcp.module';
 import { createSseClient } from './utils';
-import { Prompt } from '../src/decorators/prompt.decorator';
+import { Prompt } from '../src/mcp/decorators/prompt.decorator';
 import { z } from 'zod';
 
 @Injectable()

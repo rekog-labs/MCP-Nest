@@ -4,22 +4,24 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { McpOAuthController } from './mcp-oauth.controller';
+import { createMcpOAuthController } from './mcp-oauth.controller';
+import {
+  OAuthUserModuleOptions as AuthUserModuleOptions,
+  OAuthEndpointConfiguration,
+  OAuthModuleDefaults,
+  OAuthModuleOptions,
+} from './providers/oauth-provider.interface';
 import { ClientService } from './services/client.service';
 import { JwtTokenService } from './services/jwt-token.service';
 import { OAuthStrategyService } from './services/oauth-strategy.service';
-import {
-  OAuthModuleDefaults,
-  OAuthModuleOptions,
-  OAuthUserModuleOptions as AuthUserModuleOptions,
-} from './providers/oauth-provider.interface';
-import { TypeOrmStore } from './stores/typeorm/typeorm-store.service';
 import { MemoryStore } from './stores/memory-store.service';
 import {
   AuthorizationCodeEntity,
   OAuthClientEntity,
   OAuthSessionEntity,
 } from './stores/typeorm/entities';
+import { TypeOrmStore } from './stores/typeorm/typeorm-store.service';
+import { normalizeEndpoint } from '../mcp/utils/normalize-endpoint';
 
 // Default configuration values
 export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
@@ -32,6 +34,17 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
   oauthSessionExpiresIn: 10 * 60 * 1000, // 10 minutes
   authCodeExpiresIn: 10 * 60 * 1000, // 10 minutes
   nodeEnv: 'development',
+  apiPrefix: '',
+  endpoints: {
+    wellKnown: '/.well-known/oauth-authorization-server',
+    register: '/register',
+    authorize: '/authorize',
+    auth: '/auth',
+    callback: '/auth/callback',
+    token: '/token',
+    validate: '/validate',
+    revoke: '/revoke',
+  },
 };
 
 @Global()
@@ -40,10 +53,15 @@ export class McpAuthModule {
   static forRoot(options: AuthUserModuleOptions): DynamicModule {
     // Merge user options with defaults and validate
     const resolvedOptions = this.mergeAndValidateOptions(
-      options,
       DEFAULT_OPTIONS,
+      options,
     );
 
+    resolvedOptions.endpoints = prepareEndpoints(
+      resolvedOptions.apiPrefix,
+      DEFAULT_OPTIONS.endpoints,
+      options.endpoints || {},
+    );
     const oauthModuleOptions = {
       provide: 'OAUTH_MODULE_OPTIONS',
       useValue: resolvedOptions,
@@ -114,10 +132,15 @@ export class McpAuthModule {
       providers.push(TypeOrmStore);
     }
 
+    // Create controller with apiPrefix
+    const OAuthControllerClass = createMcpOAuthController(
+      resolvedOptions.endpoints,
+    );
+
     return {
       module: McpAuthModule,
       imports,
-      controllers: [McpOAuthController],
+      controllers: [OAuthControllerClass],
       providers,
       exports: [
         JwtTokenService,
@@ -130,8 +153,8 @@ export class McpAuthModule {
   }
 
   private static mergeAndValidateOptions(
-    options: AuthUserModuleOptions,
     defaults: OAuthModuleDefaults,
+    options: AuthUserModuleOptions,
   ): OAuthModuleOptions {
     // Validate required options first
     this.validateRequiredOptions(options);
@@ -156,9 +179,7 @@ export class McpAuthModule {
     return resolvedOptions;
   }
 
-  private static validateRequiredOptions(
-    options: AuthUserModuleOptions,
-  ): void {
+  private static validateRequiredOptions(options: AuthUserModuleOptions): void {
     const requiredFields: (keyof AuthUserModuleOptions)[] = [
       'provider',
       'clientId',
@@ -232,4 +253,26 @@ export class McpAuthModule {
       `Unknown store configuration type: ${(storeConfiguration as any).type}`,
     );
   }
+}
+
+function prepareEndpoints(
+  apiPrefix: string,
+  defaultEndpoints: OAuthEndpointConfiguration,
+  configuredEndpoints: OAuthEndpointConfiguration,
+) {
+  const updatedDefaultEndpoints = {
+    wellKnown: defaultEndpoints.wellKnown,
+    auth: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.auth}`),
+    callback: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.callback}`),
+    token: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.token}`),
+    validate: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.validate}`),
+    revoke: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.revoke}`),
+    authorize: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.authorize}`),
+    register: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.register}`),
+  } as OAuthEndpointConfiguration;
+
+  return {
+    ...updatedDefaultEndpoints,
+    ...configuredEndpoints,
+  };
 }

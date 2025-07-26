@@ -1,13 +1,14 @@
-import { OAuthProviderConfig } from './oauth-provider.interface';
 import { Strategy } from 'passport-google-oauth20';
+import { normalizeEndpoint } from '../../mcp/utils/normalize-endpoint';
+import { OAuthProviderConfig } from './oauth-provider.interface';
 
 export const GoogleOAuthProvider: OAuthProviderConfig = {
   name: 'google',
   strategy: Strategy,
-  strategyOptions: ({ serverUrl, clientId, clientSecret }) => ({
+  strategyOptions: ({ serverUrl, clientId, clientSecret, callbackPath }) => ({
     clientID: clientId,
     clientSecret: clientSecret,
-    callbackURL: `${serverUrl}/auth/callback`,
+    callbackURL: normalizeEndpoint(`${serverUrl}/${callbackPath}`),
     scope: ['profile', 'email'],
   }),
   scope: ['profile', 'email'],

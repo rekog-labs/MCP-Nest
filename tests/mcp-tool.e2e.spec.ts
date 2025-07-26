@@ -3,7 +3,7 @@ import { INestApplication, Inject, Injectable, Scope } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
 import { Context, McpTransportType, Tool } from '../src';
-import { McpModule } from '../src/mcp.module';
+import { McpModule } from '../src/mcp/mcp.module';
 import {
   createSseClient,
   createStdioClient,

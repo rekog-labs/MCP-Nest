@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { McpModule } from '../src/mcp.module';
+import { McpModule } from '../src/mcp/mcp.module';
 import { SimpleTool } from './sample/simple.tool';
 import { createSseClient } from './utils';
 

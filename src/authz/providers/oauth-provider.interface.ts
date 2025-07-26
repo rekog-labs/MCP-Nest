@@ -9,6 +9,7 @@ export interface OAuthProviderConfig {
     serverUrl: string;
     clientId: string;
     clientSecret: string;
+    callbackPath?: string; // Optional custom callback path
   }) => any;
   scope?: string[];
   profileMapper: (profile: any) => OAuthUserProfile;
@@ -29,6 +30,17 @@ export type StoreConfiguration =
   | { type: 'custom'; store: IOAuthStore }
   | { type: 'memory' }
   | undefined; // Default to memory store
+
+export interface OAuthEndpointConfiguration {
+  wellKnown?: string; // Default: '/.well-known/oauth-authorization-server'
+  register?: string; // Default: '/register'
+  authorize?: string; // Default: '/authorize'
+  auth?: string; // Default: '/auth'
+  callback?: string; // Default: '/auth/callback'
+  token?: string; // Default: '/token'
+  validate?: string; // Default: '/validate'
+  revoke?: string; // Default: '/revoke'
+}
 
 export interface OAuthUserModuleOptions {
   provider: OAuthProviderConfig;
@@ -62,6 +74,10 @@ export interface OAuthUserModuleOptions {
 
   // Storage Configuration - single property for all storage options
   storeConfiguration?: StoreConfiguration;
+  apiPrefix?: string;
+
+  // Endpoint Configuration
+  endpoints?: OAuthEndpointConfiguration;
 }
 
 export interface OAuthModuleDefaults {
@@ -74,6 +90,8 @@ export interface OAuthModuleDefaults {
   oauthSessionExpiresIn: number;
   authCodeExpiresIn: number;
   nodeEnv: string;
+  apiPrefix: string;
+  endpoints: OAuthEndpointConfiguration;
 }
 
 // Resolved options after merging with defaults

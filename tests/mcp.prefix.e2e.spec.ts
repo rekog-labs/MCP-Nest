@@ -1,9 +1,9 @@
 import { INestApplication, Injectable } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { McpModule } from '../src/mcp.module';
+import { McpModule } from '../src/mcp/mcp.module';
 import { createStreamableClient } from './utils';
-import { Tool } from '../src/decorators/tool.decorator';
+import { Tool } from '../src/mcp/decorators/tool.decorator';
 
 @Injectable()
 class Tools {

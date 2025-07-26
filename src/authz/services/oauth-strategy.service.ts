@@ -28,6 +28,7 @@ export class OAuthStrategyService implements OnModuleInit {
       serverUrl,
       clientId,
       clientSecret,
+      callbackPath: this.options.endpoints.callback,
     });
 
     const strategy = new provider.strategy(

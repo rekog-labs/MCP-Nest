@@ -2,7 +2,7 @@ import { INestApplication, Injectable } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
 import { Context, Tool } from '../src';
-import { McpModule } from '../src/mcp.module';
+import { McpModule } from '../src/mcp/mcp.module';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { CanActivate, ExecutionContext } from '@nestjs/common';
 import { createSseClient } from './utils';
