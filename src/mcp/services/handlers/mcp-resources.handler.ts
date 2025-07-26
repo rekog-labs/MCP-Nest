@@ -11,7 +11,7 @@ import {
 import { Request } from 'express';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
-import { Context } from 'src/interfaces';
+import { Context } from '../../interfaces';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpResourcesHandler extends McpHandlerBase {

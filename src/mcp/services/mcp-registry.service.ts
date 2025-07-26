@@ -20,7 +20,7 @@ import { ResourceMetadata } from '../decorators/resource.decorator';
 import { match } from 'path-to-regexp';
 import { PromptMetadata } from '../decorators/prompt.decorator';
 import { Module } from '@nestjs/core/injector/module';
-import { ResourceTemplateMetadata } from 'src/decorators/resource-template.decorator';
+import { ResourceTemplateMetadata } from '../decorators/resource-template.decorator';
 
 /**
  * Interface representing a discovered tool
