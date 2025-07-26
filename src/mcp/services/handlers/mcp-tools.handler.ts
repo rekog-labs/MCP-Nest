@@ -7,11 +7,11 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { Inject, Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
-import { Request } from 'express';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { ZodTypeAny } from 'zod';
+import { HttpRequest } from '../../interfaces/http-adapter.interface';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -56,7 +56,7 @@ export class McpToolsHandler extends McpHandlerBase {
     };
   }
 
-  registerHandlers(mcpServer: McpServer, httpRequest: Request) {
+  registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
     if (this.registry.getTools(this.mcpModuleId).length === 0) {
       this.logger.debug('No tools registered, skipping tool handlers');
       return;
@@ -137,7 +137,7 @@ export class McpToolsHandler extends McpHandlerBase {
             toolInstance,
             request.params.arguments,
             context,
-            httpRequest,
+            httpRequest.raw,
           );
 
           const transformedResult = this.formatToolResult(
@@ -147,6 +147,7 @@ export class McpToolsHandler extends McpHandlerBase {
 
           this.logger.debug(transformedResult, 'CallToolRequestSchema result');
 
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return transformedResult;
         } catch (error) {
           this.logger.error(error);

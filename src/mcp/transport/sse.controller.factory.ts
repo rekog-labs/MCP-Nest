@@ -15,7 +15,6 @@ import {
   applyDecorators,
 } from '@nestjs/common';
 import { ApplicationConfig, ContextIdFactory, ModuleRef } from '@nestjs/core';
-import type { Request, Response } from 'express';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
@@ -25,6 +24,7 @@ import { McpExecutorService } from '../services/mcp-executor.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
 import { SsePingService } from '../services/sse-ping.service';
 import { normalizeEndpoint } from '../utils/normalize-endpoint';
+import { HttpAdapterFactory } from '../adapters';
 
 /**
  * Creates a controller for handling SSE connections and tool executions
@@ -75,12 +75,16 @@ export function createSseController(
      */
     @Get(normalizeEndpoint(`${apiPrefix}/${sseEndpoint}`))
     @UseGuards(...guards)
-    async sse(@Res() res: Response) {
+    async sse(@Req() rawReq: any, @Res() rawRes: any) {
+      const adapter = HttpAdapterFactory.getAdapter(rawReq, rawRes);
+      const res = adapter.adaptResponse(rawRes);
+      // Create a new SSE transport instance
+
       const transport = new SSEServerTransport(
         normalizeEndpoint(
           `${apiPrefix}/${this.applicationConfig.getGlobalPrefix()}/${messagesEndpoint}`,
         ),
-        res,
+        res.raw,
       );
       const sessionId = transport.sessionId;
 
@@ -124,10 +128,13 @@ export function createSseController(
     @Post(normalizeEndpoint(`${apiPrefix}/${messagesEndpoint}`))
     @UseGuards(...guards)
     async messages(
-      @Req() req: Request,
-      @Res() res: Response,
+      @Req() rawReq: any,
+      @Res() rawRes: any,
       @Body() body: unknown,
     ) {
+      const adapter = HttpAdapterFactory.getAdapter(rawReq, rawRes);
+      const req = adapter.adaptRequest(rawReq);
+      const res = adapter.adaptResponse(rawRes);
       const sessionId = req.query.sessionId as string;
       const transport = this.transports.get(sessionId);
 
@@ -151,7 +158,7 @@ export function createSseController(
       executor.registerRequestHandlers(mcpServer, req);
 
       // Process the message
-      await transport.handlePostMessage(req, res, body);
+      await transport.handlePostMessage(req.raw, res.raw, body);
     }
   }
 

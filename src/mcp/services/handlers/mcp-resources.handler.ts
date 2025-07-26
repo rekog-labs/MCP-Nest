@@ -8,10 +8,10 @@ import {
   McpError,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Request } from 'express';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { Context } from '../../interfaces';
+import { HttpRequest } from '../../interfaces/http-adapter.interface';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpResourcesHandler extends McpHandlerBase {
@@ -23,7 +23,7 @@ export class McpResourcesHandler extends McpHandlerBase {
     super(moduleRef, registry, McpResourcesHandler.name);
   }
 
-  registerHandlers(mcpServer: McpServer, httpRequest: Request) {
+  registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
     const resources = this.registry.getResources(this.mcpModuleId);
     const resourceTemplates = this.registry.getResourceTemplates(
       this.mcpModuleId,
@@ -117,7 +117,7 @@ export class McpResourcesHandler extends McpHandlerBase {
   }
 
   private async handleRequest(
-    httpRequest: Request,
+    httpRequest: HttpRequest,
     providerClass: InjectionToken,
     uri: string,
     context: Context,

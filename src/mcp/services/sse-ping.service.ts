@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import type { Response } from 'express';
+import { HttpResponse } from '../interfaces/http-adapter.interface';
 
 /**
  * Service that implements automatic ping for SSE connections
@@ -19,7 +19,7 @@ export class SsePingService implements OnModuleInit, OnModuleDestroy {
     string,
     {
       transport: SSEServerTransport;
-      res: Response;
+      res: HttpResponse;
     }
   >();
 
@@ -58,7 +58,7 @@ export class SsePingService implements OnModuleInit, OnModuleDestroy {
   registerConnection(
     sessionId: string,
     transport: SSEServerTransport,
-    res: Response,
+    res: HttpResponse,
   ) {
     this.activeConnections.set(sessionId, { transport, res });
     this.logger.debug(`SSE connection registered: ${sessionId}`);

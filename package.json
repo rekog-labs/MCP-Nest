@@ -22,8 +22,10 @@
     "build": "tsc -p tsconfig.build.json --sourceMap --inlineSources",
     "prepare": "npm run build",
     "start:playground": "ts-node-dev --respawn playground/servers/server-stateful.ts",
+    "start:fastify": "ts-node-dev --respawn playground/servers/server-fastify.ts",
     "test": "npx --node-options=--experimental-vm-modules jest",
     "test:watch": "npx --node-options=--experimental-vm-modules jest --watch",
+    "test:fastify": "ts-node playground/clients/http-fastify-client.ts",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
   },
@@ -33,12 +35,18 @@
     "@nestjs/core": ">=9.0.0",
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.5",
+    "@nestjs/platform-fastify": "^11.1.5",
     "@nestjs/typeorm": ">=9.0.0",
     "express": ">=4.0.0",
     "reflect-metadata": ">=0.1.14",
     "typeorm": ">=0.3.25",
     "zod": "^3.0.0",
     "zod-to-json-schema": ">=3.23.0"
+  },
+  "peerDependenciesMeta": {
+    "@nestjs/platform-fastify": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

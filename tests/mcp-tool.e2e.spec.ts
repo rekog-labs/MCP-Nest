@@ -376,7 +376,7 @@ describe('E2E: MCP ToolServer', () => {
         const client = await clientCreator(port);
         try {
           const tools = await client.listTools();
-          console.log('tools:', JSON.stringify(tools, null, 2));
+          // console.log('tools:', JSON.stringify(tools, null, 2));
           expect(tools.tools.length).toBeGreaterThan(0);
           const schemaTool = tools.tools.find((t) => t.name === 'hello-world');
           expect(schemaTool?.outputSchema).not.toBeDefined();

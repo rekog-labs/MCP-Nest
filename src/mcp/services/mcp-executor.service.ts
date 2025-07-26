@@ -1,11 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Inject, Injectable, Logger, Scope } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Request } from 'express';
 import { McpRegistryService } from './mcp-registry.service';
 import { McpToolsHandler } from './handlers/mcp-tools.handler';
 import { McpResourcesHandler } from './handlers/mcp-resources.handler';
 import { McpPromptsHandler } from './handlers/mcp-prompts.handler';
+import { HttpRequest } from '../interfaces/http-adapter.interface';
 
 /**
  * Request-scoped service for executing MCP tools
@@ -40,7 +40,7 @@ export class McpExecutorService {
    * @param mcpServer - The MCP server instance
    * @param request - The current HTTP request object
    */
-  registerRequestHandlers(mcpServer: McpServer, httpRequest: Request) {
+  registerRequestHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
     this.toolsHandler.registerHandlers(mcpServer, httpRequest);
     this.resourcesHandler.registerHandlers(mcpServer, httpRequest);
     this.promptsHandler.registerHandlers(mcpServer, httpRequest);

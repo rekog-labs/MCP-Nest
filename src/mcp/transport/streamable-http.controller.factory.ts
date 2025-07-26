@@ -15,10 +15,14 @@ import {
 } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { randomUUID } from 'crypto';
-import type { Request, Response } from 'express';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { HttpAdapterFactory } from '../adapters/http-adapter.factory';
+import {
+  HttpRequest,
+  HttpResponse,
+} from '../interfaces/http-adapter.interface';
 import { McpOptions } from '../interfaces';
 import { McpExecutorService } from '../services/mcp-executor.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
@@ -57,7 +61,7 @@ export function createStreamableHttpController(
     /**
      * Create a new MCP server instance for stateless requests
      */
-    async createStatelessServer(req: Request): Promise<{
+    async createStatelessServer(rawReq: any): Promise<{
       server: McpServer;
       transport: StreamableHTTPServerTransport;
     }> {
@@ -88,7 +92,7 @@ export function createStreamableHttpController(
       await server.connect(transport);
 
       // Now resolve the request-scoped tool executor service
-      const contextId = ContextIdFactory.getByRequest(req);
+      const contextId = ContextIdFactory.getByRequest(rawReq);
       const executor = await this.moduleRef.resolve(
         McpExecutorService,
         contextId,
@@ -99,7 +103,7 @@ export function createStreamableHttpController(
       this.logger.debug(
         'Registering request handlers for stateless MCP server',
       );
-      executor.registerRequestHandlers(server, req);
+      executor.registerRequestHandlers(server, rawReq);
 
       return { server, transport };
     }
@@ -110,22 +114,27 @@ export function createStreamableHttpController(
     @Post(`${normalizeEndpoint(`${apiPrefix}/${endpoint}`)}`)
     @UseGuards(...guards)
     async handlePostRequest(
-      @Req() req: Request,
-      @Res() res: Response,
+      @Req() req: any,
+      @Res() res: any,
       @Body() body: unknown,
     ) {
       this.logger.debug('Received MCP request:', body);
 
+      // Get the appropriate HTTP adapter for the request/response
+      const adapter = HttpAdapterFactory.getAdapter(req, res);
+      const adaptedReq = adapter.adaptRequest(req);
+      const adaptedRes = adapter.adaptResponse(res);
+
       try {
         if (this.isStatelessMode) {
-          return this.handleStatelessRequest(req, res, body);
+          return this.handleStatelessRequest(adaptedReq, adaptedRes, body);
         } else {
-          return this.handleStatefulRequest(req, res, body);
+          return this.handleStatefulRequest(adaptedReq, adaptedRes, body);
         }
       } catch (error) {
         this.logger.error('Error handling MCP request:', error);
-        if (!res.headersSent) {
-          res.status(500).json({
+        if (!adaptedRes.headersSent) {
+          adaptedRes.status(500).json({
             jsonrpc: '2.0',
             error: {
               code: -32603,
@@ -141,8 +150,8 @@ export function createStreamableHttpController(
      * Handle requests in stateless mode
      */
     public async handleStatelessRequest(
-      req: Request,
-      res: Response,
+      req: any,
+      res: HttpResponse,
       body: unknown,
     ): Promise<void> {
       this.logger.debug(
@@ -161,19 +170,19 @@ export function createStreamableHttpController(
         transport = stateless.transport;
 
         // Handle the request
-        await transport.handleRequest(req, res, body);
+        await transport.handleRequest(req.raw, res.raw, body);
 
         // Clean up when the response closes
-        res.on('close', () => {
+        res.on?.('close', () => {
           this.logger.debug('Stateless request closed, cleaning up');
-          transport?.close();
-          server?.close();
+          void transport?.close();
+          void server?.close();
         });
       } catch (error) {
         this.logger.error('Error in stateless request handling:', error);
         // Clean up on error
-        transport?.close();
-        server?.close();
+        void transport?.close();
+        void server?.close();
         throw error;
       }
     }
@@ -182,8 +191,8 @@ export function createStreamableHttpController(
      * Handle requests in stateful mode
      */
     public async handleStatefulRequest(
-      req: Request,
-      res: Response,
+      req: HttpRequest,
+      res: HttpResponse,
       body: unknown,
     ): Promise<void> {
       this.logger.debug(
@@ -228,7 +237,7 @@ export function createStreamableHttpController(
         await mcpServer.connect(transport);
 
         // Handle the initialization request
-        await transport.handleRequest(req, res, body);
+        await transport.handleRequest(req.raw, res.raw, body);
 
         // Store the transport and server by session ID for future requests
         if (transport.sessionId) {
@@ -284,7 +293,7 @@ export function createStreamableHttpController(
       executor.registerRequestHandlers(mcpServer, req);
 
       // Handle the request with existing transport
-      await transport.handleRequest(req, res, body);
+      await transport.handleRequest(req.raw, res.raw, body);
     }
 
     /**
@@ -292,9 +301,14 @@ export function createStreamableHttpController(
      */
     @Get(`${normalizeEndpoint(`${apiPrefix}/${endpoint}`)}`)
     @UseGuards(...guards)
-    async handleGetRequest(@Req() req: Request, @Res() res: Response) {
+    async handleGetRequest(@Req() req: any, @Res() res: any) {
+      // Get the appropriate HTTP adapter for the request/response
+      const adapter = HttpAdapterFactory.getAdapter(req, res);
+      const adaptedReq = adapter.adaptRequest(req);
+      const adaptedRes = adapter.adaptResponse(res);
+
       if (this.isStatelessMode) {
-        res.status(405).json({
+        adaptedRes.status(405).json({
           jsonrpc: '2.0',
           error: {
             code: -32000,
@@ -305,16 +319,18 @@ export function createStreamableHttpController(
         return;
       }
 
-      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      const sessionId = adaptedReq.headers['mcp-session-id'] as
+        | string
+        | undefined;
 
       if (!sessionId || !this.transports[sessionId]) {
-        res.status(400).send('Invalid or missing session ID');
+        adaptedRes.status(400).send('Invalid or missing session ID');
         return;
       }
 
       this.logger.debug(`Establishing SSE stream for session ${sessionId}`);
       const transport = this.transports[sessionId];
-      await transport.handleRequest(req, res);
+      await transport.handleRequest(adaptedReq.raw, adaptedRes.raw);
     }
 
     /**
@@ -322,9 +338,14 @@ export function createStreamableHttpController(
      */
     @Delete(`${normalizeEndpoint(`${apiPrefix}/${endpoint}`)}`)
     @UseGuards(...guards)
-    async handleDeleteRequest(@Req() req: Request, @Res() res: Response) {
+    async handleDeleteRequest(@Req() req: any, @Res() res: any) {
+      // Get the appropriate HTTP adapter for the request/response
+      const adapter = HttpAdapterFactory.getAdapter(req, res);
+      const adaptedReq = adapter.adaptRequest(req);
+      const adaptedRes = adapter.adaptResponse(res);
+
       if (this.isStatelessMode) {
-        res.status(405).json({
+        adaptedRes.status(405).json({
           jsonrpc: '2.0',
           error: {
             code: -32000,
@@ -335,16 +356,18 @@ export function createStreamableHttpController(
         return;
       }
 
-      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      const sessionId = adaptedReq.headers['mcp-session-id'] as
+        | string
+        | undefined;
 
       if (!sessionId || !this.transports[sessionId]) {
-        res.status(400).send('Invalid or missing session ID');
+        adaptedRes.status(400).send('Invalid or missing session ID');
         return;
       }
 
       this.logger.debug(`Terminating session ${sessionId}`);
       const transport = this.transports[sessionId];
-      await transport.handleRequest(req, res);
+      await transport.handleRequest(adaptedReq.raw, adaptedRes.raw);
       this.cleanupSession(sessionId);
     }
 

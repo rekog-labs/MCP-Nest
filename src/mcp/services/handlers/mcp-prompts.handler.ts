@@ -8,9 +8,9 @@ import {
   McpError,
   PromptArgument,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Request } from 'express';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
+import { HttpRequest } from '../../interfaces/http-adapter.interface';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpPromptsHandler extends McpHandlerBase {
@@ -22,7 +22,7 @@ export class McpPromptsHandler extends McpHandlerBase {
     super(moduleRef, registry, McpPromptsHandler.name);
   }
 
-  registerHandlers(mcpServer: McpServer, httpRequest: Request) {
+  registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
     if (this.registry.getPrompts(this.mcpModuleId).length === 0) {
       this.logger.debug('No prompts registered, skipping prompt handlers');
       return;
@@ -90,7 +90,7 @@ export class McpPromptsHandler extends McpHandlerBase {
             promptInstance,
             request.params.arguments,
             context,
-            httpRequest,
+            httpRequest.raw,
           );
 
           this.logger.debug(result, 'GetPromptRequestSchema result');
