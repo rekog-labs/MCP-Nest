@@ -61,7 +61,7 @@ export class AppModule {}
 // greeting.tool.ts
 import type { Request } from 'express';
 import { Injectable } from '@nestjs/common';
-import { Tool, Resource, Context } from '@rekog/mcp-nest';
+import { Tool, Resource, ResourceTemplate, Context } from '@rekog/mcp-nest';
 import { z } from 'zod';
 import { Progress } from '@modelcontextprotocol/sdk/types';
 
@@ -97,13 +97,32 @@ export class GreetingTool {
   }
 
   @Resource({
-    uri: 'mcp://hello-world/{userName}',
+    uri: 'mcp://hello-world',
     name: 'Hello World',
     description: 'A simple greeting resource',
     mimeType: 'text/plain',
   })
   // Different from the SDK, we put the parameters and URI in the same object.
-  async getCurrentSchema({ uri, userName }) {
+  async getHelloWorld({ uri }) {
+    return {
+      content: [
+        {
+          uri,
+          text: `Hello world`,
+          mimeType: 'text/plain',
+        },
+      ],
+    };
+  }
+
+  @ResourceTemplate({
+    uriTemplate: 'mcp://hello-world/{userName}',
+    name: 'Hello World',
+    description: 'A simple greeting resource',
+    mimeType: 'text/plain',
+  })
+  // Different from the SDK, we put the parameters and URI in the same object.
+  async getHello({ uri, userName }) {
     return {
       content: [
         {

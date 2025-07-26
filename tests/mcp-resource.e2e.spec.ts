@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Injectable } from '@nestjs/common';
 import { McpModule } from '../src/mcp/mcp.module';
 import { createSseClient } from './utils';
-import { Resource } from '../src';
+import { Resource, ResourceTemplate } from '../src';
 
 @Injectable()
 export class GreetingToolResource {
@@ -13,7 +13,7 @@ export class GreetingToolResource {
     name: 'hello-world',
     description: 'A simple greeting resource',
     mimeType: 'text/plain',
-    uri: 'mcp://hello-world',
+    uri: 'mcp://hello-world-world',
   })
   async sayHello({ uri }) {
     return {
@@ -27,11 +27,11 @@ export class GreetingToolResource {
     };
   }
 
-  @Resource({
+  @ResourceTemplate({
     name: 'hello-world-dynamic',
     description: 'A simple greeting dynamic resource',
     mimeType: 'text/plain',
-    uri: 'mcp://hello-world-dynamic/{userName}',
+    uriTemplate: 'mcp://hello-world-dynamic/{userName}',
   })
   async sayHelloDynamic({ uri, userName }) {
     return {
@@ -45,11 +45,11 @@ export class GreetingToolResource {
     };
   }
 
-  @Resource({
+  @ResourceTemplate({
     name: 'hello-world-dynamic-multiple-paths',
     description: 'A simple greeting dynamic resource with multiple paths',
     mimeType: 'text/plain',
-    uri: 'mcp://hello-world-dynamic-multiple-paths/{userId}/{userName}',
+    uriTemplate: 'mcp://hello-world-dynamic-multiple-paths/{userId}/{userName}',
   })
   async sayHelloMultiplePathsDynamic({ uri, userId, userName }) {
     return {
@@ -63,11 +63,11 @@ export class GreetingToolResource {
     };
   }
 
-  @Resource({
+  @ResourceTemplate({
     name: 'hello-world-dynamic-multiple-paths-error',
     description: 'A simple greeting dynamic resource with multiple paths',
     mimeType: 'text/plain',
-    uri: 'mcp://hello-world-dynamic-multiple-paths-error/{userId}/{userName}',
+    uriTemplate: 'mcp://hello-world-dynamic-multiple-paths-error/{userId}/{userName}',
   })
   async sayHelloMultiplePathsDynamicError() {
     throw new Error('any error');
@@ -104,19 +104,20 @@ describe('E2E: MCP Resource Server', () => {
   it('should list resources', async () => {
     const client = await createSseClient(testPort);
     const resources = await client.listResources();
+    const resourceTemplates = await client.listResourceTemplates();
 
     expect(resources.resources.find((r) => r.name === 'hello-world')).toEqual({
       name: 'hello-world',
-      uri: 'mcp://hello-world',
+      uri: 'mcp://hello-world-world',
       description: 'A simple greeting resource',
       mimeType: 'text/plain',
     });
 
     expect(
-      resources.resources.find((r) => r.name === 'hello-world-dynamic'),
+      resourceTemplates.resourceTemplates.find((r) => r.name === 'hello-world-dynamic'),
     ).toEqual({
       name: 'hello-world-dynamic',
-      uri: 'mcp://hello-world-dynamic/{userName}',
+      uriTemplate: 'mcp://hello-world-dynamic/{userName}',
       description: 'A simple greeting dynamic resource',
       mimeType: 'text/plain',
     });
@@ -124,10 +125,26 @@ describe('E2E: MCP Resource Server', () => {
     await client.close();
   });
 
+    it('should call the static resource', async () => {
+    const client = await createSseClient(testPort);
+
+    const result = await client.readResource({
+      uri: 'mcp://hello-world-world',
+    });
+
+    expect(result.contents[0].uri).toBe(
+      'mcp://hello-world-world',
+    );
+    expect(result.contents[0].mimeType).toBe('text/plain');
+    expect(result.contents[0].text).toBe('Hello World');
+
+    await client.close();
+  });
+
   it('should call the dynamic resource', async () => {
     const client = await createSseClient(testPort);
 
-    const result: any = await client.readResource({
+    const result = await client.readResource({
       uri: 'mcp://hello-world-dynamic/Raphael_John',
     });
 
@@ -143,7 +160,7 @@ describe('E2E: MCP Resource Server', () => {
   it('should call the dynamic resource with multiple paths', async () => {
     const client = await createSseClient(testPort);
 
-    const result: any = await client.readResource({
+    const result = await client.readResource({
       uri: 'mcp://hello-world-dynamic-multiple-paths/123/Raphael_John',
     });
 

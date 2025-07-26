@@ -23,13 +23,11 @@ export function buildMcpCapabilities(
     };
   }
 
-  if (registry.getResources(mcpModuleId).length > 0) {
+  if (
+    registry.getResources(mcpModuleId).length > 0 ||
+    registry.getResourceTemplates(mcpModuleId).length > 0
+  ) {
     capabilities.resources = capabilities.resources || {
-      listChanged: true,
-    };
-
-    // ToDo: Move into its own condition when we split Resources and ResourceTemplates
-    capabilities.resourceTemplates = capabilities.resourceTemplates || {
       listChanged: true,
     };
   }

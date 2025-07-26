@@ -21,6 +21,13 @@ describe('McpRegistryService', () => {
     methodName: 'someMethod',
   });
 
+  const mockResourceTemplate = (name: string, uriTemplate: string) => ({
+    type: 'resource-template',
+    metadata: { name, uriTemplate },
+    providerClass: Symbol(name),
+    methodName: 'someMethod',
+  });
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -45,8 +52,13 @@ describe('McpRegistryService', () => {
       mockResource('res3', 'mcp://hello-world'),
     ];
 
+    const mockResourceTemplates = [
+      mockResourceTemplate('resTemplate1', '/templates/{id}'),
+      mockResourceTemplate('resTemplate2', '/templates/{type}/{id}'),
+    ];
+
     (service as any).discoveredToolsByMcpModuleId = new Map([
-      [mockMcpModuleId, mockResources],
+      [mockMcpModuleId, [...mockResources, ...mockResourceTemplates]],
     ]);
   });
 
@@ -92,6 +104,15 @@ describe('McpRegistryService', () => {
     );
     expect(result?.resource.metadata.name).toBe('res3');
     expect(result?.params).toEqual({});
+  });
+
+  it('should return the correct resource template by URI', () => {
+    const result = service.findResourceTemplateByUri(
+      mockMcpModuleId,
+      '/templates/123',
+    );
+    expect(result?.resourceTemplate.metadata.name).toBe('resTemplate1');
+    expect(result?.params).toEqual({ id: '123' });
   });
 });
 

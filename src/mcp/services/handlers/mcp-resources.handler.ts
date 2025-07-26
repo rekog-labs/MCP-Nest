@@ -1,15 +1,17 @@
-import { Inject, Injectable, Scope } from '@nestjs/common';
+import { Inject, Injectable, InjectionToken, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   ErrorCode,
   ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
   McpError,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { Request } from 'express';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
+import { Context } from 'src/interfaces';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpResourcesHandler extends McpHandlerBase {
@@ -22,8 +24,14 @@ export class McpResourcesHandler extends McpHandlerBase {
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: Request) {
-    if (this.registry.getResources(this.mcpModuleId).length === 0) {
-      this.logger.debug('No resources registered, skipping resource handlers');
+    const resources = this.registry.getResources(this.mcpModuleId);
+    const resourceTemplates = this.registry.getResourceTemplates(
+      this.mcpModuleId,
+    );
+    if (resources.length === 0 && resourceTemplates.length === 0) {
+      this.logger.debug(
+        'No resources or resource templates registered, skipping resource handlers',
+      );
       return;
     }
 
@@ -37,6 +45,18 @@ export class McpResourcesHandler extends McpHandlerBase {
     });
 
     mcpServer.server.setRequestHandler(
+      ListResourceTemplatesRequestSchema,
+      () => {
+        this.logger.debug('ListResourceTemplatesRequestSchema is being called');
+        return {
+          resourceTemplates: this.registry
+            .getResourceTemplates(this.mcpModuleId)
+            .map((resourceTemplate) => resourceTemplate.metadata),
+        };
+      },
+    );
+
+    mcpServer.server.setRequestHandler(
       ReadResourceRequestSchema,
       async (request) => {
         this.logger.debug('ReadResourceRequestSchema is being called');
@@ -46,51 +66,45 @@ export class McpResourcesHandler extends McpHandlerBase {
           this.mcpModuleId,
           uri,
         );
-
-        if (!resourceInfo) {
-          throw new McpError(
-            ErrorCode.MethodNotFound,
-            `Unknown resource: ${uri}`,
-          );
-        }
+        const resourceTemplateInfo = this.registry.findResourceTemplateByUri(
+          this.mcpModuleId,
+          uri,
+        );
 
         try {
-          const contextId = ContextIdFactory.getByRequest(httpRequest);
-          this.moduleRef.registerRequestByContextId(httpRequest, contextId);
+          let providerClass: InjectionToken;
+          let params: Record<string, unknown> = {};
+          let methodName: string;
+          if (resourceTemplateInfo) {
+            providerClass = resourceTemplateInfo.resourceTemplate.providerClass;
+            params = {
+              ...resourceTemplateInfo.params,
+              ...request.params,
+            };
+            methodName = resourceTemplateInfo.resourceTemplate.methodName;
+          } else if (resourceInfo) {
+            providerClass = resourceInfo.resource.providerClass;
 
-          const resourceInstance = await this.moduleRef.resolve(
-            resourceInfo.resource.providerClass,
-            contextId,
-            { strict: false },
-          );
-
-          if (!resourceInstance) {
+            params = {
+              ...resourceInfo.params,
+              ...request.params,
+            };
+            methodName = resourceInfo.resource.methodName;
+          } else {
             throw new McpError(
               ErrorCode.MethodNotFound,
               `Unknown resource: ${uri}`,
             );
           }
-
-          const context = this.createContext(mcpServer, request);
-
-          const requestParams = {
-            ...resourceInfo.params,
-            ...request.params,
-          };
-
-          const methodName = resourceInfo.resource.methodName;
-
-          const result = await resourceInstance[methodName].call(
-            resourceInstance,
-            requestParams,
-            context,
-            httpRequest,
-          );
-
-          this.logger.debug(result, 'ReadResourceRequestSchema result');
-
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-          return result;
+          return await this.handleRequest(
+            httpRequest,
+            providerClass,
+            uri,
+            this.createContext(mcpServer, request),
+            params,
+            methodName,
+          );
         } catch (error) {
           this.logger.error(error);
           return {
@@ -100,5 +114,41 @@ export class McpResourcesHandler extends McpHandlerBase {
         }
       },
     );
+  }
+
+  private async handleRequest(
+    httpRequest: Request,
+    providerClass: InjectionToken,
+    uri: string,
+    context: Context,
+    requestParams: Record<string, unknown>,
+    methodName: string,
+  ) {
+    const contextId = ContextIdFactory.getByRequest(httpRequest);
+    this.moduleRef.registerRequestByContextId(httpRequest, contextId);
+
+    const resourceInstance = await this.moduleRef.resolve(
+      providerClass,
+      contextId,
+      { strict: false },
+    );
+
+    if (!resourceInstance) {
+      throw new McpError(
+        ErrorCode.MethodNotFound,
+        `Unknown resource template: ${uri}`,
+      );
+    }
+    const result = await resourceInstance[methodName].call(
+      resourceInstance,
+      requestParams,
+      context,
+      httpRequest,
+    );
+
+    this.logger.debug(result, 'ReadResourceRequestSchema result');
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return result;
   }
 }

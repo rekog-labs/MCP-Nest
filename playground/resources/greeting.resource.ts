@@ -1,5 +1,5 @@
 import { Injectable, Scope } from '@nestjs/common';
-import { Resource } from '../../src';
+import { Resource, ResourceTemplate } from '../../src';
 
 @Injectable({ scope: Scope.REQUEST })
 export class GreetingResource {
@@ -7,15 +7,33 @@ export class GreetingResource {
 
   @Resource({
     name: 'hello-world',
-    description: 'A simple greeting resource',
+    description: 'A simple hello world resource',
     mimeType: 'text/plain',
-    uri: 'mcp://hello-world/{name}',
+    uri: 'mcp://hello-world',
   })
-  sayHello({ name }) {
+  sayHelloWorld({ uri }) {
     return {
       contents: [
         {
-          uri: 'mcp://hello-world',
+          uri: uri,
+          mimeType: 'text/plain',
+          text: `Hello world`,
+        },
+      ],
+    };
+  }
+
+  @ResourceTemplate({
+    name: 'hello-world',
+    description: 'A simple greeting resource',
+    mimeType: 'text/plain',
+    uriTemplate: 'mcp://hello-world/{name}',
+  })
+  sayHello({ uri, name }) {
+    return {
+      contents: [
+        {
+          uri: uri,
           mimeType: 'text/plain',
           text: `Hello ${name}`,
         },
