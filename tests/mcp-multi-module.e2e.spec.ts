@@ -117,7 +117,6 @@ describe('E2E: Multiple MCP servers (Streamable HTTP)', () => {
         });
         try {
           const tools = await client.listTools();
-          console.log(tools);
           expect(tools.tools.length).toBe(1);
           expect(tools.tools.find((t) => t.name === 'toolA')).toBeDefined();
         } finally {
@@ -131,7 +130,6 @@ describe('E2E: Multiple MCP servers (Streamable HTTP)', () => {
         });
         try {
           const tools = await client.listTools();
-          console.log(tools);
           expect(tools.tools.length).toBe(1);
           expect(tools.tools.find((t) => t.name === 'toolB')).toBeDefined();
         } finally {

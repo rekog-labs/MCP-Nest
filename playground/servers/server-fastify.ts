@@ -4,7 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { z } from 'zod';
 import { Injectable, Module } from '@nestjs/common';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import { McpModule } from '../../src/mcp.module';
+import { McpModule } from '../../src/mcp/mcp.module';
 import { Tool, Context, McpTransportType } from '../../src';
 
 @Injectable()
@@ -103,6 +103,7 @@ async function bootstrap() {
   console.log('2. Restart the server');
 
   await app.listen(port, '0.0.0.0');
+  console.log(`MCP server is running on http://localhost:${port}`);
 }
 
 bootstrap().catch((error) => {
