@@ -254,7 +254,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
     beforeEach(async () => {
       if (!fastifyPort) {
         throw new Error(
-          'Fastify server not available - @nestjs/platform-fastify setup failed',
+          'Fastify server not available - install @nestjs/platform-fastify to run these tests',
         );
       }
       client = await createStreamableClient(fastifyPort);

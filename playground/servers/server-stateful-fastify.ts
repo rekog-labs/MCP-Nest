@@ -61,7 +61,6 @@ export class GreetingTool {
     McpModule.forRoot({
       name: 'fastify-mcp-server',
       version: '0.0.1',
-      transport: McpTransportType.STREAMABLE_HTTP,
       streamableHttp: {
         statelessMode: false,
       },
@@ -93,7 +92,7 @@ async function bootstrap() {
     });
   }
 
-  const port = 3031;
+  const port = 3030;
   console.log(`🚀 Starting MCP server on port ${port}`);
   console.log(`📡 MCP endpoint available at: http://localhost:${port}/mcp`);
   console.log(`🔧 Framework: ${framework}`);
