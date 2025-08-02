@@ -115,6 +115,21 @@ export class McpToolsHandler extends McpHandlerBase {
         }
 
         try {
+          // Validate input parameters against the tool's schema
+          if (toolInfo.metadata.parameters) {
+            const validation = toolInfo.metadata.parameters.safeParse(
+              request.params.arguments || {},
+            );
+            if (!validation.success) {
+              throw new McpError(
+                ErrorCode.InvalidParams,
+                `Invalid parameters: ${validation.error.message}`,
+              );
+            }
+            // Use validated arguments to ensure defaults and transformations are applied
+            request.params.arguments = validation.data;
+          }
+
           const contextId = ContextIdFactory.getByRequest(httpRequest);
           this.moduleRef.registerRequestByContextId(httpRequest, contextId);
 
@@ -151,6 +166,11 @@ export class McpToolsHandler extends McpHandlerBase {
           return transformedResult;
         } catch (error) {
           this.logger.error(error);
+          // Re-throw McpErrors (like validation errors) so they are handled by the MCP protocol layer
+          if (error instanceof McpError) {
+            throw error;
+          }
+          // For other errors, return formatted error response
           return {
             content: [{ type: 'text', text: error.message }],
             isError: true,

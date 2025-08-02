@@ -199,6 +199,29 @@ class InvalidOutputSchemaTool {
 }
 
 @Injectable()
+class ValidationTestTool {
+  @Tool({
+    name: 'validation-test-tool',
+    description: 'A tool to test input validation with required parameters',
+    parameters: z.object({
+      requiredString: z.string(),
+      requiredNumber: z.number(),
+      optionalParam: z.string().optional(),
+    }),
+  })
+  async execute({ requiredString, requiredNumber, optionalParam }) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Received: ${requiredString}, ${requiredNumber}, ${optionalParam}`,
+        },
+      ],
+    };
+  }
+}
+
+@Injectable()
 class NotMcpCompliantGreetingTool {
   @Tool({
     name: 'not-mcp-greeting',
@@ -315,6 +338,7 @@ describe('E2E: MCP ToolServer', () => {
         NotMcpCompliantGreetingTool,
         NotMcpCompliantStructuredGreetingTool,
         InvalidOutputSchemaTool,
+        ValidationTestTool,
         GreetingToolWithElicitation,
       ],
     }).compile();
@@ -353,6 +377,7 @@ describe('E2E: MCP ToolServer', () => {
           NotMcpCompliantGreetingTool,
           NotMcpCompliantStructuredGreetingTool,
           InvalidOutputSchemaTool,
+          ValidationTestTool,
           GreetingToolWithElicitation,
         ],
       }).compile();
@@ -548,6 +573,60 @@ describe('E2E: MCP ToolServer', () => {
         await client.close();
       });
 
+      it('should test input validation with truly required parameters', async () => {
+        const client = await clientCreator(port);
+
+        try {
+          await client.callTool({
+            name: 'validation-test-tool',
+            arguments: {}, // Missing both required parameters
+          });
+          // If we reach here, validation is NOT working
+          expect(true).toBe(false); // Force failure
+        } catch (error) {
+          expect(error).toBeDefined();
+          console.log('Validation error:', error.message);
+          // Expect MCP InvalidParams error
+          expect(
+            error.message.includes('Invalid parameters') ||
+              error.message.includes('Required') ||
+              error.message.includes('string') ||
+              error.message.includes('number') ||
+              error.code === -32602, // ErrorCode.InvalidParams
+          ).toBe(true);
+        }
+
+        await client.close();
+      });
+
+      it('should test input validation with wrong types', async () => {
+        const client = await clientCreator(port);
+
+        try {
+          await client.callTool({
+            name: 'validation-test-tool',
+            arguments: {
+              requiredString: 123, // Wrong type
+              requiredNumber: 'not a number', // Wrong type
+            },
+          });
+          // If we reach here, validation is NOT working
+          expect(true).toBe(false); // Force failure
+        } catch (error) {
+          expect(error).toBeDefined();
+          console.log('Type validation error:', error.message);
+          // Expect MCP InvalidParams error
+          expect(
+            error.message.includes('Invalid parameters') ||
+              error.message.includes('Expected string') ||
+              error.message.includes('Expected number') ||
+              error.code === -32602, // ErrorCode.InvalidParams
+          ).toBe(true);
+        }
+
+        await client.close();
+      });
+
       it('should call the tool and receive an error', async () => {
         const client = await clientCreator(port);
         try {
@@ -604,20 +683,19 @@ describe('E2E: MCP ToolServer', () => {
         }
       });
 
-      it('should return an MCP error object if tool result does not match outputSchema', async () => {
+      it('should throw an MCP error if tool result does not match outputSchema', async () => {
         const client = await clientCreator(port);
         try {
-          const result: any = await client.callTool({
+          await client.callTool({
             name: 'invalid-output-schema-tool',
             arguments: {},
           });
-          expect(result).toHaveProperty('content');
-          expect(Array.isArray(result.content)).toBe(true);
-          expect(result.content[0].type).toBe('text');
-          expect(result.content[0].text).toContain(
-            'Tool result does not match',
-          );
-          expect(result).toHaveProperty('isError', true);
+          // If we reach here, validation is NOT working
+          expect(true).toBe(false); // Force failure
+        } catch (error) {
+          expect(error).toBeDefined();
+          expect(error.message).toContain('Tool result does not match');
+          expect(error.code).toBe(-32603); // ErrorCode.InternalError
         } finally {
           await client.close();
         }

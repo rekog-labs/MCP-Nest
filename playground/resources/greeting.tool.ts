@@ -9,14 +9,27 @@ export class GreetingTool {
   constructor() {}
 
   @Tool({
+    name: 'greet-world',
+    description: 'Returns a simple Hello, World! message',
+  })
+  greetWorld() {
+    console.log('greet world called');
+    return 'Hello, World!';
+  }
+
+  @Tool({
     name: 'greet-user',
     description:
       "Returns a personalized greeting in the user's preferred language",
     parameters: z.object({
-      name: z.string().describe('The name of the person to greet'),
+      name: z
+        .string()
+        .describe('The name of the person to greet')
+        .nonempty('Name is required'),
       language: z
         .string()
-        .describe('Language code (e.g., "en", "es", "fr", "de")'),
+        .describe('Language code (e.g., "en", "es", "fr", "de")')
+        .nonempty('Language is required'),
     }),
     annotations: {
       title: 'Multi-language Greeting Tool',
@@ -27,17 +40,6 @@ export class GreetingTool {
     },
   })
   async sayHello({ name, language }, context: Context, request: Request) {
-    if (!name || !language) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: 'Error: Missing required parameters name and language.',
-          },
-        ],
-      };
-    }
-
     const informalGreetings = {
       en: 'Hey',
       es: 'Qué tal',

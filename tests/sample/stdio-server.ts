@@ -207,6 +207,29 @@ class InvalidOutputSchemaTool {
   }
 }
 
+@Injectable()
+class ValidationTestTool {
+  @Tool({
+    name: 'validation-test-tool',
+    description: 'A tool to test input validation with required parameters',
+    parameters: z.object({
+      requiredString: z.string(),
+      requiredNumber: z.number(),
+      optionalParam: z.string().optional(),
+    }),
+  })
+  async execute({ requiredString, requiredNumber, optionalParam }) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Received: ${requiredString}, ${requiredNumber}, ${optionalParam}`,
+        },
+      ],
+    };
+  }
+}
+
 @Module({
   imports: [
     McpModule.forRoot({
@@ -225,6 +248,7 @@ class InvalidOutputSchemaTool {
     NotMcpCompliantGreetingTool,
     NotMcpCompliantStructuredGreetingTool,
     InvalidOutputSchemaTool,
+    ValidationTestTool,
   ],
 })
 class StdioTestAppModule {}
