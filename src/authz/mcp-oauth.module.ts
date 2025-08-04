@@ -44,7 +44,6 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
     authorize: '/authorize',
     callback: '/callback',
     token: '/token',
-    validate: '/validate',
     revoke: '/revoke',
   },
   protectedResourceMetadata: {
@@ -293,7 +292,6 @@ function prepareEndpoints(
       defaultEndpoints.wellKnownProtectedResourceMetadata,
     callback: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.callback}`),
     token: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.token}`),
-    validate: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.validate}`),
     revoke: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.revoke}`),
     authorize: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.authorize}`),
     register: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.register}`),

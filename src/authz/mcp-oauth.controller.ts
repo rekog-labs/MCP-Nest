@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  Header,
+  HttpCode,
   Inject,
   Logger,
   Next,
@@ -55,6 +57,7 @@ export function createMcpOAuthController(
     }
 
     @Get(endpoints.wellKnownProtectedResourceMetadata)
+    @Header('content-type', 'application/json')
     getProtectedResourceMetadata() {
       // The issuer URL of your authorization server.
       const authorizationServerIssuer = this.options.jwtIssuer;
@@ -102,6 +105,7 @@ export function createMcpOAuthController(
 
     // OAuth endpoints
     @Get(endpoints.wellKnownAuthorizationServerMetadata)
+    @Header('content-type', 'application/json')
     getAuthorizationServerMetadata() {
       return {
         issuer: this.serverUrl,
@@ -320,29 +324,28 @@ export function createMcpOAuthController(
       res.redirect(redirectUrl.toString());
     }
 
-    // Token endpoints (remain the same)
     @Post(endpoints.token)
+    @Header('content-type', 'application/json')
+    @Header('Cache-Control', 'no-store')
+    @Header('Pragma', 'no-cache')
+    @HttpCode(201)
     async exchangeToken(
       @Body() body: any,
       @Req() req: any,
-      @Res() res: Response,
-    ): Promise<Response> {
+    ): Promise<TokenPair> {
       const { grant_type, code, code_verifier, redirect_uri, refresh_token } =
         body;
-
-      let tokens: TokenPair;
 
       switch (grant_type) {
         case 'authorization_code': {
           // Extract client credentials based on authentication method
           const clientCredentials = this.extractClientCredentials(req, body);
-          tokens = await this.handleAuthorizationCodeGrant(
+          return await this.handleAuthorizationCodeGrant(
             code,
             code_verifier,
             redirect_uri,
             clientCredentials,
           );
-          break;
         }
         case 'refresh_token': {
           // For refresh tokens, try to extract client credentials, but allow fallback to token-based extraction
@@ -353,22 +356,14 @@ export function createMcpOAuthController(
             // If we can't extract credentials, we'll try to get them from the refresh token
             clientCredentials = { client_id: '' }; // Will be filled from token
           }
-          tokens = await this.handleRefreshTokenGrant(
+          return await this.handleRefreshTokenGrant(
             refresh_token,
             clientCredentials,
           );
-          break;
         }
         default:
           throw new BadRequestException('Unsupported grant_type');
       }
-
-      // Set OAuth 2.0 token endpoint response headers
-      res.contentType('application/json');
-      res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('Pragma', 'no-cache');
-
-      return res.status(200).json(tokens);
     }
 
     /**
