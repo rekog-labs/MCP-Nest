@@ -10,12 +10,11 @@ import {
   Query,
   Req,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import { Request as ExpressRequest, NextFunction, Response } from 'express';
 import passport from 'passport';
-import { AuthenticatedRequest, McpAuthJwtGuard } from './guards/jwt-auth.guard';
+import { normalizeEndpoint } from '../mcp/utils/normalize-endpoint';
 import {
   OAuthEndpointConfiguration,
   OAuthModuleOptions,
@@ -25,11 +24,7 @@ import {
 import { ClientService } from './services/client.service';
 import { JwtTokenService, TokenPair } from './services/jwt-token.service';
 import { STRATEGY_NAME } from './services/oauth-strategy.service';
-import {
-  ClientRegistrationDto,
-  IOAuthStore,
-} from './stores/oauth-store.interface';
-import { normalizeEndpoint } from '../mcp/utils/normalize-endpoint';
+import { IOAuthStore } from './stores/oauth-store.interface';
 
 interface OAuthCallbackRequest extends ExpressRequest {
   user?: {
@@ -59,6 +54,52 @@ export function createMcpOAuthController(
       this.options = options;
     }
 
+    @Get(endpoints.wellKnownProtectedResourceMetadata)
+    getProtectedResourceMetadata() {
+      // The issuer URL of your authorization server.
+      const authorizationServerIssuer = this.options.jwtIssuer;
+
+      // The canonical URI of the MCP server resource itself.
+      const resourceIdentifier = this.options.resource;
+
+      const metadata = {
+        /**
+         * REQUIRED by MCP Spec.
+         * A list of authorization server issuer URLs that can issue tokens for this resource.
+         */
+        authorization_servers: [authorizationServerIssuer],
+
+        /**
+         * RECOMMENDED by RFC 9728.
+         * The identifier for this resource server.
+         */
+        resource: resourceIdentifier,
+
+        /**
+         * RECOMMENDED by RFC 9728.
+         * A list of scopes that this resource server understands.
+         */
+        scopes_supported:
+          this.options.protectedResourceMetadata.scopesSupported,
+
+        /**
+         * RECOMMENDED by RFC 9728.
+         * A list of methods clients can use to present the access token.
+         */
+        bearer_methods_supported:
+          this.options.protectedResourceMetadata.bearerMethodsSupported,
+
+        /**
+         * OPTIONAL but helpful custom metadata.
+         * Declares which version of the MCP spec this server supports.
+         */
+        mcp_versions_supported:
+          this.options.protectedResourceMetadata.mcpVersionsSupported,
+      };
+
+      return metadata;
+    }
+
     // OAuth endpoints
     @Get(endpoints.wellKnownAuthorizationServerMetadata)
     getAuthorizationServerMetadata() {
@@ -73,19 +114,23 @@ export function createMcpOAuthController(
         registration_endpoint: normalizeEndpoint(
           `${this.serverUrl}/${endpoints.register}`,
         ),
-        response_types_supported: ['code'],
-        response_modes_supported: ['query'],
-        grant_types_supported: ['authorization_code', 'refresh_token'],
-        token_endpoint_auth_methods_supported: [
-          'client_secret_basic',
-          'client_secret_post',
-          'none',
-        ],
-        scopes_supported: ['offline_access'],
+        response_types_supported:
+          this.options.authorizationServerMetadata.responseTypesSupported,
+        response_modes_supported:
+          this.options.authorizationServerMetadata.responseModesSupported,
+        grant_types_supported:
+          this.options.authorizationServerMetadata.grantTypesSupported,
+        token_endpoint_auth_methods_supported:
+          this.options.authorizationServerMetadata
+            .tokenEndpointAuthMethodsSupported,
+        scopes_supported:
+          this.options.authorizationServerMetadata.scopesSupported,
         revocation_endpoint: normalizeEndpoint(
           `${this.serverUrl}/${endpoints?.revoke}`,
         ),
-        code_challenge_methods_supported: ['plain', 'S256'],
+        code_challenge_methods_supported:
+          this.options.authorizationServerMetadata
+            .codeChallengeMethodsSupported,
       };
     }
 
@@ -280,39 +325,50 @@ export function createMcpOAuthController(
     async exchangeToken(
       @Body() body: any,
       @Req() req: any,
-    ): Promise<TokenPair> {
-      const {
-        grant_type,
-        code,
-        code_verifier,
-        redirect_uri,
-        client_id,
-        client_secret,
-        refresh_token,
-      } = body;
+      @Res() res: Response,
+    ): Promise<Response> {
+      const { grant_type, code, code_verifier, redirect_uri, refresh_token } =
+        body;
 
-      if (grant_type === 'authorization_code') {
-        // Extract client credentials based on authentication method
-        const clientCredentials = this.extractClientCredentials(req, body);
-        return this.handleAuthorizationCodeGrant(
-          code,
-          code_verifier,
-          redirect_uri,
-          clientCredentials,
-        );
-      } else if (grant_type === 'refresh_token') {
-        // For refresh tokens, try to extract client credentials, but allow fallback to token-based extraction
-        let clientCredentials: { client_id: string; client_secret?: string };
-        try {
-          clientCredentials = this.extractClientCredentials(req, body);
-        } catch {
-          // If we can't extract credentials, we'll try to get them from the refresh token
-          clientCredentials = { client_id: '' }; // Will be filled from token
+      let tokens: TokenPair;
+
+      switch (grant_type) {
+        case 'authorization_code': {
+          // Extract client credentials based on authentication method
+          const clientCredentials = this.extractClientCredentials(req, body);
+          tokens = await this.handleAuthorizationCodeGrant(
+            code,
+            code_verifier,
+            redirect_uri,
+            clientCredentials,
+          );
+          break;
         }
-        return this.handleRefreshTokenGrant(refresh_token, clientCredentials);
-      } else {
-        throw new BadRequestException('Unsupported grant_type');
+        case 'refresh_token': {
+          // For refresh tokens, try to extract client credentials, but allow fallback to token-based extraction
+          let clientCredentials: { client_id: string; client_secret?: string };
+          try {
+            clientCredentials = this.extractClientCredentials(req, body);
+          } catch {
+            // If we can't extract credentials, we'll try to get them from the refresh token
+            clientCredentials = { client_id: '' }; // Will be filled from token
+          }
+          tokens = await this.handleRefreshTokenGrant(
+            refresh_token,
+            clientCredentials,
+          );
+          break;
+        }
+        default:
+          throw new BadRequestException('Unsupported grant_type');
       }
+
+      // Set OAuth 2.0 token endpoint response headers
+      res.contentType('application/json');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Pragma', 'no-cache');
+
+      return res.status(200).json(tokens);
     }
 
     /**
@@ -505,24 +561,6 @@ export function createMcpOAuthController(
       }
 
       return newTokens;
-    }
-
-    @Get(endpoints.validate)
-    @UseGuards(McpAuthJwtGuard)
-    validateToken(@Req() req: AuthenticatedRequest) {
-      const response: any = {
-        valid: true,
-        user_id: req.user.sub,
-        client_id: req.user.azp || req.user.client_id, // Support both azp and client_id for backward compatibility
-        expires_at: req.user.exp! * 1000,
-      };
-
-      // Only include scope if it exists in the token
-      if (req.user.scope) {
-        response.scope = req.user.scope;
-      }
-
-      return response;
     }
 
     validatePKCE(

@@ -33,6 +33,7 @@ export type StoreConfiguration =
 
 export interface OAuthEndpointConfiguration {
   wellKnownAuthorizationServerMetadata?: string; // Default: '/.well-known/oauth-authorization-server'
+  wellKnownProtectedResourceMetadata?: string | string[]; // Default: '/.well-known/oauth-protected-resource'
   register?: string; // Default: '/register'
   authorize?: string; // Default: '/authorize'
   callback?: string; // Default: '/callback'
@@ -68,6 +69,23 @@ export interface OAuthUserModuleOptions {
   oauthSessionExpiresIn?: number; // in milliseconds
   authCodeExpiresIn?: number; // in milliseconds
 
+  // Protected Resource Metadata Configuration
+  protectedResourceMetadata?: {
+    scopesSupported?: string[];
+    bearerMethodsSupported?: string[];
+    mcpVersionsSupported?: string[];
+  };
+
+  // Authorization Server Metadata Configuration
+  authorizationServerMetadata?: {
+    responseTypesSupported?: string[];
+    responseModesSupported?: string[];
+    grantTypesSupported?: string[];
+    tokenEndpointAuthMethodsSupported?: string[];
+    scopesSupported?: string[];
+    codeChallengeMethodsSupported?: string[];
+  };
+
   // Storage Configuration - single property for all storage options
   storeConfiguration?: StoreConfiguration;
   apiPrefix?: string;
@@ -89,6 +107,19 @@ export interface OAuthModuleDefaults {
   nodeEnv: string;
   apiPrefix: string;
   endpoints: OAuthEndpointConfiguration;
+  protectedResourceMetadata: {
+    scopesSupported: string[];
+    bearerMethodsSupported: string[];
+    mcpVersionsSupported: string[];
+  };
+  authorizationServerMetadata: {
+    responseTypesSupported: string[];
+    responseModesSupported: string[];
+    grantTypesSupported: string[];
+    tokenEndpointAuthMethodsSupported: string[];
+    scopesSupported: string[];
+    codeChallengeMethodsSupported: string[];
+  };
 }
 
 // Resolved options after merging with defaults

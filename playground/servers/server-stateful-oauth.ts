@@ -24,10 +24,14 @@ dotenv.config();
       resource: process.env.SERVER_URL + '/mcp',
       cookieSecure: process.env.NODE_ENV === 'production',
       apiPrefix: 'auth',
-      // endpoints: {
-      //   wellKnown: '/.well-known/oauth-authorization-server',
-      //   callback: '/remote-auth/auth/callback',
-      // },
+      endpoints: {
+        wellKnownAuthorizationServerMetadata:
+          '/.well-known/oauth-authorization-server',
+        wellKnownProtectedResourceMetadata: [
+          '/.well-known/oauth-protected-resource/mcp',
+          '/.well-known/oauth-protected-resource',
+        ],
+      },
       // Storage Configuration - choose one of the following options:
 
       // Option 1: Use in-memory store (default if not specified)

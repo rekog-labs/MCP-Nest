@@ -39,12 +39,30 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
   endpoints: {
     wellKnownAuthorizationServerMetadata:
       '/.well-known/oauth-authorization-server',
+    wellKnownProtectedResourceMetadata: '/.well-known/oauth-protected-resource',
     register: '/register',
     authorize: '/authorize',
     callback: '/callback',
     token: '/token',
     validate: '/validate',
     revoke: '/revoke',
+  },
+  protectedResourceMetadata: {
+    scopesSupported: ['offline_access'],
+    bearerMethodsSupported: ['header'],
+    mcpVersionsSupported: ['2025-06-18'],
+  },
+  authorizationServerMetadata: {
+    responseTypesSupported: ['code'],
+    responseModesSupported: ['query'],
+    grantTypesSupported: ['authorization_code', 'refresh_token'],
+    tokenEndpointAuthMethodsSupported: [
+      'client_secret_basic',
+      'client_secret_post',
+      'none',
+    ],
+    scopesSupported: ['offline_access'],
+    codeChallengeMethodsSupported: ['plain', 'S256'],
   },
 };
 
@@ -169,6 +187,16 @@ export class McpAuthModule {
         options.jwtIssuer || options.serverUrl || DEFAULT_OPTIONS.jwtIssuer,
       cookieSecure:
         options.cookieSecure || process.env.NODE_ENV === 'production',
+      // Merge protectedResourceMetadata with defaults
+      protectedResourceMetadata: {
+        ...defaults.protectedResourceMetadata,
+        ...options.protectedResourceMetadata,
+      },
+      // Merge authorizationServerMetadata with defaults
+      authorizationServerMetadata: {
+        ...defaults.authorizationServerMetadata,
+        ...options.authorizationServerMetadata,
+      },
     };
 
     // Final validation of resolved options
@@ -206,7 +234,7 @@ export class McpAuthModule {
     try {
       new URL(options.serverUrl);
       new URL(options.jwtIssuer);
-    } catch (error) {
+    } catch {
       throw new Error(
         'OAuthModuleOptions: serverUrl and jwtIssuer must be valid URLs',
       );
@@ -261,6 +289,8 @@ function prepareEndpoints(
   const updatedDefaultEndpoints = {
     wellKnownAuthorizationServerMetadata:
       defaultEndpoints.wellKnownAuthorizationServerMetadata,
+    wellKnownProtectedResourceMetadata:
+      defaultEndpoints.wellKnownProtectedResourceMetadata,
     callback: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.callback}`),
     token: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.token}`),
     validate: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.validate}`),
