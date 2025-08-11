@@ -269,6 +269,13 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   /**
+   * Return all discovered MCP module IDs
+   */
+  getMcpModuleIds(): string[] {
+    return Array.from(this.discoveredToolsByMcpModuleId.keys());
+  }
+
+  /**
    * Get all discovered tools
    */
   getTools(mcpModuleId: string): DiscoveredTool<ToolMetadata>[] {
