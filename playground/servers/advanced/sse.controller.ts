@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 
 import { McpSseService } from '../../../src/mcp/services/mcp-sse.service';
-import { normalizeEndpoint } from '../../../src/mcp/utils/normalize-endpoint';
 
 /**
  * Advanced SSE Controller - Direct use of McpSseService

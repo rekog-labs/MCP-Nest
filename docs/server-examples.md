@@ -316,6 +316,52 @@ curl -X POST http://localhost:3030/mcp \
   }'
 ```
 
+## Advanced Server Pattern
+
+For maximum control over your MCP endpoints, you can disable automatic controller generation and use the MCP services directly in custom controllers:
+
+```typescript
+@Module({
+  imports: [
+    McpModule.forRoot({
+      name: 'advanced-server',
+      version: '1.0.0',
+      transport: [], // Disable automatic controllers
+    }),
+  ],
+  controllers: [CustomSseController, CustomStreamableController],
+  providers: [GreetingTool],
+})
+class AppModule {}
+```
+
+And the controller would be similar to:
+
+```typescript
+@Controller()
+export class CustomStreamableController {
+  constructor(private readonly mcpStreamableHttpService: McpStreamableHttpService) {}
+
+  @Post('/mcp')
+  async handlePostRequest(
+    @Req() req: any,
+    @Res() res: any,
+    @Body() body: unknown,
+  ): Promise<void> {
+    await this.mcpStreamableHttpService.handlePostRequest(req, res, body);
+  }
+
+  // additional endpoints ...
+}
+```
+
+This pattern allows you to:
+- Apply custom guards, interceptors, and middleware
+- Define custom endpoint paths and routing
+- Have fine-grained control over request/response handling
+
+**See:** [Advanced Server Pattern Guide](../playground/servers/advanced/README.md) for a full implementation.
+
 ## Example Locations
 
 Complete examples can be found in:
@@ -325,6 +371,7 @@ Complete examples can be found in:
 - `playground/servers/stdio.ts` - STDIO server
 - `playground/servers/server-stateful-fastify.ts` - Fastify server
 - `playground/servers/server-stateful-oauth.ts` - Server with OAuth
+- `playground/servers/advanced/` - Advanced pattern with custom controllers
 
 ## Related
 
