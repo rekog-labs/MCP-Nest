@@ -3,6 +3,8 @@ import { DiscoveryModule } from '@nestjs/core';
 import { McpOptions, McpTransportType } from './interfaces';
 import { McpExecutorService } from './services/mcp-executor.service';
 import { McpRegistryService } from './services/mcp-registry.service';
+import { McpSseService } from './services/mcp-sse.service';
+import { McpStreamableHttpService } from './services/mcp-streamable-http.service';
 import { SsePingService } from './services/sse-ping.service';
 import { createSseController } from './transport/sse.controller.factory';
 import { StdioService } from './transport/stdio.service';
@@ -57,7 +59,7 @@ export class McpModule {
       module: McpModule,
       controllers,
       providers,
-      exports: [McpRegistryService],
+      exports: [McpRegistryService, McpSseService, McpStreamableHttpService],
     };
   }
 
@@ -118,19 +120,11 @@ export class McpModule {
       },
       McpRegistryService,
       McpExecutorService,
+      SsePingService,
+      McpSseService,
+      McpStreamableHttpService,
+      StdioService,
     ];
-
-    const transports = Array.isArray(options.transport)
-      ? options.transport
-      : [options.transport ?? McpTransportType.SSE];
-
-    if (transports.includes(McpTransportType.SSE)) {
-      providers.push(SsePingService);
-    }
-
-    if (transports.includes(McpTransportType.STDIO)) {
-      providers.push(StdioService);
-    }
 
     return providers;
   }
