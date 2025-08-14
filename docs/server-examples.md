@@ -188,6 +188,8 @@ import { AuthGuard } from './auth.guard';
   providers: [GreetingTool, AuthGuard],
 })
 class AppModule {}
+```
+
 ### Disabling OAuth Discovery Endpoints
 
 If you want to define the endpoints yourself, then you can disable the default discovery endpoints:
@@ -211,8 +213,6 @@ If you want to define the endpoints yourself, then you can disable the default d
   providers: [GreetingTool, McpAuthJwtGuard],
 })
 class AppModule {}
-```
-
 ```
 
 ## Custom Endpoints
