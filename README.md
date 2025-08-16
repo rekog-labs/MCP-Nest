@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/rekog-labs-mcp-nest-badge.png)](https://mseep.ai/app/rekog-labs-mcp-nest)
+
 # NestJS MCP Server Module
 
 <div align="center">
