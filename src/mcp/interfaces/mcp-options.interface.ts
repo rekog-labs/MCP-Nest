@@ -1,5 +1,5 @@
 import { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
-import { CanActivate, Type } from '@nestjs/common';
+import { CanActivate, ModuleMetadata, Type } from '@nestjs/common';
 
 export enum McpTransportType {
   SSE = 'sse',
@@ -38,4 +38,19 @@ export interface McpOptions {
      */
     statelessMode?: boolean;
   };
+}
+
+// Async variant omits transport since controllers are not auto-registered in forRootAsync
+export type McpAsyncOptions = Omit<McpOptions, 'transport'>;
+
+export interface McpOptionsFactory {
+  createMcpOptions(): Promise<McpAsyncOptions> | McpAsyncOptions;
+}
+
+export interface McpModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
+  useExisting?: Type<McpOptionsFactory>;
+  useClass?: Type<McpOptionsFactory>;
+  useFactory?: (...args: any[]) => Promise<McpAsyncOptions> | McpAsyncOptions;
+  inject?: any[];
+  extraProviders?: any[]; // allow user to provide additional providers in async mode
 }
