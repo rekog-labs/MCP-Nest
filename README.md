@@ -1,4 +1,5 @@
 # NestJS MCP Server Module
+[![smithery badge](https://smithery.ai/badge/@rekog-labs/MCP-Nest)](https://smithery.ai/server/@rekog-labs/MCP-Nest)
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/rekog-labs/MCP-Nest/main/image.png" height="200">
@@ -32,6 +33,15 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 
 ## Installation
 
+### Installing via Smithery
+
+To install NestJS MCP Server Module for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@rekog-labs/MCP-Nest):
+
+```bash
+npx -y @smithery/cli install @rekog-labs/MCP-Nest --client claude
+```
+
+### Manual Installation
 ```bash
 npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod@^3
 ```
