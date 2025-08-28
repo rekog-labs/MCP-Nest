@@ -6,6 +6,7 @@ export class AuthorizationCodeEntity {
   @PrimaryColumn()
   code: string;
 
+  // Sensitive: User ID - can be encrypted if transformer is provided
   @Column()
   user_id: string;
 
@@ -15,6 +16,7 @@ export class AuthorizationCodeEntity {
   @Column()
   redirect_uri: string;
 
+  // Sensitive: PKCE challenge - can be encrypted if transformer is provided
   @Column()
   code_challenge: string;
 
@@ -33,6 +35,7 @@ export class AuthorizationCodeEntity {
   @Column({ nullable: true })
   used_at?: Date;
 
+  // Highly sensitive: Access token - can be encrypted if transformer is provided
   @Column()
   github_access_token: string;
 

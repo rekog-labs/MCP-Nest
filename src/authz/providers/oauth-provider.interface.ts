@@ -1,5 +1,6 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { IOAuthStore } from '../stores/oauth-store.interface';
+import { EncryptionOptions } from '../services/encryption.service';
 
 export interface OAuthProviderConfig {
   name: string;
@@ -26,7 +27,11 @@ export interface OAuthUserProfile {
 
 // Store configuration union type
 export type StoreConfiguration =
-  | { type: 'typeorm'; options: TypeOrmModuleOptions }
+  | {
+      type: 'typeorm';
+      options: TypeOrmModuleOptions;
+      encryption?: EncryptionOptions; // Optional encryption configuration
+    }
   | { type: 'custom'; store: IOAuthStore }
   | { type: 'memory' }
   | undefined; // Default to memory store

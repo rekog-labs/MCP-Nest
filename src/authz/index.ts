@@ -6,5 +6,7 @@ export * from './providers/github.provider';
 export * from './stores/oauth-store.interface';
 export * from './stores/memory-store.service';
 export * from './stores/typeorm/typeorm-store.service';
+export * from './stores/typeorm/encrypted-typeorm-store.service';
+export * from './services/encryption.service';
 export * from './interfaces/request-with-user';
 export * from './guards/jwt-auth.guard';
