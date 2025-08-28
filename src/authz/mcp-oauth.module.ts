@@ -14,6 +14,7 @@ import {
 import { ClientService } from './services/client.service';
 import { JwtTokenService } from './services/jwt-token.service';
 import { OAuthStrategyService } from './services/oauth-strategy.service';
+import { EncryptionService } from './services/encryption.service';
 import { MemoryStore } from './stores/memory-store.service';
 import {
   AuthorizationCodeEntity,
@@ -22,6 +23,7 @@ import {
   OAuthUserProfileEntity,
 } from './stores/typeorm/entities';
 import { TypeOrmStore } from './stores/typeorm/typeorm-store.service';
+import { EncryptedTypeOrmStore } from './stores/typeorm/encrypted-typeorm-store.service';
 import { normalizeEndpoint } from '../mcp/utils/normalize-endpoint';
 import { OAUTH_TYPEORM_CONNECTION_NAME } from './stores/typeorm/constants';
 
@@ -110,8 +112,17 @@ export class McpAuthModule {
     // Add TypeORM configuration if using TypeORM store
     const storeConfig = resolvedOptions.storeConfiguration;
     const isTypeOrmStore = storeConfig?.type === 'typeorm';
+    let encryptionService: EncryptionService | undefined;
+
     if (storeConfig && storeConfig.type === 'typeorm') {
       const typeormOptions = storeConfig.options;
+      const encryptionOptions = storeConfig.encryption;
+
+      // Create encryption service if encryption is configured
+      if (encryptionOptions) {
+        encryptionService = new EncryptionService(encryptionOptions);
+      }
+
       imports.push(
         TypeOrmModule.forRoot({
           ...typeormOptions,
@@ -139,6 +150,7 @@ export class McpAuthModule {
     // Create store provider based on configuration
     const oauthStoreProvider = this.createStoreProvider(
       resolvedOptions.storeConfiguration,
+      encryptionService,
     );
 
     // Create alias for compatibility with injection
@@ -157,9 +169,20 @@ export class McpAuthModule {
       McpAuthJwtGuard,
     ];
 
-    // Add TypeOrmStore to providers if using TypeORM
+    // Add TypeORM and encryption related providers if using TypeORM
     if (isTypeOrmStore) {
       providers.push(TypeOrmStore);
+
+      if (encryptionService) {
+        // Add encryption service provider
+        providers.push(
+          {
+            provide: EncryptionService,
+            useValue: encryptionService,
+          },
+          EncryptedTypeOrmStore,
+        );
+      }
     }
 
     // Create controller with apiPrefix
@@ -274,6 +297,7 @@ export class McpAuthModule {
 
   private static createStoreProvider(
     storeConfiguration: OAuthModuleOptions['storeConfiguration'],
+    encryptionService?: EncryptionService,
   ) {
     if (!storeConfiguration || storeConfiguration.type === 'memory') {
       // Default memory store
@@ -284,11 +308,19 @@ export class McpAuthModule {
     }
 
     if (storeConfiguration.type === 'typeorm') {
-      // TypeORM store
-      return {
-        provide: 'IOAuthStore',
-        useClass: TypeOrmStore,
-      };
+      // Enhanced TypeORM store with encryption support
+      if (encryptionService) {
+        return {
+          provide: 'IOAuthStore',
+          useClass: EncryptedTypeOrmStore,
+        };
+      } else {
+        // Fallback to standard TypeORM store without encryption
+        return {
+          provide: 'IOAuthStore',
+          useClass: TypeOrmStore,
+        };
+      }
     }
 
     if (storeConfiguration.type === 'custom') {

@@ -12,6 +12,7 @@ export class OAuthClientEntity {
   @PrimaryColumn()
   client_id: string;
 
+  // Sensitive: Client secret - can be encrypted if transformer is provided
   @Column({ nullable: true })
   client_secret?: string;
 
@@ -30,6 +31,7 @@ export class OAuthClientEntity {
   @Column({ nullable: true })
   developer_name?: string;
 
+  // Potentially sensitive: Email - can be encrypted if transformer is provided
   @Column({ nullable: true })
   developer_email?: string;
 

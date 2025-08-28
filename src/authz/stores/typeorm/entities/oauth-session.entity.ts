@@ -6,6 +6,7 @@ export class OAuthSessionEntity {
   @PrimaryColumn()
   sessionId: string;
 
+  // Sensitive: Session state - can be encrypted if transformer is provided
   @Column()
   state: string;
 
@@ -15,12 +16,14 @@ export class OAuthSessionEntity {
   @Column({ nullable: true })
   redirectUri?: string;
 
+  // Sensitive: PKCE challenge - can be encrypted if transformer is provided
   @Column({ nullable: true })
   codeChallenge?: string;
 
   @Column({ nullable: true })
   codeChallengeMethod?: string;
 
+  // Sensitive: OAuth state - can be encrypted if transformer is provided
   @Column({ nullable: true })
   oauthState?: string;
 
