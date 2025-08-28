@@ -23,10 +23,8 @@
     "prepare": "npm run build",
     "start:playground": "ts-node-dev --respawn playground/servers/server-stateful.ts",
     "start:fastify": "ts-node-dev --respawn playground/servers/server-fastify.ts",
-    "start:azure-ad-oauth": "ts-node-dev --respawn playground/servers/server-azure-ad-oauth.ts",
     "test": "npx --node-options=--experimental-vm-modules jest",
     "test:watch": "npx --node-options=--experimental-vm-modules jest --watch",
-    "test:azure-ad": "npx --node-options=--experimental-vm-modules jest --testPathPattern=azure-ad-provider.spec.ts",
     "test:fastify": "ts-node playground/clients/http-fastify-client.ts",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\" \"playground/**/*.ts\" \"tests/**/*.ts\""
