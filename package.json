@@ -46,6 +46,12 @@
   "peerDependenciesMeta": {
     "@nestjs/platform-fastify": {
       "optional": true
+    },
+    "@nestjs/typeorm": {
+      "optional": true
+    },
+    "typeorm": {
+      "optional": true
     }
   },
   "devDependencies": {

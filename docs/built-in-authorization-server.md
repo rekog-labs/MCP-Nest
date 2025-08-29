@@ -197,6 +197,8 @@ McpAuthModule.forRoot({
 })
 ```
 
+> **Note**: The TypeORM store requires the optional peer dependencies `@nestjs/typeorm` and `typeorm` to be installed.
+
 Supported TypeORM databases: PostgreSQL, MySQL, SQLite, SQL Server, Oracle, and more.
 
 ### Custom Store

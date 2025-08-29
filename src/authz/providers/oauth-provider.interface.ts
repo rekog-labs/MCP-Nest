@@ -1,4 +1,4 @@
-import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { IOAuthStore } from '../stores/oauth-store.interface';
 
 export interface OAuthProviderConfig {
