@@ -117,6 +117,8 @@ import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest';
 export class AppModule {}
 ```
 
+> **Note**: Using the TypeORM store requires installing `@nestjs/typeorm` and `typeorm`.
+
 ### Environment Variables
 
 Create a `.env` file with your Azure AD configuration:

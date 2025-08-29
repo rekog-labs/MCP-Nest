@@ -1,5 +1,10 @@
-import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { IOAuthStore } from '../stores/oauth-store.interface';
+
+// Define a minimal placeholder for TypeORM options so the type remains
+// available without requiring the optional `@nestjs/typeorm` package.
+// Consumers who use the TypeORM store should install the package to get
+// the full type definitions.
+type TypeOrmModuleOptions = Record<string, unknown>;
 
 export interface OAuthProviderConfig {
   name: string;

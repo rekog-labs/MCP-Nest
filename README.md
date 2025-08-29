@@ -36,6 +36,14 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod@^3
 ```
 
+### Optional dependencies
+
+If you use the built-in authorization server with the TypeORM store, install the following optional peer dependencies:
+
+```bash
+npm install @nestjs/typeorm typeorm
+```
+
 ## Quick Start
 
 ```typescript
