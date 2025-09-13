@@ -21,7 +21,7 @@ The fastest way to try out Remote MCP servers with built-in authentication is by
 For the deployment you need the following:
 
 1. Create a [New GitHub App](https://github.com/settings/applications/new), required for user authentication
-    * For the "Authorization callback URL" add the placeholder `http://localhost:3000/auth/callback` and create the app, you will update it at step 4.
+    - For the "Authorization callback URL" add the placeholder `http://localhost:3000/auth/callback` and create the app, you will update it at step 4.
 2. Add the GitHub Client ID and Client Secret in the Deploy panel on Railway, and click "Deploy"
 3. After the app is deployed, the Custom Domain is available in the railway deployment settings page.
 4. Update the "Authorization callback URL" of the GitHub app to the custom domain with the postfix as shown here: `https://<custom-domain>.up.railway.app/auth/callback`.
@@ -41,6 +41,8 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
+// Or if you are using CommonJS:
+// import * as cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
 import {
   McpAuthModule,
@@ -56,6 +58,7 @@ import {
       clientId: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
       jwtSecret: process.env.JWT_SECRET!,
+      resource: 'http://localhost:3030/mcp',
       serverUrl: 'http://localhost:3030',
       apiPrefix: 'auth',
     }),

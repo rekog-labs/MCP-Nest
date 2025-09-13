@@ -19,9 +19,9 @@ import { OAUTH_TYPEORM_CONNECTION_NAME } from './stores/typeorm/constants';
 
 // Default configuration values
 export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
-  serverUrl: 'https://localhost:3000',
-  resource: 'https://localhost:3000/mcp',
-  jwtIssuer: 'https://localhost:3000',
+  serverUrl: 'http://localhost:3000',
+  resource: 'http://localhost:3000/mcp',
+  jwtIssuer: 'http://localhost:3000',
   jwtAudience: 'mcp-client',
   jwtAccessTokenExpiresIn: '60s',
   jwtRefreshTokenExpiresIn: '30d',
@@ -291,8 +291,10 @@ export class McpAuthModule {
 
     if (storeConfiguration.type === 'typeorm') {
       // TypeORM store
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { TypeOrmStore } = require('./stores/typeorm/typeorm-store.service');
+      const {
+        TypeOrmStore,
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+      } = require('./stores/typeorm/typeorm-store.service');
       return {
         provide: 'IOAuthStore',
         useClass: TypeOrmStore,
