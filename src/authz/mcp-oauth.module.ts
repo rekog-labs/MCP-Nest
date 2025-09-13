@@ -23,8 +23,9 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
   resource: 'http://localhost:3000/mcp',
   jwtIssuer: 'http://localhost:3000',
   jwtAudience: 'mcp-client',
-  jwtAccessTokenExpiresIn: '60s',
+  jwtAccessTokenExpiresIn: '1d',
   jwtRefreshTokenExpiresIn: '30d',
+  enableRefreshTokens: true,
   cookieMaxAge: 24 * 60 * 60 * 1000, // 24 hours
   oauthSessionExpiresIn: 10 * 60 * 1000, // 10 minutes
   authCodeExpiresIn: 10 * 60 * 1000, // 10 minutes
@@ -228,6 +229,17 @@ export class McpAuthModule {
         ...(options.disableEndpoints || {}),
       },
     };
+
+    if (!resolvedOptions.enableRefreshTokens) {
+      resolvedOptions.authorizationServerMetadata.grantTypesSupported =
+        resolvedOptions.authorizationServerMetadata.grantTypesSupported.filter(
+          (g) => g !== 'refresh_token',
+        );
+      resolvedOptions.protectedResourceMetadata.scopesSupported =
+        resolvedOptions.protectedResourceMetadata.scopesSupported.filter(
+          (s) => s !== 'offline_access',
+        );
+    }
 
     // Final validation of resolved options
     this.validateResolvedOptions(resolvedOptions);

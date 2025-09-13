@@ -69,6 +69,7 @@ export interface OAuthUserModuleOptions {
   jwtAudience?: string;
   jwtAccessTokenExpiresIn?: string;
   jwtRefreshTokenExpiresIn?: string;
+  enableRefreshTokens?: boolean;
 
   // Cookie Configuration
   cookieSecure?: boolean;
@@ -111,6 +112,7 @@ export interface OAuthModuleDefaults {
   jwtAudience: string;
   jwtAccessTokenExpiresIn: string;
   jwtRefreshTokenExpiresIn: string;
+  enableRefreshTokens: boolean;
   cookieMaxAge: number;
   oauthSessionExpiresIn: number;
   authCodeExpiresIn: number;

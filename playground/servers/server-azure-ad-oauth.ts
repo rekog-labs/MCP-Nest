@@ -1,6 +1,6 @@
 /**
  * Example: OAuth Server with Azure AD Provider
- * 
+ *
  * This example demonstrates how to set up an OAuth server using Azure AD
  * as the identity provider with TypeORM for persistent storage.
  */
@@ -24,18 +24,20 @@ import { GreetingPrompt } from '../resources/greeting.prompt';
     McpAuthModule.forRoot({
       // Azure AD Provider Configuration
       provider: AzureADOAuthProvider,
-      
+
       // Required OAuth Configuration
       clientId: process.env.AZURE_AD_CLIENT_ID || 'your-azure-app-client-id',
-      clientSecret: process.env.AZURE_AD_CLIENT_SECRET || 'your-azure-app-client-secret',
-      
+      clientSecret:
+        process.env.AZURE_AD_CLIENT_SECRET || 'your-azure-app-client-secret',
+
       // Required JWT Configuration
-      jwtSecret: process.env.JWT_SECRET || 'super-secret-jwt-key-min-32-characters',
-      
+      jwtSecret:
+        process.env.JWT_SECRET || 'super-secret-jwt-key-min-32-characters',
+
       // Server Configuration
       serverUrl: process.env.SERVER_URL || 'http://localhost:3000',
       resource: process.env.RESOURCE_URL || 'http://localhost:3000/mcp',
-      
+
       // TypeORM Storage Configuration
       storeConfiguration: {
         type: 'typeorm',
@@ -46,20 +48,20 @@ import { GreetingPrompt } from '../resources/greeting.prompt';
           logging: false,
         },
       },
-      
+
       // Optional: Customize endpoints
       apiPrefix: 'auth',
-      
+
       // Optional: JWT Configuration
       jwtIssuer: process.env.JWT_ISSUER || 'http://localhost:3000',
       jwtAudience: process.env.JWT_AUDIENCE || 'mcp-client',
-      jwtAccessTokenExpiresIn: '1h',
+      jwtAccessTokenExpiresIn: '1d',
       jwtRefreshTokenExpiresIn: '7d',
-      
-      // Optional: Cookie Configuration  
+
+      // Optional: Cookie Configuration
       cookieSecure: process.env.NODE_ENV === 'production',
       cookieMaxAge: 24 * 60 * 60 * 1000, // 24 hours
-      
+
       // Optional: Session Configuration
       oauthSessionExpiresIn: 15 * 60 * 1000, // 15 minutes
       authCodeExpiresIn: 5 * 60 * 1000, // 5 minutes
@@ -72,7 +74,7 @@ export class AzureADServerModule {}
 async function bootstrap() {
   // Create the NestJS application
   const app = await NestFactory.create(AzureADServerModule);
-  
+
   // Enable CORS for OAuth flows
   app.enableCors({
     origin: true,
@@ -80,11 +82,11 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
-  
+
   // Start the server
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  
+
   console.log('\n🚀 Azure AD OAuth Server started!');
   console.log(`Server: http://localhost:${port}`);
   console.log(`MCP Endpoint: http://localhost:${port}/mcp`);
@@ -94,14 +96,22 @@ async function bootstrap() {
   console.log(`  Callback: http://localhost:${port}/auth/callback`);
   console.log(`  Register: http://localhost:${port}/auth/register`);
   console.log('\n🔍 Well-known Endpoints:');
-  console.log(`  Authorization Server: http://localhost:${port}/.well-known/oauth-authorization-server`);
-  console.log(`  Protected Resource: http://localhost:${port}/.well-known/oauth-protected-resource`);
+  console.log(
+    `  Authorization Server: http://localhost:${port}/.well-known/oauth-authorization-server`,
+  );
+  console.log(
+    `  Protected Resource: http://localhost:${port}/.well-known/oauth-protected-resource`,
+  );
   console.log('\n⚙️  Configuration:');
   console.log(`  Provider: Azure AD (Microsoft)`);
   console.log(`  Storage: TypeORM SQLite`);
-  console.log(`  Client ID: ${process.env.AZURE_AD_CLIENT_ID || 'Not configured'}`);
+  console.log(
+    `  Client ID: ${process.env.AZURE_AD_CLIENT_ID || 'Not configured'}`,
+  );
   console.log('\n📖 Setup Instructions:');
-  console.log('1. Create an Azure AD App Registration at https://portal.azure.com');
+  console.log(
+    '1. Create an Azure AD App Registration at https://portal.azure.com',
+  );
   console.log('2. Configure redirect URI: http://localhost:3000/auth/callback');
   console.log('3. Set environment variables:');
   console.log('   - AZURE_AD_CLIENT_ID=<your-client-id>');

@@ -120,8 +120,9 @@ npm install --save-dev @types/cookie-parser
 | `serverUrl` | `string` | `'https://localhost:3000'` | Base URL of your server |
 | `jwtIssuer` | `string` | `serverUrl` | JWT issuer claim |
 | `jwtAudience` | `string` | `'mcp-client'` | JWT audience claim |
-| `jwtAccessTokenExpiresIn` | `string` | `'60s'` | Access token expiration |
+| `jwtAccessTokenExpiresIn` | `string` | `'1d'` | Access token expiration |
 | `jwtRefreshTokenExpiresIn` | `string` | `'30d'` | Refresh token expiration |
+| `enableRefreshTokens` | `boolean` | `true` | Issue refresh tokens for offline access |
 | `apiPrefix` | `string` | `''` | Prefix for all OAuth endpoints |
 | `cookieSecure` | `boolean` | `nodeEnv === 'production'` | Use secure cookies |
 | `cookieMaxAge` | `number` | `24 * 60 * 60 * 1000` | Cookie expiration (24 hours) |

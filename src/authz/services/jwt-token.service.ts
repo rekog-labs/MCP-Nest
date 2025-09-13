@@ -18,9 +18,9 @@ export interface JwtPayload {
 
 export interface TokenPair {
   access_token: string;
-  refresh_token: string;
   token_type: string;
   expires_in: number;
+  refresh_token?: string;
   scope?: string;
 }
 
@@ -28,6 +28,9 @@ export interface TokenPair {
 export class JwtTokenService {
   private jwtSecret: string;
   private issuer: string;
+  private accessTokenExpiresIn: string;
+  private refreshTokenExpiresIn: string;
+  private enableRefreshTokens: boolean;
 
   constructor(@Inject('OAUTH_MODULE_OPTIONS') options: OAuthModuleOptions) {
     // Use JWT secret from environment variable
@@ -40,6 +43,9 @@ export class JwtTokenService {
     this.jwtSecret = jwtSecret;
     this.issuer =
       options.jwtIssuer || options.serverUrl || 'https://localhost:3000';
+    this.accessTokenExpiresIn = options.jwtAccessTokenExpiresIn;
+    this.refreshTokenExpiresIn = options.jwtRefreshTokenExpiresIn;
+    this.enableRefreshTokens = options.enableRefreshTokens;
   }
 
   generateTokenPair(
@@ -73,35 +79,37 @@ export class JwtTokenService {
     // Always include scope to ensure parity with refresh token claims
     accessTokenPayload.scope = scope || '';
 
-    const refreshTokenPayload: any = {
-      sub: userId,
-      client_id: clientId,
-      scope,
-      resource,
-      type: 'refresh' as const,
-      jti: `refresh_${jti}`,
-      iss: this.issuer,
-      aud: resource,
-    };
-    if (extras?.user_profile_id) {
-      refreshTokenPayload.user_profile_id = extras.user_profile_id;
-    }
-
     const accessToken = jwt.sign(accessTokenPayload, this.jwtSecret, {
       algorithm: 'HS256',
-      expiresIn: '1h',
+      expiresIn: this.accessTokenExpiresIn,
     });
 
-    const refreshToken = jwt.sign(refreshTokenPayload, this.jwtSecret, {
-      algorithm: 'HS256',
-      expiresIn: '30d',
-    });
+    let refreshToken: string | undefined = undefined;
+    if (this.enableRefreshTokens) {
+      const refreshTokenPayload: any = {
+        sub: userId,
+        client_id: clientId,
+        scope,
+        resource,
+        type: 'refresh' as const,
+        jti: `refresh_${jti}`,
+        iss: this.issuer,
+        aud: resource,
+      };
+      if (extras?.user_profile_id) {
+        refreshTokenPayload.user_profile_id = extras.user_profile_id;
+      }
+      refreshToken = jwt.sign(refreshTokenPayload, this.jwtSecret, {
+        algorithm: 'HS256',
+        expiresIn: this.refreshTokenExpiresIn,
+      });
+    }
 
     return {
       access_token: accessToken,
-      refresh_token: refreshToken,
       token_type: 'bearer',
-      expires_in: 3600, // 1 hour
+      expires_in: this.parseDurationToSeconds(this.accessTokenExpiresIn),
+      ...(refreshToken ? { refresh_token: refreshToken } : {}),
     };
   }
 
@@ -116,6 +124,10 @@ export class JwtTokenService {
   }
 
   refreshAccessToken(refreshToken: string): TokenPair | null {
+    if (!this.enableRefreshTokens) {
+      return null;
+    }
+
     const payload = this.validateToken(refreshToken);
 
     if (!payload || payload.type !== 'refresh') {
@@ -151,5 +163,26 @@ export class JwtTokenService {
       algorithm: 'HS256',
       expiresIn: '24h',
     });
+  }
+
+  private parseDurationToSeconds(duration: string): number {
+    const match = duration.match(/^(\d+)([smhd])$/);
+    if (!match) {
+      throw new Error(`Invalid duration format: ${duration}`);
+    }
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+    switch (unit) {
+      case 's':
+        return value;
+      case 'm':
+        return value * 60;
+      case 'h':
+        return value * 60 * 60;
+      case 'd':
+        return value * 60 * 60 * 24;
+      default:
+        throw new Error(`Unsupported duration unit: ${unit}`);
+    }
   }
 }
