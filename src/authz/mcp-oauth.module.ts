@@ -106,12 +106,14 @@ export class McpAuthModule {
       const typeormOptions = storeConfig.options;
       try {
         // Require TypeORM-related modules only when needed
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { TypeOrmModule } = require('@nestjs/typeorm');
         const {
           OAuthClientEntity,
           AuthorizationCodeEntity,
           OAuthSessionEntity,
           OAuthUserProfileEntity,
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
         } = require('./stores/typeorm/entities');
 
         imports.push(
@@ -289,6 +291,7 @@ export class McpAuthModule {
 
     if (storeConfiguration.type === 'typeorm') {
       // TypeORM store
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { TypeOrmStore } = require('./stores/typeorm/typeorm-store.service');
       return {
         provide: 'IOAuthStore',
