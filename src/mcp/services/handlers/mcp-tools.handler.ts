@@ -70,6 +70,7 @@ export class McpToolsHandler extends McpHandlerBase {
           name: tool.metadata.name,
           description: tool.metadata.description,
           annotations: tool.metadata.annotations,
+          _meta: tool.metadata._meta,
         };
 
         // Add input schema if defined
