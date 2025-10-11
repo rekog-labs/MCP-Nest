@@ -85,6 +85,28 @@ export class GreetingTool {
       ],
     };
   }
+
+  @Tool({
+    name: 'hello-world-with-meta',
+    description: 'A sample tool with meta',
+    parameters: z.object({
+      name: z.string().default('World'),
+    }),
+    _meta: {
+      title: 'Say Hello',
+    },
+  })
+  async sayHelloWithMeta({ name }, context: Context) {
+    const user = await this.userRepository.findByName(name);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Hello with annotations, ${user.name}!`,
+        },
+      ],
+    };
+  }
 }
 
 @Injectable({ scope: Scope.REQUEST })
