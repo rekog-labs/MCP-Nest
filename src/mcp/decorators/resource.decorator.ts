@@ -8,6 +8,7 @@ export type ResourceOptions =
     name?: string; // Human-readable name
     description?: string; // Optional description
     mimeType?: string; // Optional MIME type
+    _meta?: Record<string, any>;
   };
 
 export interface ResourceMetadata {
@@ -15,6 +16,7 @@ export interface ResourceMetadata {
   name: string; // Human-readable name
   description?: string; // Optional description
   mimeType?: string; // Optional MIME type
+  _meta?: Record<string, any>;
 }
 
 /**

@@ -27,6 +27,27 @@ export class GreetingToolResource {
     };
   }
 
+  @Resource({
+    name: 'hello-world-with-meta',
+    description: 'A simple greeting resource with meta',
+    mimeType: 'text/plain',
+    uri: 'mcp://hello-world-with-meta',
+    _meta: {
+      title: 'Say Hello Resource',
+    },
+  })
+  async sayHelloWithMeta({ uri }) {
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: 'text/plain',
+          text: 'Hello World With Meta',
+        },
+      ],
+    };
+  }
+
   @ResourceTemplate({
     name: 'hello-world-dynamic',
     description: 'A simple greeting dynamic resource',
@@ -40,6 +61,27 @@ export class GreetingToolResource {
           uri: uri,
           mimeType: 'text/plain',
           text: `Hello ${userName}`,
+        },
+      ],
+    };
+  }
+
+  @ResourceTemplate({
+    name: 'hello-world-template-with-meta',
+    description: 'A simple greeting dynamic resource with meta',
+    mimeType: 'text/plain',
+    uriTemplate: 'mcp://hello-world-template-with-meta/{id}',
+    _meta: {
+      title: 'Template With Meta',
+    },
+  })
+  async sayHelloTemplateWithMeta({ uri, id }) {
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: 'text/plain',
+          text: `Hello ${id}`,
         },
       ],
     };
@@ -114,6 +156,13 @@ describe('E2E: MCP Resource Server', () => {
       mimeType: 'text/plain',
     });
 
+    const metaResource = resources.resources.find(
+      (r) => r.name === 'hello-world-with-meta',
+    );
+    expect(metaResource).toBeDefined();
+    expect(metaResource!._meta).toBeDefined();
+    expect(metaResource!._meta?.title).toBe('Say Hello Resource');
+
     expect(
       resourceTemplates.resourceTemplates.find(
         (r) => r.name === 'hello-world-dynamic',
@@ -124,6 +173,13 @@ describe('E2E: MCP Resource Server', () => {
       description: 'A simple greeting dynamic resource',
       mimeType: 'text/plain',
     });
+
+    const metaTemplate = resourceTemplates.resourceTemplates.find(
+      (r) => r.name === 'hello-world-template-with-meta',
+    );
+    expect(metaTemplate).toBeDefined();
+    expect(metaTemplate!._meta).toBeDefined();
+    expect(metaTemplate!._meta?.title).toBe('Template With Meta');
 
     await client.close();
   });
