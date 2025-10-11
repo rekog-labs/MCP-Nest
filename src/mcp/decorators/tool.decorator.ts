@@ -9,6 +9,7 @@ export interface ToolMetadata {
   parameters?: z.ZodTypeAny;
   outputSchema?: z.ZodTypeAny;
   annotations?: SdkToolAnnotations;
+  _meta?: Record<string, any>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -20,6 +21,7 @@ export interface ToolOptions {
   parameters?: z.ZodTypeAny;
   outputSchema?: z.ZodTypeAny;
   annotations?: ToolAnnotations;
+  _meta?: Record<string, any>;
 }
 
 /**

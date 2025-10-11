@@ -104,6 +104,28 @@ export class GreetingTool {
       ],
     };
   }
+
+  @Tool({
+    name: 'hello-world-with-meta',
+    description: 'A sample tool with meta',
+    parameters: z.object({
+      name: z.string().default('World'),
+    }),
+    _meta: {
+      title: 'Say Hello',
+    },
+  })
+  async sayHelloWithMeta({ name }, context: Context) {
+    const user = await this.userRepository.findByName(name);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Hello with annotations, ${user.name}!`,
+        },
+      ],
+    };
+  }
 }
 
 @Injectable({ scope: Scope.REQUEST })
@@ -485,6 +507,20 @@ describe('E2E: MCP ToolServer', () => {
           expect(annotatedTool?.annotations?.title).toBe('Say Hello');
           expect(annotatedTool?.annotations?.readOnlyHint).toBe(true);
           expect(annotatedTool?.annotations?.openWorldHint).toBe(false);
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should list tools with meta', async () => {
+        const client = await clientCreator(port);
+        try {
+          const tools = await client.listTools();
+          expect(tools.tools.length).toBeGreaterThan(0);
+          const metaTool = tools.tools.find((t) => t.name === 'hello-world-with-meta');
+          expect(metaTool).toBeDefined();
+          expect(metaTool!._meta).toBeDefined();
+          expect(metaTool!._meta?.title).toBe('Say Hello');
         } finally {
           await client.close();
         }
