@@ -506,27 +506,16 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
       await client.close();
     });
 
-    it('should allow connection without token but hide protected tools', async () => {
-      // Connection is allowed without token
-      const client = await createSseClient(testPort, {
-        requestInit: {
-          headers: {},
-        },
-      });
-
-      // But protected tools are not listed
-      const tools = await client.listTools();
-      expect(tools.tools).toHaveLength(0);
-
-      // And calling a protected tool fails
+    it('should reject connection without token (triggers OAuth flow)', async () => {
+      // Standard OAuth flow: connection without token should get 401
+      // This triggers the MCP Authorization flow for the client
       await expect(
-        client.callTool({
-          name: 'protected-hello',
-          arguments: { message: 'test' },
+        createSseClient(testPort, {
+          requestInit: {
+            headers: {},
+          },
         }),
-      ).rejects.toThrow('requires authentication');
-
-      await client.close();
+      ).rejects.toThrow(); // Expects 401 response
     });
 
     it('should reject access to protected MCP endpoints with invalid token', async () => {

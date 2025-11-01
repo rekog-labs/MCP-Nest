@@ -68,6 +68,7 @@ dotenv.config();
       //   sessionIdGenerator: () => randomUUID(),
       //   statelessMode: false,
       // },
+      allowUnauthenticatedAccess: process.env.ALLOW_UNAUTHENTICATED_ACCESS === 'true',
       guards: [McpAuthJwtGuard],
     }),
   ],

@@ -185,6 +185,7 @@ describe('E2E: Per-Tool Authorization', () => {
           name: 'test-per-tool-auth-server',
           version: '0.0.1',
           guards: [MockAuthGuard],
+          allowUnauthenticatedAccess: true, // Enable freemium mode for testing @Public() tools
         }),
       ],
       providers: [PerToolAuthTools, MockAuthGuard],
@@ -495,7 +496,9 @@ describe('E2E: Per-Tool Authorization', () => {
         arguments: {},
       });
 
-      expect((result.content as any)[0].text).toBe('AI-powered premium search results');
+      expect((result.content as any)[0].text).toBe(
+        'AI-powered premium search results',
+      );
 
       await client.close();
     });

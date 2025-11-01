@@ -92,6 +92,7 @@ export class McpModule {
       },
       McpRegistryService,
       McpExecutorService,
+      ToolAuthorizationService,
       SsePingService,
       McpSseService,
       McpStreamableHttpService,

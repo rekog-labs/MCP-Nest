@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import type { McpRequestWithUser } from '../../src';
 import { Injectable } from '@nestjs/common';
-import { Context, Public, Tool } from '../../src';
+import { Context, Public, RequireRoles, RequireScopes, Tool } from '../../src';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
@@ -76,7 +76,6 @@ export class GreetingTool {
     return 'Hello, World!';
   }
 
-  @Public()
   @Tool({
     name: 'public-greet-world',
     description: 'Returns a simple Hello, World! message',
@@ -88,6 +87,7 @@ export class GreetingTool {
       openWorldHint: false,
     },
   })
+  @Public()
   publicGreetWorld() {
     console.log('greet world called');
     return 'Public Hello, World!';
@@ -268,5 +268,110 @@ export class GreetingTool {
     };
 
     return result;
+  }
+
+  // Tool requiring specific scopes
+  @Tool({
+    name: 'admin-greet',
+    description: 'Admin-only greeting that requires admin scopes',
+    parameters: z.object({
+      message: z.string().describe('Custom admin message'),
+    }),
+    annotations: {
+      title: 'Admin Greeting Tool (Scopes Required)',
+      destructiveHint: false,
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  })
+  @RequireScopes(['admin', 'write'])
+  @RequireRoles(['admin'])
+  async adminGreet({ message }, context: Context, request: McpRequestWithUser) {
+    const userName = request.user?.name || request.user?.username || 'Admin';
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `🔐 Admin Greeting: ${message} (from ${userName})`,
+        },
+      ],
+    };
+  }
+
+  // Tool requiring specific roles
+  @Tool({
+    name: 'premium-greet',
+    description: 'Premium greeting for users with premium role',
+    parameters: z.object({
+      name: z.string().describe('Name to greet'),
+      level: z.enum(['gold', 'platinum']).describe('Premium level'),
+    }),
+    annotations: {
+      title: 'Premium Greeting Tool (Roles Required)',
+      destructiveHint: false,
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  })
+  @RequireRoles(['premium'])
+  async premiumGreet(
+    { name, level },
+    context: Context,
+    request: McpRequestWithUser,
+  ) {
+    const userName =
+      request.user?.name || request.user?.username || 'Premium User';
+    const premiumEmojis = { gold: '🏆', platinum: '💎' };
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `${premiumEmojis[level]} Premium ${level} greeting: Hello ${name}! (from ${userName})`,
+        },
+      ],
+    };
+  }
+
+  // Tool requiring both scopes AND roles
+  @Tool({
+    name: 'super-admin-greet',
+    description:
+      'Super admin greeting requiring both admin scopes AND super-admin role',
+    parameters: z.object({
+      target: z.string().describe('Target of the super admin greeting'),
+      action: z.enum(['approve', 'deny', 'escalate']).describe('Admin action'),
+    }),
+    annotations: {
+      title: 'Super Admin Greeting Tool (Scopes + Roles Required)',
+      destructiveHint: false,
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  })
+  @RequireScopes(['admin', 'write', 'delete'])
+  @RequireRoles(['super-admin'])
+  async superAdminGreet(
+    { target, action },
+    context: Context,
+    request: McpRequestWithUser,
+  ) {
+    const userName =
+      request.user?.name || request.user?.username || 'Super Admin';
+    const actionMessages = {
+      approve: '✅ Approved',
+      deny: '❌ Denied',
+      escalate: '⚠️ Escalated',
+    };
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `🔥 SUPER ADMIN: ${actionMessages[action]} ${target} by ${userName}`,
+        },
+      ],
+    };
   }
 }

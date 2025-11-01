@@ -4,10 +4,12 @@ import {
   ExecutionContext,
   UnauthorizedException,
   Inject,
+  Optional,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtPayload, JwtTokenService } from '../services/jwt-token.service';
 import { IOAuthStore } from '../stores/oauth-store.interface';
+import { McpOptions } from '../../mcp';
 
 export interface AuthenticatedRequest extends Request {
   user: JwtPayload;
@@ -18,16 +20,28 @@ export class McpAuthJwtGuard implements CanActivate {
   constructor(
     private readonly jwtTokenService: JwtTokenService,
     @Inject('IOAuthStore') private readonly store: IOAuthStore,
+    @Optional()
+    @Inject('MCP_OPTIONS')
+    private readonly options?: McpOptions,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.extractTokenFromHeader(request);
 
-    // Allow requests without authentication to pass through
-    // Per-tool authorization will decide what's accessible
+    // Check if unauthenticated access is allowed
+    const allowUnauthenticated =
+      this.options?.allowUnauthenticatedAccess ?? false;
+
     if (!token) {
-      return true;
+      if (allowUnauthenticated) {
+        // Allow unauthenticated sessions
+        // Per-tool authorization will decide what's accessible (@Public() tools only)
+        return true;
+      } else {
+        // Standard OAuth flow: Reject and trigger authorization
+        throw new UnauthorizedException('Access token required');
+      }
     }
 
     // If a token is provided, it must be valid
