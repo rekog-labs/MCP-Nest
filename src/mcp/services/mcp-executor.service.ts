@@ -6,6 +6,8 @@ import { McpToolsHandler } from './handlers/mcp-tools.handler';
 import { McpResourcesHandler } from './handlers/mcp-resources.handler';
 import { McpPromptsHandler } from './handlers/mcp-prompts.handler';
 import { HttpRequest } from '../interfaces/http-adapter.interface';
+import { ToolAuthorizationService } from './tool-authorization.service';
+import { McpOptions } from '../interfaces/mcp-options.interface';
 
 /**
  * Request-scoped service for executing MCP tools
@@ -21,8 +23,16 @@ export class McpExecutorService {
     moduleRef: ModuleRef,
     registry: McpRegistryService,
     @Inject('MCP_MODULE_ID') mcpModuleId: string,
+    @Inject('MCP_OPTIONS') options: McpOptions,
+    authService: ToolAuthorizationService,
   ) {
-    this.toolsHandler = new McpToolsHandler(moduleRef, registry, mcpModuleId);
+    this.toolsHandler = new McpToolsHandler(
+      moduleRef,
+      registry,
+      mcpModuleId,
+      options,
+      authService,
+    );
     this.resourcesHandler = new McpResourcesHandler(
       moduleRef,
       registry,

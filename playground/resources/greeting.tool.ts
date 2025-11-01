@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import type { McpRequestWithUser } from '../../src';
 import { Injectable } from '@nestjs/common';
-import { Context, Tool } from '../../src';
+import { Context, Public, Tool } from '../../src';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
@@ -74,6 +74,23 @@ export class GreetingTool {
   greetWorld() {
     console.log('greet world called');
     return 'Hello, World!';
+  }
+
+  @Public()
+  @Tool({
+    name: 'public-greet-world',
+    description: 'Returns a simple Hello, World! message',
+    annotations: {
+      title: 'Public Greet World Tool',
+      destructiveHint: false,
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  })
+  publicGreetWorld() {
+    console.log('greet world called');
+    return 'Public Hello, World!';
   }
 
   @Tool({

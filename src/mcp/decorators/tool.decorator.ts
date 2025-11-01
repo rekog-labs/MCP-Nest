@@ -3,6 +3,13 @@ import { MCP_TOOL_METADATA_KEY } from './constants';
 import { z } from 'zod';
 import { ToolAnnotations as SdkToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 
+/**
+ * Security scheme type for MCP tools
+ */
+export type SecurityScheme =
+  | { type: 'noauth' }
+  | { type: 'oauth2'; scopes?: string[] };
+
 export interface ToolMetadata {
   name: string;
   description: string;
@@ -10,6 +17,11 @@ export interface ToolMetadata {
   outputSchema?: z.ZodTypeAny;
   annotations?: SdkToolAnnotations;
   _meta?: Record<string, any>;
+  // Security-related metadata
+  securitySchemes?: SecurityScheme[];
+  isPublic?: boolean;
+  requiredScopes?: string[];
+  requiredRoles?: string[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

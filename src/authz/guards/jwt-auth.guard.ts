@@ -24,10 +24,13 @@ export class McpAuthJwtGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.extractTokenFromHeader(request);
 
+    // Allow requests without authentication to pass through
+    // Per-tool authorization will decide what's accessible
     if (!token) {
-      throw new UnauthorizedException('Access token required');
+      return true;
     }
 
+    // If a token is provided, it must be valid
     const payload = this.jwtTokenService.validateToken(token);
 
     if (!payload) {
@@ -58,6 +61,22 @@ export class McpAuthJwtGuard implements CanActivate {
         ud.username ||
         ud.email ||
         enriched.sub;
+
+      // Parse scopes: OAuth 2.0 standard is space-delimited string in 'scope' field
+      if (enriched.scope && typeof enriched.scope === 'string') {
+        enriched.scopes = enriched.scope
+          .split(' ')
+          .filter((s: string) => s.length > 0);
+      } else if (!enriched.scopes) {
+        enriched.scopes = [];
+      }
+
+      // Extract roles from user_data if present
+      if (!enriched.roles && ud.roles && Array.isArray(ud.roles)) {
+        enriched.roles = ud.roles;
+      } else if (!enriched.roles) {
+        enriched.roles = [];
+      }
     } catch {
       // Non-fatal; proceed with raw payload
     }
