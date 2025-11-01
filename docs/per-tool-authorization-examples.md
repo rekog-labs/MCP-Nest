@@ -8,6 +8,8 @@ export ALLOW_UNAUTHENTICATED_ACCESS=true
 npx ts-node-dev playground/servers/server-oauth.ts
 ```
 
+The server uses the tools defined in [greeting.tool.ts](../playground/resources/greeting.tool.ts), showcasing the different authorization decorators.
+
 Next, configure your shell with the user JWTs:
 
 ```bash
