@@ -57,7 +57,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
-    "@modelcontextprotocol/sdk": "^1.17.4",
+    "@modelcontextprotocol/sdk": "^1.20.2",
     "@nestjs/common": "^11.1.1",
     "@nestjs/core": "^11.1.1",
     "@nestjs/platform-express": "^11.1.1",
@@ -86,6 +86,7 @@
   "dependencies": {
     "@nestjs/config": "^4.0.2",
     "cookie-parser": "^1.4.7",
+    "multer": "^2.0.2",
     "passport": "^0.7.0",
     "passport-azure-ad-oauth2": "^0.0.4",
     "passport-github": "^1.1.0",
