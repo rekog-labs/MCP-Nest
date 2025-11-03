@@ -11,6 +11,8 @@ import { McpExecutorService } from './services/mcp-executor.service';
 import { McpRegistryService } from './services/mcp-registry.service';
 import { McpSseService } from './services/mcp-sse.service';
 import { McpStreamableHttpService } from './services/mcp-streamable-http.service';
+import { McpStreamableHttpStatefulService } from './services/mcp-streamable-http-stateful.service';
+import { McpStreamableHttpStatelessService } from './services/mcp-streamable-http-stateless.service';
 import { SsePingService } from './services/sse-ping.service';
 import { createSseController } from './transport/sse.controller.factory';
 import { StdioService } from './transport/stdio.service';
@@ -93,6 +95,8 @@ export class McpModule {
       McpExecutorService,
       SsePingService,
       McpSseService,
+      McpStreamableHttpStatelessService,
+      McpStreamableHttpStatefulService,
       McpStreamableHttpService,
       StdioService,
     ];
@@ -245,6 +249,8 @@ export class McpModule {
       McpExecutorService,
       SsePingService,
       McpSseService,
+      McpStreamableHttpStatelessService,
+      McpStreamableHttpStatefulService,
       McpStreamableHttpService,
       StdioService,
     ];
