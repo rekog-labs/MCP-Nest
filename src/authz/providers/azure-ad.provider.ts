@@ -17,21 +17,22 @@ export const AzureADOAuthProvider: OAuthProviderConfig = {
   profileMapper: (profile) => {
     // Azure AD profile structure from Microsoft Graph
     const azureProfile = profile._json || profile;
-    
+
     return {
       id: azureProfile.id || azureProfile.oid || profile.id,
-      username: azureProfile.preferred_username ||
-                azureProfile.userPrincipalName || 
-                azureProfile.mail || 
-                azureProfile.email ||
-                profile.username,
-      email: azureProfile.mail || 
-             azureProfile.userPrincipalName || 
-             azureProfile.email ||
-             profile.emails?.[0]?.value,
-      displayName: azureProfile.displayName || 
-                   azureProfile.name || 
-                   profile.displayName,
+      username:
+        azureProfile.preferred_username ||
+        azureProfile.userPrincipalName ||
+        azureProfile.mail ||
+        azureProfile.email ||
+        profile.username,
+      email:
+        azureProfile.mail ||
+        azureProfile.userPrincipalName ||
+        azureProfile.email ||
+        profile.emails?.[0]?.value,
+      displayName:
+        azureProfile.displayName || azureProfile.name || profile.displayName,
       avatarUrl: azureProfile.photo || profile.photos?.[0]?.value,
       raw: profile,
     };

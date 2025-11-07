@@ -14,7 +14,9 @@ interface AuthenticatedRequest extends Request {
   user: JwtPayload;
 }
 
-export function createMcpAuthJwtGuard(authModuleId?: string): Type<CanActivate> {
+export function createMcpAuthJwtGuard(
+  authModuleId?: string,
+): Type<CanActivate> {
   const jwtTokenServiceToken = authModuleId
     ? `JwtTokenService_${authModuleId}`
     : 'JwtTokenService';
@@ -31,8 +33,7 @@ export function createMcpAuthJwtGuard(authModuleId?: string): Type<CanActivate> 
     ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
-      const request =
-        context.switchToHttp().getRequest<AuthenticatedRequest>();
+      const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
       const token = this.extractTokenFromHeader(request);
 
       if (!token) {

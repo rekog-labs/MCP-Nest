@@ -29,7 +29,12 @@ describe('JwtTokenService', () => {
   });
 
   it('generates tokens with configured expirations', () => {
-    const tokens = service.generateTokenPair('user1', 'client1', '', 'resource1');
+    const tokens = service.generateTokenPair(
+      'user1',
+      'client1',
+      '',
+      'resource1',
+    );
     expect(tokens.refresh_token).toBeDefined();
     const decoded = jwt.decode(tokens.access_token) as jwt.JwtPayload;
     const decodedRefresh = jwt.decode(tokens.refresh_token!) as jwt.JwtPayload;
@@ -60,4 +65,3 @@ describe('JwtTokenService', () => {
     expect(tokens.expires_in).toBe(2 * 60 * 60);
   });
 });
-

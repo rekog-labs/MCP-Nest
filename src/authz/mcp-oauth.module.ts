@@ -3,7 +3,6 @@ import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { McpAuthJwtGuard } from './guards/jwt-auth.guard';
-import { createMcpAuthJwtGuard } from './guards/jwt-auth.guard.factory';
 import { createMcpOAuthController } from './mcp-oauth.controller';
 import {
   OAuthUserModuleOptions as AuthUserModuleOptions,
@@ -172,14 +171,6 @@ export class McpAuthModule {
       useExisting: oauthStoreToken,
     };
 
-    // Create instance-scoped service tokens
-    const jwtTokenServiceToken = `JwtTokenService_${authModuleId}`;
-    const clientServiceToken = `ClientService_${authModuleId}`;
-    const oauthStrategyServiceToken = `OAuthStrategyService_${authModuleId}`;
-    
-    // Create instance-specific guard class
-    const McpAuthJwtGuardClass = createMcpAuthJwtGuard(authModuleId);
-
     const providers: any[] = [
       {
         provide: 'OAUTH_MODULE_ID',
@@ -188,7 +179,7 @@ export class McpAuthModule {
       oauthModuleOptions,
       oauthStoreProvider,
       oauthStoreAliasProvider,
-      // Provide instance-specific aliases for backward compatibility
+      // Provide backward-compatible tokens as aliases
       {
         provide: 'OAUTH_MODULE_OPTIONS',
         useExisting: oauthModuleOptionsToken,
@@ -197,38 +188,11 @@ export class McpAuthModule {
         provide: 'IOAuthStore',
         useExisting: oauthStoreToken,
       },
-      // Instance-scoped services
-      {
-        provide: oauthStrategyServiceToken,
-        useClass: OAuthStrategyService,
-      },
-      {
-        provide: clientServiceToken,
-        useClass: ClientService,
-      },
-      {
-        provide: jwtTokenServiceToken,
-        useClass: JwtTokenService,
-      },
-      // Instance-specific guard
-      McpAuthJwtGuardClass,
-      // Aliases for backward compatibility
-      {
-        provide: OAuthStrategyService,
-        useExisting: oauthStrategyServiceToken,
-      },
-      {
-        provide: ClientService,
-        useExisting: clientServiceToken,
-      },
-      {
-        provide: JwtTokenService,
-        useExisting: jwtTokenServiceToken,
-      },
-      {
-        provide: McpAuthJwtGuard,
-        useClass: McpAuthJwtGuardClass,
-      },
+      // Provide services using their class tokens
+      OAuthStrategyService,
+      ClientService,
+      JwtTokenService,
+      McpAuthJwtGuard,
     ];
 
     // No additional providers needed for TypeORM store - provider is created dynamically
@@ -254,20 +218,12 @@ export class McpAuthModule {
       providers,
       exports: [
         'OAUTH_MODULE_ID',
-        oauthModuleOptionsToken,
-        oauthStoreToken,
-        jwtTokenServiceToken,
-        clientServiceToken,
-        oauthStrategyServiceToken,
-        // Export the instance-specific guard class
-        McpAuthJwtGuardClass,
-        // Export aliases for backward compatibility
+        'OAUTH_MODULE_OPTIONS',
+        'IOAuthStore',
         JwtTokenService,
         ClientService,
         OAuthStrategyService,
         McpAuthJwtGuard,
-        'OAUTH_MODULE_OPTIONS',
-        'IOAuthStore',
         MemoryStore,
       ],
     };

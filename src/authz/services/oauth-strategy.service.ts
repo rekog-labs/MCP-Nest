@@ -13,7 +13,9 @@ export class OAuthStrategyService implements OnModuleInit {
     @Optional() @Inject('OAUTH_MODULE_ID') private authModuleId?: string,
   ) {
     // Use instance-specific strategy name if authModuleId is provided
-    this.strategyName = authModuleId ? `${STRATEGY_NAME}-${authModuleId}` : STRATEGY_NAME;
+    this.strategyName = authModuleId
+      ? `${STRATEGY_NAME}-${authModuleId}`
+      : STRATEGY_NAME;
   }
 
   onModuleInit() {

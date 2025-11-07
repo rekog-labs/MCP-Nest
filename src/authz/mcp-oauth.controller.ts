@@ -81,8 +81,14 @@ export function createMcpOAuthController(
     readonly strategyName: string;
 
     constructor(
-      @Inject(authModuleId ? `OAUTH_MODULE_OPTIONS_${authModuleId}` : 'OAUTH_MODULE_OPTIONS') options: OAuthModuleOptions,
-      @Inject(authModuleId ? `IOAuthStore_${authModuleId}` : 'IOAuthStore') readonly store: IOAuthStore,
+      @Inject(
+        authModuleId
+          ? `OAUTH_MODULE_OPTIONS_${authModuleId}`
+          : 'OAUTH_MODULE_OPTIONS',
+      )
+      options: OAuthModuleOptions,
+      @Inject(authModuleId ? `IOAuthStore_${authModuleId}` : 'IOAuthStore')
+      readonly store: IOAuthStore,
       readonly jwtTokenService: JwtTokenService,
       readonly clientService: ClientService,
       readonly oauthStrategyService: OAuthStrategyService,
