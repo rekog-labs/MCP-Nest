@@ -89,12 +89,36 @@ export class GreetingTool {
 }
 ```
 
+### Configuring Logging
+
+By default, the module includes debug logs for tool discovery and operations. To control log levels:
+
+```typescript
+// main.ts
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  // Control log levels - exclude 'debug' for production
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log'], // or ['error', 'warn', 'log', 'debug']
+  });
+  
+  await app.listen(3000);
+}
+
+bootstrap();
+```
+
+See the **[Logging Configuration Guide](docs/logging.md)** for more details.
+
 ## Documentation
 
 - **[Tools Guide](docs/tools.md)** - Define and expose NestJS methods as MCP tools
 - **[Resources Guide](docs/resources.md)** - Serve static and dynamic content
 - **[Resource Templates Guide](docs/resource-templates.md)** - Create parameterized resources
 - **[Prompts Guide](docs/prompts.md)** - Build reusable prompt templates
+- **[Logging Configuration](docs/logging.md)** - Configure and control logging levels
 - **[Built-in Authorization Server](docs/built-in-authorization-server.md)** - Secure your MCP server with built-in OAuth
 - **[External Authorization Server](docs/external-authorization-server/README.md)** - Securing your MCP server with an external authorization server (Keycloak, Auth0, etc)
 - **[Server examples](docs/server-examples.md)** - MCP servers examples (Streamable HTTP, HTTP, and STDIO) and with Fastify support

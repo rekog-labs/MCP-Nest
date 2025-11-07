@@ -6,6 +6,7 @@
 - [Resource Templates Guide](./resource-templates.md) — Resource URI templates and usage.
 - [Resources Guide](./resources.md) — Defining and exposing resources.
 - [Dependency Injection](docs/dependency-injection.md) — Leverage NestJS DI system throughout MCP components.
+- [Logging Configuration](./logging.md) — How to configure and control logging levels.
 
 ### Advanced Usage
 

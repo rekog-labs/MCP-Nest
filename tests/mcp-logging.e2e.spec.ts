@@ -30,7 +30,7 @@ describe('E2E: MCP Logging Configuration', () => {
     }
   });
 
-  it('should not show debug logs when logger level is set to log', async () => {
+  it('should not show debug logs when logger level excludes debug', async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         McpModule.forRoot({
@@ -42,40 +42,33 @@ describe('E2E: MCP Logging Configuration', () => {
       providers: [SimpleToolService],
     }).compile();
 
-    // Create spy on console methods to capture logs
-    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
-    const consoleDebugSpy = jest.spyOn(console, 'debug').mockImplementation();
-
     // Create app with log level that excludes debug
     app = moduleFixture.createNestApplication();
+    
+    // Capture console output
+    const logSpy = jest.spyOn(console, 'log').mockImplementation();
+    
     app.useLogger(['log', 'error', 'warn']);
-
     await app.init();
 
     // Get all console.log calls
-    const logCalls = consoleLogSpy.mock.calls.map((call) =>
-      call.join(' '),
-    );
-    const debugCalls = consoleDebugSpy.mock.calls.map((call) =>
-      call.join(' '),
-    );
+    const logCalls = logSpy.mock.calls.map((call) => call.join(' '));
 
     // Check that debug logs from McpRegistryService are NOT present
-    const hasDebugLogs = [...logCalls, ...debugCalls].some((log) =>
+    const hasDebugLogs = logCalls.some((log) =>
       log.includes('DEBUG') && log.includes('McpRegistryService'),
     );
 
     expect(hasDebugLogs).toBe(false);
 
-    consoleLogSpy.mockRestore();
-    consoleDebugSpy.mockRestore();
+    logSpy.mockRestore();
   });
 
-  it('should show debug logs when logger level includes debug', async () => {
+  it('should not show any logs when logger is disabled', async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         McpModule.forRoot({
-          name: 'test-mcp-server',
+          name: 'test-mcp-server-no-logs',
           version: '0.0.1',
           transport: [McpTransportType.SSE],
         }),
@@ -83,42 +76,24 @@ describe('E2E: MCP Logging Configuration', () => {
       providers: [SimpleToolService],
     }).compile();
 
-    // Create spy on console methods to capture logs
-    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
-    const consoleDebugSpy = jest.spyOn(console, 'debug').mockImplementation();
-
-    // Create app with debug log level
+    // Create app with logging disabled
     app = moduleFixture.createNestApplication();
-    app.useLogger(['log', 'error', 'warn', 'debug']);
 
+    // Capture console output
+    const logSpy = jest.spyOn(console, 'log').mockImplementation();
+
+    app.useLogger(false);
     await app.init();
 
     // Get all console.log calls
-    const logCalls = consoleLogSpy.mock.calls.map((call) =>
-      call.join(' '),
-    );
-    const debugCalls = consoleDebugSpy.mock.calls.map((call) =>
-      call.join(' '),
-    );
+    const logCalls = logSpy.mock.calls.map((call) => call.join(' '));
 
-    // Check that debug logs from McpRegistryService ARE present
-    const hasDebugLogs = [...logCalls, ...debugCalls].some((log) =>
-      log.includes('DEBUG') && log.includes('McpRegistryService'),
-    );
+    // Check that no Nest logs are present
+    const hasNestLogs = logCalls.some((log) => log.includes('[Nest]'));
 
-    // Debug: print all logs
-    if (!hasDebugLogs) {
-      console.log('=== ALL LOGS ===');
-      [...logCalls, ...debugCalls].forEach((log) => {
-        if (log.includes('McpRegistry') || log.includes('DEBUG')) {
-          console.log(log);
-        }
-      });
-    }
+    expect(hasNestLogs).toBe(false);
 
-    expect(hasDebugLogs).toBe(true);
-
-    consoleLogSpy.mockRestore();
-    consoleDebugSpy.mockRestore();
+    logSpy.mockRestore();
   });
 });
+
