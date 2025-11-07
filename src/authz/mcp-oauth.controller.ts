@@ -25,7 +25,7 @@ import {
 } from './providers/oauth-provider.interface';
 import { ClientService } from './services/client.service';
 import { JwtTokenService, TokenPair } from './services/jwt-token.service';
-import { STRATEGY_NAME } from './services/oauth-strategy.service';
+import { OAuthStrategyService } from './services/oauth-strategy.service';
 import { IOAuthStore } from './stores/oauth-store.interface';
 
 interface OAuthCallbackRequest extends ExpressRequest {
@@ -48,6 +48,7 @@ export function createMcpOAuthController(
     disableWellKnownProtectedResourceMetadata?: boolean;
     disableWellKnownAuthorizationServerMetadata?: boolean;
   },
+  authModuleId?: string,
 ) {
   // Optional decorator helpers
   const OptionalGet = (
@@ -77,16 +78,19 @@ export function createMcpOAuthController(
     readonly serverUrl: string;
     readonly isProduction: boolean;
     readonly options: OAuthModuleOptions;
+    readonly strategyName: string;
 
     constructor(
-      @Inject('OAUTH_MODULE_OPTIONS') options: OAuthModuleOptions,
-      @Inject('IOAuthStore') readonly store: IOAuthStore,
+      @Inject(authModuleId ? `OAUTH_MODULE_OPTIONS_${authModuleId}` : 'OAUTH_MODULE_OPTIONS') options: OAuthModuleOptions,
+      @Inject(authModuleId ? `IOAuthStore_${authModuleId}` : 'IOAuthStore') readonly store: IOAuthStore,
       readonly jwtTokenService: JwtTokenService,
       readonly clientService: ClientService,
+      readonly oauthStrategyService: OAuthStrategyService,
     ) {
       this.serverUrl = options.serverUrl;
       this.isProduction = options.cookieSecure;
       this.options = options;
+      this.strategyName = oauthStrategyService.getStrategyName();
     }
 
     /**
@@ -350,7 +354,7 @@ export function createMcpOAuthController(
       });
 
       // Redirect to the provider's auth endpoint
-      passport.authenticate(STRATEGY_NAME, {
+      passport.authenticate(this.strategyName, {
         state: req.cookies?.oauth_state,
       })(req, res, next);
     }
@@ -363,7 +367,7 @@ export function createMcpOAuthController(
     ) {
       // Use a custom callback to handle the authentication result
       passport.authenticate(
-        STRATEGY_NAME,
+        this.strategyName,
         { session: false },
         async (err: any, user: any) => {
           try {

@@ -8,3 +8,4 @@ export * from './stores/oauth-store.interface';
 export * from './stores/memory-store.service';
 export * from './interfaces/request-with-user';
 export * from './guards/jwt-auth.guard';
+export * from './guards/jwt-auth.guard.factory';

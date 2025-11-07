@@ -1,8 +1,9 @@
-import { DynamicModule, Global, Module } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { McpAuthJwtGuard } from './guards/jwt-auth.guard';
+import { createMcpAuthJwtGuard } from './guards/jwt-auth.guard.factory';
 import { createMcpOAuthController } from './mcp-oauth.controller';
 import {
   OAuthUserModuleOptions as AuthUserModuleOptions,
@@ -16,6 +17,8 @@ import { OAuthStrategyService } from './services/oauth-strategy.service';
 import { MemoryStore } from './stores/memory-store.service';
 import { normalizeEndpoint } from '../mcp/utils/normalize-endpoint';
 import { OAUTH_TYPEORM_CONNECTION_NAME } from './stores/typeorm/constants';
+
+let authInstanceIdCounter = 0;
 
 // Default configuration values
 export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
@@ -64,10 +67,17 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
   },
 };
 
-@Global()
 @Module({})
 export class McpAuthModule {
+  /**
+   * To avoid import circular dependency issues, we use a marker property.
+   */
+  readonly __isMcpAuthModule = true;
+
   static forRoot(options: AuthUserModuleOptions): DynamicModule {
+    // Create a unique instance ID for this auth module
+    const authModuleId = `mcp-auth-module-${authInstanceIdCounter++}`;
+
     // Merge user options with defaults and validate
     const resolvedOptions = this.mergeAndValidateOptions(
       DEFAULT_OPTIONS,
@@ -79,8 +89,11 @@ export class McpAuthModule {
       DEFAULT_OPTIONS.endpoints,
       options.endpoints || {},
     );
+
+    // Use instance-scoped token for OAuth options
+    const oauthModuleOptionsToken = `OAUTH_MODULE_OPTIONS_${authModuleId}`;
     const oauthModuleOptions = {
-      provide: 'OAUTH_MODULE_OPTIONS',
+      provide: oauthModuleOptionsToken,
       useValue: resolvedOptions,
     };
 
@@ -146,30 +159,81 @@ export class McpAuthModule {
       }
     }
 
-    // Create store provider based on configuration
+    // Create store provider based on configuration with instance-scoped token
+    const oauthStoreToken = `IOAuthStore_${authModuleId}`;
     const oauthStoreProvider = this.createStoreProvider(
       resolvedOptions.storeConfiguration,
+      oauthStoreToken,
     );
 
     // Create alias for compatibility with injection
     const oauthStoreAliasProvider = {
       provide: MemoryStore,
-      useExisting: 'IOAuthStore',
+      useExisting: oauthStoreToken,
     };
 
+    // Create instance-scoped service tokens
+    const jwtTokenServiceToken = `JwtTokenService_${authModuleId}`;
+    const clientServiceToken = `ClientService_${authModuleId}`;
+    const oauthStrategyServiceToken = `OAuthStrategyService_${authModuleId}`;
+    
+    // Create instance-specific guard class
+    const McpAuthJwtGuardClass = createMcpAuthJwtGuard(authModuleId);
+
     const providers: any[] = [
+      {
+        provide: 'OAUTH_MODULE_ID',
+        useValue: authModuleId,
+      },
       oauthModuleOptions,
       oauthStoreProvider,
       oauthStoreAliasProvider,
-      OAuthStrategyService,
-      ClientService,
-      JwtTokenService,
-      McpAuthJwtGuard,
+      // Provide instance-specific aliases for backward compatibility
+      {
+        provide: 'OAUTH_MODULE_OPTIONS',
+        useExisting: oauthModuleOptionsToken,
+      },
+      {
+        provide: 'IOAuthStore',
+        useExisting: oauthStoreToken,
+      },
+      // Instance-scoped services
+      {
+        provide: oauthStrategyServiceToken,
+        useClass: OAuthStrategyService,
+      },
+      {
+        provide: clientServiceToken,
+        useClass: ClientService,
+      },
+      {
+        provide: jwtTokenServiceToken,
+        useClass: JwtTokenService,
+      },
+      // Instance-specific guard
+      McpAuthJwtGuardClass,
+      // Aliases for backward compatibility
+      {
+        provide: OAuthStrategyService,
+        useExisting: oauthStrategyServiceToken,
+      },
+      {
+        provide: ClientService,
+        useExisting: clientServiceToken,
+      },
+      {
+        provide: JwtTokenService,
+        useExisting: jwtTokenServiceToken,
+      },
+      {
+        provide: McpAuthJwtGuard,
+        useClass: McpAuthJwtGuardClass,
+      },
     ];
 
     // No additional providers needed for TypeORM store - provider is created dynamically
 
-    // Create controller with apiPrefix
+    // Create controller with apiPrefix, passing the instance-scoped tokens
     const OAuthControllerClass = createMcpOAuthController(
       resolvedOptions.endpoints,
       {
@@ -180,6 +244,7 @@ export class McpAuthModule {
           resolvedOptions.disableEndpoints.wellKnownProtectedResourceMetadata ??
           false,
       },
+      authModuleId,
     );
 
     return {
@@ -188,11 +253,22 @@ export class McpAuthModule {
       controllers: [OAuthControllerClass],
       providers,
       exports: [
+        'OAUTH_MODULE_ID',
+        oauthModuleOptionsToken,
+        oauthStoreToken,
+        jwtTokenServiceToken,
+        clientServiceToken,
+        oauthStrategyServiceToken,
+        // Export the instance-specific guard class
+        McpAuthJwtGuardClass,
+        // Export aliases for backward compatibility
         JwtTokenService,
+        ClientService,
+        OAuthStrategyService,
+        McpAuthJwtGuard,
+        'OAUTH_MODULE_OPTIONS',
         'IOAuthStore',
         MemoryStore,
-        McpAuthJwtGuard,
-        OAuthStrategyService,
       ],
     };
   }
@@ -292,11 +368,12 @@ export class McpAuthModule {
 
   private static createStoreProvider(
     storeConfiguration: OAuthModuleOptions['storeConfiguration'],
+    provideToken: string,
   ) {
     if (!storeConfiguration || storeConfiguration.type === 'memory') {
       // Default memory store
       return {
-        provide: 'IOAuthStore',
+        provide: provideToken,
         useValue: new MemoryStore(),
       };
     }
@@ -308,7 +385,7 @@ export class McpAuthModule {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
       } = require('./stores/typeorm/typeorm-store.service');
       return {
-        provide: 'IOAuthStore',
+        provide: provideToken,
         useClass: TypeOrmStore,
       };
     }
@@ -316,7 +393,7 @@ export class McpAuthModule {
     if (storeConfiguration.type === 'custom') {
       // Custom store
       return {
-        provide: 'IOAuthStore',
+        provide: provideToken,
         useValue: storeConfiguration.store,
       };
     }
