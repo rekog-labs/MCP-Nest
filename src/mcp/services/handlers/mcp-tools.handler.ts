@@ -7,12 +7,12 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { Inject, Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { McpRequestWithUser } from 'src/authz';
+import { MCP_VALIDATION_ADAPTER } from '../../decorators';
+import { HttpRequest } from '../../interfaces/http-adapter.interface';
+import { IValidationAdapter } from '../../interfaces/validation-adapter.interface';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
-import { ZodTypeAny } from 'zod';
-import { HttpRequest } from '../../interfaces/http-adapter.interface';
-import { McpRequestWithUser } from 'src/authz';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -20,6 +20,8 @@ export class McpToolsHandler extends McpHandlerBase {
     moduleRef: ModuleRef,
     registry: McpRegistryService,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
+    @Inject(MCP_VALIDATION_ADAPTER)
+    private readonly validationAdapter: IValidationAdapter,
   ) {
     super(moduleRef, registry, McpToolsHandler.name);
   }
@@ -33,17 +35,25 @@ export class McpToolsHandler extends McpHandlerBase {
     ];
   }
 
-  private formatToolResult(result: any, outputSchema?: ZodTypeAny): any {
+  private async formatToolResult(
+    result: any,
+    outputSchema?: any,
+  ): Promise<any> {
     if (result && typeof result === 'object' && Array.isArray(result.content)) {
       return result;
     }
 
     if (outputSchema) {
-      const validation = outputSchema.safeParse(result);
+      const validation = await this.validationAdapter.validate(
+        outputSchema,
+        result,
+      );
       if (!validation.success) {
         throw new McpError(
           ErrorCode.InternalError,
-          `Tool result does not match outputSchema: ${validation.error.message}`,
+          `Tool result does not match outputSchema: ${JSON.stringify(
+            validation.error,
+          )}`,
         );
       }
       return {
@@ -65,30 +75,29 @@ export class McpToolsHandler extends McpHandlerBase {
 
     mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
       const tools = this.registry.getTools(this.mcpModuleId).map((tool) => {
-        // Create base schema
+        const inputSchema = tool.metadata.parameters
+          ? this.registry.getJsonSchema(tool.metadata.parameters)
+          : {};
+
         const toolSchema = {
           name: tool.metadata.name,
           description: tool.metadata.description,
           annotations: tool.metadata.annotations,
+          inputSchema: {
+            ...inputSchema,
+            type: 'object',
+          },
           _meta: tool.metadata._meta,
         };
 
-        // Add input schema if defined
-        if (tool.metadata.parameters) {
-          toolSchema['inputSchema'] = zodToJsonSchema(tool.metadata.parameters);
-        }
-
-        // Add output schema if defined, ensuring it has type: 'object'
         if (tool.metadata.outputSchema) {
-          const outputSchema = zodToJsonSchema(tool.metadata.outputSchema);
-
-          // Create a new object that explicitly includes type: 'object'
-          const jsonSchema = {
+          const outputSchema = this.registry.getJsonSchema(
+            tool.metadata.outputSchema,
+          );
+          toolSchema['outputSchema'] = {
             ...outputSchema,
             type: 'object',
           };
-
-          toolSchema['outputSchema'] = jsonSchema;
         }
 
         return toolSchema;
@@ -117,18 +126,17 @@ export class McpToolsHandler extends McpHandlerBase {
         }
 
         try {
-          // Validate input parameters against the tool's schema
           if (toolInfo.metadata.parameters) {
-            const validation = toolInfo.metadata.parameters.safeParse(
+            const validation = await this.validationAdapter.validate(
+              toolInfo.metadata.parameters,
               request.params.arguments || {},
             );
             if (!validation.success) {
               throw new McpError(
                 ErrorCode.InvalidParams,
-                `Invalid parameters: ${validation.error.message}`,
+                `Invalid parameters: ${JSON.stringify(validation.error)}`,
               );
             }
-            // Use validated arguments to ensure defaults and transformations are applied
             request.params.arguments = validation.data;
           }
 
@@ -157,22 +165,19 @@ export class McpToolsHandler extends McpHandlerBase {
             httpRequest.raw as McpRequestWithUser,
           );
 
-          const transformedResult = this.formatToolResult(
+          const transformedResult = await this.formatToolResult(
             result,
             toolInfo.metadata.outputSchema,
           );
 
           this.logger.debug(transformedResult, 'CallToolRequestSchema result');
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return transformedResult;
         } catch (error) {
           this.logger.error(error);
-          // Re-throw McpErrors (like validation errors) so they are handled by the MCP protocol layer
           if (error instanceof McpError) {
             throw error;
           }
-          // For other errors, return formatted error response
           return {
             content: [{ type: 'text', text: error.message }],
             isError: true,

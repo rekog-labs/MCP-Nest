@@ -29,6 +29,8 @@ export class StdioService implements OnApplicationBootstrap {
     }
     this.logger.log('Bootstrapping MCP STDIO...');
 
+    await this.toolRegistry.whenReady();
+
     // Create a new MCP server instance with dynamic capabilities
     const capabilities = buildMcpCapabilities(
       this.mcpModuleId,
