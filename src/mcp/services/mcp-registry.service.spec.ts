@@ -9,6 +9,7 @@ import { McpRegistryService } from './mcp-registry.service';
 import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 import { Tool } from '../decorators/tool.decorator';
 import { McpModule } from '../mcp.module';
+import { MCP_VALIDATION_ADAPTER } from '../decorators';
 
 describe('McpRegistryService', () => {
   let service: McpRegistryService;
@@ -37,6 +38,13 @@ describe('McpRegistryService', () => {
           useValue: {
             getProviders: jest.fn(() => []),
             getControllers: jest.fn(() => []),
+          },
+        },
+        {
+          provide: MCP_VALIDATION_ADAPTER,
+          useValue: {
+            toJsonSchema: jest.fn().mockReturnValue({ type: 'object' }),
+            validate: jest.fn().mockResolvedValue({ success: true }),
           },
         },
         MetadataScanner,
@@ -176,10 +184,19 @@ describe('McpRegistryService - Multiple discovery roots', () => {
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       imports: [ModuleA, ModuleB],
+      providers: [
+        {
+          provide: MCP_VALIDATION_ADAPTER,
+          useValue: {
+            toJsonSchema: jest.fn().mockReturnValue({ type: 'object' }),
+            validate: jest.fn().mockResolvedValue({ success: true }),
+          },
+        },
+      ],
     }).compile();
 
     service = module.get<McpRegistryService>(McpRegistryService);
-    service.onApplicationBootstrap();
+    await service.whenReady();
   });
 
   it('server-a discovered toolA only', () => {
@@ -242,10 +259,19 @@ describe('McpRegistryService - Single discovery root with multiple MCP servers',
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
+      providers: [
+        {
+          provide: MCP_VALIDATION_ADAPTER,
+          useValue: {
+            toJsonSchema: jest.fn().mockReturnValue({ type: 'object' }),
+            validate: jest.fn().mockResolvedValue({ success: true }),
+          },
+        },
+      ],
     }).compile();
 
     service = module.get<McpRegistryService>(McpRegistryService);
-    service.onApplicationBootstrap();
+    await service.whenReady();
   });
 
   it('server-a discovered the tool', () => {

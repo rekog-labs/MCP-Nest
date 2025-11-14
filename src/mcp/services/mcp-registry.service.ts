@@ -1,8 +1,8 @@
 import {
+  Inject,
   Injectable,
   InjectionToken,
   Logger,
-  OnApplicationBootstrap,
 } from '@nestjs/common';
 import {
   DiscoveryService,
@@ -14,6 +14,7 @@ import {
   MCP_RESOURCE_METADATA_KEY,
   MCP_RESOURCE_TEMPLATE_METADATA_KEY,
   MCP_TOOL_METADATA_KEY,
+  MCP_VALIDATION_ADAPTER,
   ToolMetadata,
 } from '../decorators';
 import { ResourceMetadata } from '../decorators/resource.decorator';
@@ -21,6 +22,7 @@ import { match } from 'path-to-regexp';
 import { PromptMetadata } from '../decorators/prompt.decorator';
 import { Module } from '@nestjs/core/injector/module';
 import { ResourceTemplateMetadata } from '../decorators/resource-template.decorator';
+import { IValidationAdapter } from '../interfaces';
 
 /**
  * Interface representing a discovered tool
@@ -38,28 +40,38 @@ export type InjectionTokenWithName = InjectionToken & { name: string };
  * Singleton service that discovers and registers tools during application bootstrap
  */
 @Injectable()
-export class McpRegistryService implements OnApplicationBootstrap {
+export class McpRegistryService {
   private readonly logger = new Logger(McpRegistryService.name);
   private discoveredToolsByMcpModuleId: Map<string, DiscoveredTool<any>[]> =
     new Map();
+  private readonly jsonSchemaCache: Map<any, any> = new Map();
+  private readonly discoveryPromise: Promise<void>;
 
   constructor(
     private readonly discovery: DiscoveryService,
     private readonly metadataScanner: MetadataScanner,
     private readonly modulesContainer: ModulesContainer,
-  ) {}
+    @Inject(MCP_VALIDATION_ADAPTER)
+    private readonly validationAdapter: IValidationAdapter,
+  ) {
+    this.discoveryPromise = this.discoverTools();
+  }
 
-  onApplicationBootstrap() {
-    this.discoverTools();
+  whenReady(): Promise<void> {
+    return this.discoveryPromise;
   }
 
   /**
    * Finds all modules that import the McpModule and then scans the providers and controllers in their subtrees
    */
-  private discoverTools() {
+  private async discoverTools() {
+    // This is a workaround to ensure that the module graph is fully initialized
+    // before we start discovering tools.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     const getImportedMcpModules = (module: Module) =>
       Array.from(module.imports).filter(
-        (m) => (m.instance as any).__isMcpModule,
+        (m) => (m.instance as any)?.__isMcpModule,
       );
 
     const pairs = Array.from(this.modulesContainer.values())
@@ -79,7 +91,9 @@ export class McpRegistryService implements OnApplicationBootstrap {
       for (const mcpModule of mcpModules) {
         const mcpModuleId =
           mcpModule.getProviderByKey<string>('MCP_MODULE_ID')?.instance;
-        this.discoverToolsForModuleSubtree(mcpModuleId, subtreeModules);
+        if (mcpModuleId) {
+          await this.discoverToolsForModuleSubtree(mcpModuleId, subtreeModules);
+        }
       }
     }
   }
@@ -101,7 +115,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
   /**
    * Scans all providers and controllers for @Tool decorators
    */
-  private discoverToolsForModuleSubtree(
+  private async discoverToolsForModuleSubtree(
     mcpModuleId: string,
     modules: Module[],
   ) {
@@ -119,13 +133,15 @@ export class McpRegistryService implements OnApplicationBootstrap {
         token: wrapper.token,
       }));
 
-    allInstances.forEach(({ instance, token }) => {
-      this.metadataScanner.getAllMethodNames(instance).forEach((methodName) => {
+    for (const { instance, token } of allInstances) {
+      for (const methodName of this.metadataScanner.getAllMethodNames(
+        instance,
+      )) {
         const methodRef = instance[methodName] as object;
         const methodMetaKeys = Reflect.getOwnMetadataKeys(methodRef);
 
         if (methodMetaKeys.includes(MCP_TOOL_METADATA_KEY)) {
-          this.addDiscoveryTool(
+          await this.addDiscoveryTool(
             mcpModuleId,
             methodRef,
             token as InjectionTokenWithName,
@@ -143,7 +159,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
         }
 
         if (methodMetaKeys.includes(MCP_RESOURCE_TEMPLATE_METADATA_KEY)) {
-          this.addDiscoveryResourceTemplate(
+          await this.addDiscoveryResourceTemplate(
             mcpModuleId,
             methodRef,
             token as InjectionTokenWithName,
@@ -152,21 +168,21 @@ export class McpRegistryService implements OnApplicationBootstrap {
         }
 
         if (methodMetaKeys.includes(MCP_PROMPT_METADATA_KEY)) {
-          this.addDiscoveryPrompt(
+          await this.addDiscoveryPrompt(
             mcpModuleId,
             methodRef,
             token as InjectionTokenWithName,
             methodName,
           );
         }
-      });
-    });
+      }
+    }
   }
 
   /**
    * Adds a discovered tool to the registry
    */
-  private addDiscovery<T>(
+  private async addDiscovery<T>(
     type: 'tool' | 'resource' | 'resource-template' | 'prompt',
     metadataKey: string,
     mcpModuleId: string,
@@ -178,6 +194,19 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
     if (!metadata['name']) {
       metadata['name'] = methodName;
+    }
+
+    if (metadata['parameters']) {
+      const schema = await this.validationAdapter.toJsonSchema(
+        metadata['parameters'],
+      );
+      this.jsonSchemaCache.set(metadata['parameters'], schema);
+    }
+    if (metadata['outputSchema']) {
+      const schema = await this.validationAdapter.toJsonSchema(
+        metadata['outputSchema'],
+      );
+      this.jsonSchemaCache.set(metadata['outputSchema'], schema);
     }
 
     if (!this.discoveredToolsByMcpModuleId.has(mcpModuleId)) {
@@ -192,7 +221,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     });
   }
 
-  private addDiscoveryPrompt(
+  private async addDiscoveryPrompt(
     mcpModuleId: string,
     methodRef: object,
     token: InjectionTokenWithName,
@@ -201,7 +230,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     this.logger.debug(
       `Prompt discovered: ${token.name}.${methodName} in module: ${mcpModuleId}`,
     );
-    this.addDiscovery<PromptMetadata>(
+    await this.addDiscovery<PromptMetadata>(
       'prompt',
       MCP_PROMPT_METADATA_KEY,
       mcpModuleId,
@@ -211,7 +240,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     );
   }
 
-  private addDiscoveryTool(
+  private async addDiscoveryTool(
     mcpModuleId: string,
     methodRef: object,
     token: InjectionTokenWithName,
@@ -220,7 +249,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     this.logger.debug(
       `Tool discovered: ${token.name}.${methodName} in module: ${mcpModuleId}`,
     );
-    this.addDiscovery<ToolMetadata>(
+    await this.addDiscovery<ToolMetadata>(
       'tool',
       MCP_TOOL_METADATA_KEY,
       mcpModuleId,
@@ -249,7 +278,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     );
   }
 
-  private addDiscoveryResourceTemplate(
+  private async addDiscoveryResourceTemplate(
     mcpModuleId: string,
     methodRef: object,
     token: InjectionTokenWithName,
@@ -258,7 +287,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     this.logger.debug(
       `Resource Template discovered: ${token.name}.${methodName} in module: ${mcpModuleId}`,
     );
-    this.addDiscovery<ResourceTemplateMetadata>(
+    await this.addDiscovery<ResourceTemplateMetadata>(
       'resource-template',
       MCP_RESOURCE_TEMPLATE_METADATA_KEY,
       mcpModuleId,
@@ -273,6 +302,10 @@ export class McpRegistryService implements OnApplicationBootstrap {
    */
   getMcpModuleIds(): string[] {
     return Array.from(this.discoveredToolsByMcpModuleId.keys());
+  }
+
+  getJsonSchema(schema: any): any {
+    return this.jsonSchemaCache.get(schema);
   }
 
   /**

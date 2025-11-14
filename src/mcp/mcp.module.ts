@@ -1,5 +1,7 @@
 import { DynamicModule, Module, Provider, Type } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
+import { ZodValidationAdapter } from './adapters/zod-validation.adapter';
+import { MCP_VALIDATION_ADAPTER } from './decorators/constants';
 import { McpTransportType } from './interfaces';
 import type {
   McpOptions,
@@ -7,6 +9,7 @@ import type {
   McpOptionsFactory,
   McpAsyncOptions,
 } from './interfaces';
+import { IValidationAdapter } from './interfaces/validation-adapter.interface';
 import { McpExecutorService } from './services/mcp-executor.service';
 import { McpRegistryService } from './services/mcp-registry.service';
 import { McpSseService } from './services/mcp-sse.service';
@@ -41,6 +44,7 @@ export class McpModule {
       mcpEndpoint: 'mcp',
       guards: [],
       decorators: [],
+      validationAdapter: new ZodValidationAdapter(),
       streamableHttp: {
         enableJsonResponse: true,
         sessionIdGenerator: undefined,
@@ -69,21 +73,18 @@ export class McpModule {
     };
   }
 
-  /**
-   * Asynchronous variant of forRoot. Controllers are NOT auto-registered here because
-   * they must be declared synchronously at module definition time. This keeps the
-   * API explicit: when using forRootAsync, you are responsible for creating and
-   * registering any transport controllers (e.g. via createSseController / createStreamableHttpController).
-   *
-   * The exposed async options intentionally omit the `transport` property. Transport
-   * selection only influences automatic controller creation (which does not occur here)
-   * and STDIO auto-start. If you need STDIO with forRootAsync, manually instantiate
-   * and bootstrap it (e.g. by importing a module that injects StdioService) or add
-   * an explicit provider that sets options.transport before use.
-   */
   static forRootAsync(options: McpModuleAsyncOptions): DynamicModule {
     const moduleId = `mcp-module-${instanceIdCounter++}`;
     const asyncProviders = this.createAsyncProviders(options);
+
+    const validationAdapterProvider: Provider = {
+      provide: MCP_VALIDATION_ADAPTER,
+      useFactory: (options: McpOptions): IValidationAdapter => {
+        return options.validationAdapter ?? new ZodValidationAdapter();
+      },
+      inject: ['MCP_OPTIONS'],
+    };
+
     const baseProviders: Provider[] = [
       {
         provide: 'MCP_MODULE_ID',
@@ -100,10 +101,10 @@ export class McpModule {
     return {
       module: McpModule,
       imports: options.imports ?? [],
-      // No automatic controllers in async mode
       controllers: [],
       providers: [
         ...asyncProviders,
+        validationAdapterProvider,
         ...baseProviders,
         ...(options.extraProviders ?? []),
       ],
@@ -129,7 +130,6 @@ export class McpModule {
       ];
     }
 
-    // useClass / useExisting path
     const inject: any[] = [];
     let optionsFactoryProvider: Provider | undefined;
 
@@ -168,6 +168,7 @@ export class McpModule {
       mcpEndpoint: 'mcp',
       guards: [],
       decorators: [],
+      validationAdapter: new ZodValidationAdapter(),
       streamableHttp: {
         enableJsonResponse: true,
         sessionIdGenerator: undefined,
@@ -178,7 +179,6 @@ export class McpModule {
         pingIntervalMs: 30000,
       },
     };
-    // Note: transport intentionally omitted
     const merged = { ...defaultOptions, ...resolved } as McpOptions;
     merged.sseEndpoint = normalizeEndpoint(merged.sseEndpoint);
     merged.messagesEndpoint = normalizeEndpoint(merged.messagesEndpoint);
@@ -221,10 +221,6 @@ export class McpModule {
       controllers.push(streamableHttpController);
     }
 
-    if (transports.includes(McpTransportType.STDIO)) {
-      // STDIO transport is handled by injectable StdioService, no controller
-    }
-
     return controllers;
   }
 
@@ -236,6 +232,10 @@ export class McpModule {
       {
         provide: 'MCP_OPTIONS',
         useValue: options,
+      },
+      {
+        provide: MCP_VALIDATION_ADAPTER,
+        useValue: options.validationAdapter,
       },
       {
         provide: 'MCP_MODULE_ID',

@@ -1,5 +1,6 @@
 import { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
 import { CanActivate, ModuleMetadata, Type } from '@nestjs/common';
+import { IValidationAdapter } from './validation-adapter.interface';
 
 export enum McpTransportType {
   SSE = 'sse',
@@ -26,6 +27,7 @@ export interface McpOptions {
   apiPrefix?: string;
   guards?: Type<CanActivate>[];
   decorators?: ClassDecorator[];
+  validationAdapter?: IValidationAdapter;
   sse?: {
     pingEnabled?: boolean;
     pingIntervalMs?: number;

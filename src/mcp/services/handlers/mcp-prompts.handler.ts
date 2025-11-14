@@ -11,6 +11,8 @@ import {
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
+import { MCP_VALIDATION_ADAPTER } from '../../../mcp/decorators';
+import { IValidationAdapter } from '../../../mcp/interfaces';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpPromptsHandler extends McpHandlerBase {
@@ -18,6 +20,8 @@ export class McpPromptsHandler extends McpHandlerBase {
     moduleRef: ModuleRef,
     registry: McpRegistryService,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
+    @Inject(MCP_VALIDATION_ADAPTER)
+    private readonly validationAdapter: IValidationAdapter,
   ) {
     super(moduleRef, registry, McpPromptsHandler.name);
   }
@@ -32,19 +36,29 @@ export class McpPromptsHandler extends McpHandlerBase {
 
       const prompts = this.registry
         .getPrompts(this.mcpModuleId)
-        .map((prompt) => ({
-          name: prompt.metadata.name,
-          description: prompt.metadata.description,
-          arguments: prompt.metadata.parameters
-            ? Object.entries(prompt.metadata.parameters.shape).map(
-                ([name, field]): PromptArgument => ({
+        .map((prompt) => {
+          let args: PromptArgument[] = [];
+          if (prompt.metadata.parameters) {
+            const schema = this.registry.getJsonSchema(
+              prompt.metadata.parameters,
+            );
+            if (schema && schema.properties) {
+              args = Object.entries(schema.properties).map(
+                ([name, prop]: [string, any]): PromptArgument => ({
                   name,
-                  description: field.description,
-                  required: !field.isOptional(),
+                  description: prop.description,
+                  required: schema.required?.includes(name) ?? false,
                 }),
-              )
-            : [],
-        }));
+              );
+            }
+          }
+
+          return {
+            name: prompt.metadata.name,
+            description: prompt.metadata.description,
+            arguments: args,
+          };
+        });
 
       return {
         prompts,
@@ -65,6 +79,23 @@ export class McpPromptsHandler extends McpHandlerBase {
               ErrorCode.MethodNotFound,
               `Unknown prompt: ${name}`,
             );
+          }
+
+          // Prompts should always have default arguments
+          const args = request.params.arguments || {};
+
+          if (promptInfo.metadata.parameters) {
+            const validation = await this.validationAdapter.validate(
+              promptInfo.metadata.parameters,
+              args,
+            );
+            if (!validation.success) {
+              throw new McpError(
+                ErrorCode.InvalidParams,
+                `Invalid parameters: ${JSON.stringify(validation.error)}`,
+              );
+            }
+            request.params.arguments = validation.data;
           }
 
           const contextId = ContextIdFactory.getByRequest(httpRequest);
@@ -95,10 +126,12 @@ export class McpPromptsHandler extends McpHandlerBase {
 
           this.logger.debug(result, 'GetPromptRequestSchema result');
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return result;
         } catch (error) {
           this.logger.error(error);
+          if (error instanceof McpError) {
+            throw error;
+          }
           return {
             contents: [{ mimeType: 'text/plain', text: error.message }],
             isError: true,
