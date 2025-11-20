@@ -36,8 +36,10 @@ Find out how to do that with `@rekog/MCP-Nest` in this repository [MCP-Nest-Samp
 ## Installation
 
 ```bash
-npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod@^3
+npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod
 ```
+
+**Note**: This package supports both Zod v3 and v4. The `@modelcontextprotocol/sdk` currently uses Zod v3, so we recommend using Zod v3 for best compatibility.
 
 ### Optional dependencies
 

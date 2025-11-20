@@ -25,7 +25,7 @@ export abstract class McpHandlerBase {
       return this.createStatelessContext(mcpServer, mcpRequest);
     }
 
-    const progressToken = mcpRequest.params?._meta?.progressToken;
+    const progressToken = (mcpRequest as any).params?._meta?.progressToken;
     return {
       reportProgress: async (progress: Progress) => {
         if (progressToken) {

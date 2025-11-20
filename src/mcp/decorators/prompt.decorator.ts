@@ -1,23 +1,17 @@
 import { SetMetadata } from '@nestjs/common';
 import { MCP_PROMPT_METADATA_KEY } from './constants';
-import { ZodType, ZodTypeDef, ZodOptional, ZodObject } from 'zod';
-
-type PromptArgsRawShape = {
-  [k: string]:
-    | ZodType<string, ZodTypeDef, string>
-    | ZodOptional<ZodType<string, ZodTypeDef, string>>;
-};
+import { z } from 'zod';
 
 export interface PromptMetadata {
   name: string;
   description: string;
-  parameters?: ZodObject<PromptArgsRawShape>;
+  parameters?: z.ZodObject<any>;
 }
 
 export interface PromptOptions {
   name?: string;
   description: string;
-  parameters?: ZodObject<PromptArgsRawShape>;
+  parameters?: z.ZodObject<any>;
 }
 
 export const Prompt = (options: PromptOptions) => {
