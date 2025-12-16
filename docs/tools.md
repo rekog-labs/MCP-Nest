@@ -60,6 +60,7 @@ The `@Tool()` decorator accepts a configuration object with the following proper
   - `destructiveHint`: Warns if the tool modifies or deletes data
   - `idempotentHint`: Indicates if repeated calls with same input produce same output
   - `openWorldHint`: Suggests if the tool's behavior is predictable or may vary
+- **`guards`** (optional): Array of NestJS guards for access control. See [Tool Guards](#tool-guards-rbac) for details.
 
 For detailed type definitions, refer to the `Context` interface and `ToolOptions` type in the `@rekog/mcp-nest` package.
 
@@ -276,6 +277,56 @@ npx @modelcontextprotocol/inspector@0.16.2
 ```
 
 Connect to `http://localhost:3030/mcp` to test your tools interactively and see progress reporting in real-time.
+
+## Tool Guards (RBAC)
+
+Tools can be protected with NestJS guards for access control. When guards are specified, tools are:
+- **Hidden** from `tools/list` for unauthorized users
+- **Blocked** from execution with "Access denied" error
+
+```typescript
+import type { Request } from 'express';
+import { Injectable, ExecutionContext, CanActivate } from '@nestjs/common';
+import { Tool, Context } from '@rekog/mcp-nest';
+import { z } from 'zod';
+
+// Define a guard that checks user roles
+@Injectable()
+class AdminGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    return request?.user?.role === 'admin';
+  }
+}
+
+@Injectable()
+export class GreetingTool {
+  @Tool({
+    name: 'greet-user',
+    description: "Returns a personalized greeting in the user's preferred language",
+    parameters: z.object({
+      name: z.string().describe('The name of the person to greet'),
+      language: z.string().describe('Language code (e.g., "en", "es", "fr")'),
+    }),
+    guards: [AdminGuard]
+  })
+  async sayHello({ name, language }, context: Context, request: Request) {
+    const greetings = {
+      en: 'Hey',
+      es: 'Qué tal',
+      fr: 'Salut',
+    };
+
+    const greeting = greetings[language] || greetings.en;
+    return `${greeting}, ${name}!`;
+  }
+}
+```
+
+### Transport Limitations
+
+> **Note:** Tool guards require HTTP request context and are **not supported with STDIO transport**.
+When using STDIO, guards that access `request.user` or other HTTP-specific properties will fail, causing guarded tools to be hidden.
 
 ## Example Location
 
