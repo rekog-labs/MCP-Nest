@@ -29,6 +29,20 @@ export class StdioService implements OnApplicationBootstrap {
     }
     this.logger.log('Bootstrapping MCP STDIO...');
 
+    // Warn about tools with guards - they won't work with STDIO transport
+    const toolsWithGuards = this.toolRegistry
+      .getTools(this.mcpModuleId)
+      .filter((tool) => tool.metadata.guards && tool.metadata.guards.length > 0);
+
+    if (toolsWithGuards.length > 0) {
+      const toolNames = toolsWithGuards.map((t) => t.metadata.name).join(', ');
+      this.logger.warn(
+        `Tool guards are not supported with STDIO transport. ` +
+          `The following tools have guards configured and will be hidden: ${toolNames}. ` +
+          `Consider using HTTP transport.`,
+      );
+    }
+
     // Create a new MCP server instance with dynamic capabilities
     const capabilities = buildMcpCapabilities(
       this.mcpModuleId,

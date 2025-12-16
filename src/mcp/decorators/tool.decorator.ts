@@ -1,4 +1,4 @@
-import { SetMetadata } from '@nestjs/common';
+import { CanActivate, SetMetadata, Type } from '@nestjs/common';
 import { MCP_TOOL_METADATA_KEY } from './constants';
 import { z } from 'zod';
 import { ToolAnnotations as SdkToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
@@ -9,7 +9,13 @@ export interface ToolMetadata {
   parameters?: z.ZodTypeAny;
   outputSchema?: z.ZodTypeAny;
   annotations?: SdkToolAnnotations;
-  _meta?: Record<string, any>;
+  _meta?: Record<string, unknown>;
+  /**
+   * Guards that control access to this tool.
+   * Tool is hidden from listing and blocked from execution if guards reject.
+   * Uses the same NestJS guard pattern as @UseGuards().
+   */
+  guards?: Type<CanActivate>[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -21,7 +27,13 @@ export interface ToolOptions {
   parameters?: z.ZodTypeAny;
   outputSchema?: z.ZodTypeAny;
   annotations?: ToolAnnotations;
-  _meta?: Record<string, any>;
+  _meta?: Record<string, unknown>;
+  /**
+   * Guards that control access to this tool.
+   * Tool is hidden from listing and blocked from execution if guards reject.
+   * Uses the same NestJS guard pattern as @UseGuards().
+   */
+  guards?: Type<CanActivate>[];
 }
 
 /**
@@ -31,6 +43,7 @@ export interface ToolOptions {
  * @param {string} options.description - The description of the tool
  * @param {z.ZodTypeAny} [options.parameters] - The parameters of the tool
  * @param {z.ZodTypeAny} [options.outputSchema] - The output schema of the tool
+ * @param {Type<CanActivate>[]} [options.guards] - Guards that control access to this tool
  * @returns {MethodDecorator} - The decorator
  */
 export const Tool = (options: ToolOptions) => {

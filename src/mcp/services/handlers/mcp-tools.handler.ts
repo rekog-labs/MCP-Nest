@@ -5,14 +5,22 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Inject, Injectable, Scope } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  Scope,
+  Type,
+} from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { McpRegistryService } from '../mcp-registry.service';
+import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { ZodTypeAny } from 'zod';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import { McpRequestWithUser } from 'src/authz';
+import { ToolMetadata } from '../../decorators';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -57,16 +65,95 @@ export class McpToolsHandler extends McpHandlerBase {
     };
   }
 
+  /**
+   * Creates a minimal ExecutionContext for guard evaluation.
+   */
+  private createExecutionContext(
+    httpRequest: HttpRequest,
+    tool: DiscoveredTool<ToolMetadata>,
+  ): ExecutionContext {
+    return {
+      switchToHttp: () => ({
+        getRequest: <T = unknown>() => httpRequest.raw as T,
+        getResponse: <T = unknown>() => null as T,
+        getNext: <T = unknown>() => undefined as T,
+      }),
+      getClass: <T = unknown>() => tool.providerClass as Type<T>,
+      getHandler: () => (() => {}) as () => void,
+      getArgs: <T extends unknown[] = unknown[]>() => [httpRequest.raw] as T,
+      getArgByIndex: <T = unknown>(index: number) =>
+        (index === 0 ? httpRequest.raw : undefined) as T,
+      getType: <TContext extends string = string>() => 'http' as TContext,
+      switchToRpc: () => ({
+        getData: <T = unknown>() => undefined as T,
+        getContext: <T = unknown>() => undefined as T,
+      }),
+      switchToWs: () => ({
+        getData: <T = unknown>() => undefined as T,
+        getClient: <T = unknown>() => undefined as T,
+        getPattern: () => undefined as unknown as string,
+      }),
+    };
+  }
+
+  /**
+   * Check if all guards for a tool pass.
+   * Returns true if tool has no guards or all guards pass.
+   */
+  private async checkToolGuards(
+    tool: DiscoveredTool<ToolMetadata>,
+    httpRequest: HttpRequest,
+  ): Promise<boolean> {
+    const guards = tool.metadata.guards;
+    if (!guards || guards.length === 0) {
+      return true;
+    }
+
+    const context = this.createExecutionContext(httpRequest, tool);
+
+    for (const GuardClass of guards) {
+      try {
+        const guard = this.moduleRef.get<CanActivate>(GuardClass, {
+          strict: false,
+        });
+        const result = guard.canActivate(context);
+        const canActivate =
+          result instanceof Promise ? await result : result;
+        if (!canActivate) {
+          return false;
+        }
+      } catch (error) {
+        this.logger.debug(
+          `Guard ${GuardClass.name} threw an error: ${error.message}`,
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
     if (this.registry.getTools(this.mcpModuleId).length === 0) {
       this.logger.debug('No tools registered, skipping tool handlers');
       return;
     }
 
-    mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
-      const tools = this.registry.getTools(this.mcpModuleId).map((tool) => {
+    mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      const allTools = this.registry.getTools(this.mcpModuleId);
+
+      // Filter tools based on guard checks
+      const accessibleTools: DiscoveredTool<ToolMetadata>[] = [];
+      for (const tool of allTools) {
+        const canAccess = await this.checkToolGuards(tool, httpRequest);
+        if (canAccess) {
+          accessibleTools.push(tool);
+        }
+      }
+
+      const tools = accessibleTools.map((tool) => {
         // Create base schema
-        const toolSchema = {
+        const toolSchema: Record<string, unknown> = {
           name: tool.metadata.name,
           description: tool.metadata.description,
           annotations: tool.metadata.annotations,
@@ -113,6 +200,15 @@ export class McpToolsHandler extends McpHandlerBase {
           throw new McpError(
             ErrorCode.MethodNotFound,
             `Unknown tool: ${request.params.name}`,
+          );
+        }
+
+        // Check guards before execution (same check as listing)
+        const canAccess = await this.checkToolGuards(toolInfo, httpRequest);
+        if (!canAccess) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `Access denied: insufficient permissions for tool '${request.params.name}'`,
           );
         }
 

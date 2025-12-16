@@ -1,9 +1,38 @@
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import { Inject, Injectable, Module, Scope } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  Module,
+  Scope,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { Context, McpTransportType, Tool } from '../../src';
 import { McpModule } from '../../src/mcp/mcp.module';
 import { NestFactory, REQUEST } from '@nestjs/core';
+
+/**
+ * Guard that checks for admin role - will always fail on STDIO since there's no request context
+ */
+@Injectable()
+class AdminGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    return request?.user?.role === 'admin';
+  }
+}
+
+/**
+ * Guard that checks for any authenticated user - will always fail on STDIO
+ */
+@Injectable()
+class AuthenticatedGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    return !!request?.user;
+  }
+}
 
 @Injectable()
 class MockUserRepository {
@@ -252,6 +281,48 @@ class ValidationTestTool {
   }
 }
 
+/**
+ * Tools with guards for testing STDIO guard behavior.
+ * These tools should be hidden on STDIO since guards can't access HTTP context.
+ */
+@Injectable()
+class GuardedToolsService {
+  @Tool({
+    name: 'public-tool',
+    description: 'A public tool accessible to everyone',
+    parameters: z.object({}),
+  })
+  async publicTool() {
+    return {
+      content: [{ type: 'text', text: 'Public tool executed' }],
+    };
+  }
+
+  @Tool({
+    name: 'authenticated-tool',
+    description: 'Tool requiring authentication',
+    parameters: z.object({}),
+    guards: [AuthenticatedGuard],
+  })
+  async authenticatedTool() {
+    return {
+      content: [{ type: 'text', text: 'Authenticated tool executed' }],
+    };
+  }
+
+  @Tool({
+    name: 'admin-tool',
+    description: 'Tool requiring admin role',
+    parameters: z.object({}),
+    guards: [AdminGuard],
+  })
+  async adminTool() {
+    return {
+      content: [{ type: 'text', text: 'Admin tool executed' }],
+    };
+  }
+}
+
 @Module({
   imports: [
     McpModule.forRoot({
@@ -271,6 +342,9 @@ class ValidationTestTool {
     NotMcpCompliantStructuredGreetingTool,
     InvalidOutputSchemaTool,
     ValidationTestTool,
+    GuardedToolsService,
+    AdminGuard,
+    AuthenticatedGuard,
   ],
 })
 class StdioTestAppModule {}
