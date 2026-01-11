@@ -54,7 +54,8 @@ export class McpRegistryService implements OnApplicationBootstrap {
   }
 
   /**
-   * Finds all modules that import the McpModule and then scans the providers and controllers in their subtrees
+   * Finds all modules that import the McpModule and scans only the root module providers and controllers.
+   * This prevents unintentionally exposing tools from imported dependencies.
    */
   private discoverTools() {
     const getImportedMcpModules = (module: Module) =>
@@ -74,28 +75,13 @@ export class McpRegistryService implements OnApplicationBootstrap {
         `Discovering tools, resources, resource templates, and prompts for module: ${rootModule.name}`,
       );
 
-      const subtreeModules = this.collectSubtreeModules(rootModule);
-
       for (const mcpModule of mcpModules) {
         const mcpModuleId =
           mcpModule.getProviderByKey<string>('MCP_MODULE_ID')?.instance;
-        this.discoverToolsForModuleSubtree(mcpModuleId, subtreeModules);
+
+        this.discoverToolsForModuleSubtree(mcpModuleId, [rootModule]);
       }
     }
-  }
-
-  private collectSubtreeModules(root: Module): Module[] {
-    const subtreeModules: Module[] = [];
-    const collect = (module: Module) => {
-      subtreeModules.push(module);
-      module.imports.forEach((importedModule) => {
-        if (!subtreeModules.includes(importedModule)) {
-          collect(importedModule);
-        }
-      });
-    };
-    collect(root);
-    return subtreeModules;
   }
 
   /**
