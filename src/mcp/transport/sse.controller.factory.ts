@@ -18,6 +18,7 @@ import {
 import { McpOptions } from '../interfaces';
 import { McpSseService } from '../services/mcp-sse.service';
 import { normalizeEndpoint } from '../utils/normalize-endpoint';
+import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 /**
  * Creates a controller for handling SSE connections and tool executions
@@ -28,18 +29,21 @@ export function createSseController(
   apiPrefix: string,
   guards: Type<CanActivate>[] = [],
   decorators: ClassDecorator[] = [],
+  options?: McpOptions,
 ) {
   @Controller({
     version: VERSION_NEUTRAL,
   })
   @applyDecorators(...decorators)
   class SseController implements OnModuleInit {
-    readonly logger = new Logger(SseController.name);
+    readonly logger: Logger;
 
     constructor(
-      @Inject('MCP_OPTIONS') public readonly options: McpOptions,
+      @Inject('MCP_OPTIONS') public readonly mcpOptions: McpOptions,
       public readonly mcpSseService: McpSseService,
-    ) {}
+    ) {
+      this.logger = createMcpLogger(SseController.name, options || mcpOptions);
+    }
 
     /**
      * Initialize the controller and configure SSE service

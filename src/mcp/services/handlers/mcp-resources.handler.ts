@@ -1,4 +1,10 @@
-import { Inject, Injectable, InjectionToken, Scope } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InjectionToken,
+  Optional,
+  Scope,
+} from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
@@ -10,7 +16,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
-import { Context } from '../../interfaces';
+import { Context, McpOptions } from '../../interfaces';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 
 @Injectable({ scope: Scope.REQUEST })
@@ -19,8 +25,9 @@ export class McpResourcesHandler extends McpHandlerBase {
     moduleRef: ModuleRef,
     registry: McpRegistryService,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
+    @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,
   ) {
-    super(moduleRef, registry, McpResourcesHandler.name);
+    super(moduleRef, registry, McpResourcesHandler.name, options);
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {

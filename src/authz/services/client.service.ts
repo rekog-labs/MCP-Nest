@@ -94,7 +94,7 @@ export class ClientService {
    * or URL-based Client Registration using Client ID Metadata Documents).
    * Currently a no-op to keep behavior: always create a new client.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   protected async preRegistrationChecks(
     _dto: ClientRegistrationDto,
   ): Promise<void> {

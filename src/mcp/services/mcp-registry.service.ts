@@ -3,6 +3,8 @@ import {
   InjectionToken,
   Logger,
   OnApplicationBootstrap,
+  Inject,
+  Optional,
 } from '@nestjs/common';
 import {
   DiscoveryService,
@@ -21,6 +23,8 @@ import { match } from 'path-to-regexp';
 import { PromptMetadata } from '../decorators/prompt.decorator';
 import { Module } from '@nestjs/core/injector/module';
 import { ResourceTemplateMetadata } from '../decorators/resource-template.decorator';
+import { McpOptions } from '../interfaces';
+import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 /**
  * Interface representing a discovered tool
@@ -39,7 +43,7 @@ export type InjectionTokenWithName = InjectionToken & { name: string };
  */
 @Injectable()
 export class McpRegistryService implements OnApplicationBootstrap {
-  private readonly logger = new Logger(McpRegistryService.name);
+  private readonly logger: Logger;
   private discoveredToolsByMcpModuleId: Map<string, DiscoveredTool<any>[]> =
     new Map();
 
@@ -47,7 +51,10 @@ export class McpRegistryService implements OnApplicationBootstrap {
     private readonly discovery: DiscoveryService,
     private readonly metadataScanner: MetadataScanner,
     private readonly modulesContainer: ModulesContainer,
-  ) {}
+    @Optional() @Inject('MCP_OPTIONS') private readonly options?: McpOptions,
+  ) {
+    this.logger = createMcpLogger(McpRegistryService.name, this.options);
+  }
 
   onApplicationBootstrap() {
     this.discoverTools();

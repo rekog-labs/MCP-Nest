@@ -242,6 +242,83 @@ class AppModule {}
 - `POST /api/v1/chat` - Messages
 - `POST /api/v1/mcp-operations` - MCP operations
 
+## Logging Configuration
+
+Control the logging behavior of the MCP module independently from your application's logging:
+
+### Disable All MCP Logging
+
+Completely disable logging from the MCP module:
+
+```typescript
+@Module({
+  imports: [
+    McpModule.forRoot({
+      name: 'quiet-mcp-server',
+      version: '0.0.1',
+      logging: false, // Disables all MCP module logging
+    }),
+  ],
+  providers: [GreetingTool],
+})
+class AppModule {}
+```
+
+### Filter Log Levels
+
+Only show specific log levels from the MCP module:
+
+```typescript
+@Module({
+  imports: [
+    McpModule.forRoot({
+      name: 'filtered-mcp-server',
+      version: '0.0.1',
+      logging: {
+        level: ['error', 'warn'], // Only show errors and warnings
+      },
+    }),
+  ],
+  providers: [GreetingTool],
+})
+class AppModule {}
+```
+
+### Available Log Levels
+
+You can configure any combination of these log levels:
+
+- `'log'` - General information
+- `'error'` - Error messages
+- `'warn'` - Warning messages  
+- `'debug'` - Debug information
+- `'verbose'` - Detailed verbose output
+
+### Default Behavior
+
+When the `logging` option is not specified, the MCP module uses standard NestJS logging and respects your application's global logger configuration.
+
+### Use Cases
+
+**Production environments:**
+```typescript
+logging: {
+  level: ['error', 'warn'], // Only critical messages
+}
+```
+
+**Development environments:**
+```typescript
+logging: {
+  level: ['log', 'error', 'warn', 'debug'], // More detailed logs
+}
+```
+
+**Testing/CI:**
+```typescript
+logging: false, // Reduce noise in test output
+```
+
 ## Fastify Server
 
 Using Fastify instead of Express:

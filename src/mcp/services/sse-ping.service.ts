@@ -3,9 +3,13 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   Logger,
+  Inject,
+  Optional,
 } from '@nestjs/common';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { HttpResponse } from '../interfaces/http-adapter.interface';
+import { McpOptions } from '../interfaces';
+import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 /**
  * Service that implements automatic ping for SSE connections
@@ -14,7 +18,7 @@ import { HttpResponse } from '../interfaces/http-adapter.interface';
 @Injectable()
 export class SsePingService implements OnModuleInit, OnModuleDestroy {
   private pingInterval: NodeJS.Timeout | null = null;
-  private readonly logger = new Logger(SsePingService.name);
+  private readonly logger: Logger;
   private readonly activeConnections = new Map<
     string,
     {
@@ -26,7 +30,9 @@ export class SsePingService implements OnModuleInit, OnModuleDestroy {
   // Default to 30 seconds - this is a reasonable interval for most clients
   private pingIntervalMs = 30000;
 
-  constructor() {}
+  constructor(@Optional() @Inject('MCP_OPTIONS') options?: McpOptions) {
+    this.logger = createMcpLogger(SsePingService.name, options);
+  }
 
   onModuleInit() {
     this.logger.log('Initializing SSE ping service');

@@ -11,17 +11,20 @@ import { McpOptions, McpTransportType } from '../interfaces';
 import { McpExecutorService } from '../services/mcp-executor.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
 import { buildMcpCapabilities } from '../utils/capabilities-builder';
+import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 @Injectable()
 export class StdioService implements OnApplicationBootstrap {
-  private readonly logger = new Logger(StdioService.name);
+  private readonly logger: Logger;
 
   constructor(
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     private readonly moduleRef: ModuleRef,
     private readonly toolRegistry: McpRegistryService,
-  ) {}
+  ) {
+    this.logger = createMcpLogger(StdioService.name, this.options);
+  }
 
   async onApplicationBootstrap() {
     if (this.options.transport !== McpTransportType.STDIO) {

@@ -38,6 +38,17 @@ export interface McpOptions {
      */
     statelessMode?: boolean;
   };
+  /**
+   * Configure logging for the MCP module.
+   * - `false` to disable all MCP logging
+   * - `{ level: LogLevel[] }` to specify which log levels to show
+   * - `undefined` (default) to use standard NestJS logging
+   */
+  logging?:
+    | false
+    | {
+        level: ('log' | 'error' | 'warn' | 'debug' | 'verbose')[];
+      };
 }
 
 // Async variant omits transport since controllers are not auto-registered in forRootAsync
