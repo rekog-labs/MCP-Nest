@@ -12,6 +12,7 @@ import { McpRegistryService } from './services/mcp-registry.service';
 import { McpSseService } from './services/mcp-sse.service';
 import { McpStreamableHttpService } from './services/mcp-streamable-http.service';
 import { SsePingService } from './services/sse-ping.service';
+import { ToolAuthorizationService } from './services/tool-authorization.service';
 import { createSseController } from './transport/sse.controller.factory';
 import { StdioService } from './transport/stdio.service';
 import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
@@ -21,7 +22,7 @@ let instanceIdCounter = 0;
 
 @Module({
   imports: [DiscoveryModule],
-  providers: [McpRegistryService, McpExecutorService],
+  providers: [McpRegistryService, McpExecutorService, ToolAuthorizationService],
 })
 export class McpModule {
   /**
@@ -91,6 +92,7 @@ export class McpModule {
       },
       McpRegistryService,
       McpExecutorService,
+      ToolAuthorizationService,
       SsePingService,
       McpSseService,
       McpStreamableHttpService,
@@ -245,6 +247,7 @@ export class McpModule {
       },
       McpRegistryService,
       McpExecutorService,
+      ToolAuthorizationService,
       SsePingService,
       McpSseService,
       McpStreamableHttpService,

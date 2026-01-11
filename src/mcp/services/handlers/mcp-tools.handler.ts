@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Inject, Injectable, Optional, Scope } from '@nestjs/common';
+import { Inject, Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
@@ -13,17 +13,23 @@ import { McpHandlerBase } from './mcp-handler.base';
 import { ZodTypeAny } from 'zod';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import { McpRequestWithUser } from 'src/authz';
-import { McpOptions } from '../../interfaces';
+import { ToolAuthorizationService } from '../tool-authorization.service';
+import { McpOptions } from '../../interfaces/mcp-options.interface';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
+  private readonly moduleHasGuards: boolean;
+
   constructor(
     moduleRef: ModuleRef,
     registry: McpRegistryService,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
-    @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,
+    @Inject('MCP_OPTIONS') private readonly options: McpOptions,
+    private readonly authService: ToolAuthorizationService,
   ) {
     super(moduleRef, registry, McpToolsHandler.name, options);
+    this.moduleHasGuards =
+      this.options.guards !== undefined && this.options.guards.length > 0;
   }
 
   private buildDefaultContentBlock(result: any) {
@@ -66,7 +72,23 @@ export class McpToolsHandler extends McpHandlerBase {
     }
 
     mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
-      const tools = this.registry.getTools(this.mcpModuleId).map((tool) => {
+      // Extract user from request (may be undefined if not authenticated or STDIO)
+      // For STDIO transport, httpRequest.raw is undefined, so bypass auth entirely
+      const user = httpRequest.raw
+        ? (httpRequest.raw as McpRequestWithUser).user
+        : undefined;
+
+      // Get all tools and filter based on user permissions
+      // STDIO: If no httpRequest.raw, disable guards (local dev mode)
+      const allTools = this.registry.getTools(this.mcpModuleId);
+      const effectiveModuleHasGuards = httpRequest.raw
+        ? this.moduleHasGuards
+        : false;
+      const authorizedTools = allTools.filter((tool) =>
+        this.authService.canAccessTool(user, tool, effectiveModuleHasGuards),
+      );
+
+      const tools = authorizedTools.map((tool) => {
         // Create base schema
         const toolSchema = {
           name: tool.metadata.name,
@@ -74,6 +96,15 @@ export class McpToolsHandler extends McpHandlerBase {
           annotations: tool.metadata.annotations,
           _meta: tool.metadata._meta,
         };
+
+        // Add security schemes
+        const securitySchemes = this.authService.generateSecuritySchemes(
+          tool,
+          effectiveModuleHasGuards,
+        );
+        if (securitySchemes.length > 0) {
+          toolSchema['securitySchemes'] = securitySchemes;
+        }
 
         // Add input schema if defined
         if (tool.metadata.parameters) {
@@ -117,6 +148,20 @@ export class McpToolsHandler extends McpHandlerBase {
             `Unknown tool: ${request.params.name}`,
           );
         }
+
+        // Validate authorization before execution
+        // For STDIO transport, bypass auth entirely (local dev mode)
+        const user = httpRequest.raw
+          ? (httpRequest.raw as McpRequestWithUser).user
+          : undefined;
+        const effectiveModuleHasGuards = httpRequest.raw
+          ? this.moduleHasGuards
+          : false;
+        this.authService.validateToolAccess(
+          user,
+          toolInfo,
+          effectiveModuleHasGuards,
+        );
 
         try {
           // Validate input parameters against the tool's schema

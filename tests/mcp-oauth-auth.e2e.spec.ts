@@ -506,14 +506,16 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
       await client.close();
     });
 
-    it('should reject access to protected MCP endpoints without token', async () => {
+    it('should reject connection without token (triggers OAuth flow)', async () => {
+      // Standard OAuth flow: connection without token should get 401
+      // This triggers the MCP Authorization flow for the client
       await expect(
         createSseClient(testPort, {
           requestInit: {
             headers: {},
           },
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(); // Expects 401 response
     });
 
     it('should reject access to protected MCP endpoints with invalid token', async () => {

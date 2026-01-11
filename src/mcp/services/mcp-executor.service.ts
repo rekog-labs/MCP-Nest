@@ -6,7 +6,8 @@ import { McpToolsHandler } from './handlers/mcp-tools.handler';
 import { McpResourcesHandler } from './handlers/mcp-resources.handler';
 import { McpPromptsHandler } from './handlers/mcp-prompts.handler';
 import { HttpRequest } from '../interfaces/http-adapter.interface';
-import { McpOptions } from '../interfaces';
+import { ToolAuthorizationService } from './tool-authorization.service';
+import { McpOptions } from '../interfaces/mcp-options.interface';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 /**
@@ -23,10 +24,17 @@ export class McpExecutorService {
     moduleRef: ModuleRef,
     registry: McpRegistryService,
     @Inject('MCP_MODULE_ID') mcpModuleId: string,
-    @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,
+    @Inject('MCP_OPTIONS') options: McpOptions,
+    authService: ToolAuthorizationService,
   ) {
     this.logger = createMcpLogger(McpExecutorService.name, options);
-    this.toolsHandler = new McpToolsHandler(moduleRef, registry, mcpModuleId);
+    this.toolsHandler = new McpToolsHandler(
+      moduleRef,
+      registry,
+      mcpModuleId,
+      options,
+      authService,
+    );
     this.resourcesHandler = new McpResourcesHandler(
       moduleRef,
       registry,
