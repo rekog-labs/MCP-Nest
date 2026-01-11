@@ -4,6 +4,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { Context, McpRequest, SerializableValue } from '../../interfaces';
 import { McpRegistryService } from '../mcp-registry.service';
+import { McpOptions } from '../../interfaces';
+import { createMcpLogger } from '../../utils/mcp-logger.factory';
 
 export abstract class McpHandlerBase {
   protected logger: Logger;
@@ -12,8 +14,9 @@ export abstract class McpHandlerBase {
     protected readonly moduleRef: ModuleRef,
     protected readonly registry: McpRegistryService,
     loggerContext: string,
+    options?: McpOptions,
   ) {
-    this.logger = new Logger(loggerContext);
+    this.logger = createMcpLogger(loggerContext, options);
   }
 
   protected createContext(

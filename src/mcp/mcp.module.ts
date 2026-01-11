@@ -207,6 +207,7 @@ export class McpModule {
         apiPrefix,
         guards,
         decorators,
+        options,
       );
       controllers.push(sseController);
     }
@@ -217,6 +218,7 @@ export class McpModule {
         apiPrefix,
         guards,
         decorators,
+        options,
       );
       controllers.push(streamableHttpController);
     }

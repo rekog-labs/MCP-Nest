@@ -17,6 +17,7 @@ import {
 import { McpOptions } from '../interfaces';
 import { McpStreamableHttpService } from '../services/mcp-streamable-http.service';
 import { normalizeEndpoint } from '../utils/normalize-endpoint';
+import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 /**
  * Creates a controller for handling Streamable HTTP connections and tool executions
@@ -26,16 +27,22 @@ export function createStreamableHttpController(
   apiPrefix: string,
   guards: Type<CanActivate>[] = [],
   decorators: ClassDecorator[] = [],
+  options?: McpOptions,
 ) {
   @Controller()
   @applyDecorators(...decorators)
   class StreamableHttpController {
-    public readonly logger = new Logger(StreamableHttpController.name);
+    public readonly logger: Logger;
 
     constructor(
-      @Inject('MCP_OPTIONS') public readonly options: McpOptions,
+      @Inject('MCP_OPTIONS') public readonly mcpOptions: McpOptions,
       public readonly mcpStreamableHttpService: McpStreamableHttpService,
-    ) {}
+    ) {
+      this.logger = createMcpLogger(
+        StreamableHttpController.name,
+        options || mcpOptions,
+      );
+    }
 
     /**
      * Main HTTP endpoint for both initialization and subsequent requests

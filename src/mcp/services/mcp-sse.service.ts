@@ -9,10 +9,11 @@ import { McpRegistryService } from './mcp-registry.service';
 import { SsePingService } from './sse-ping.service';
 import { normalizeEndpoint } from '../utils/normalize-endpoint';
 import { HttpAdapterFactory } from '../adapters';
+import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 @Injectable()
 export class McpSseService {
-  private readonly logger = new Logger(McpSseService.name);
+  private readonly logger: Logger;
 
   // Note: Currently, storing transports and servers makes it a requirement to have sticky sessions.
 
@@ -28,7 +29,9 @@ export class McpSseService {
     private readonly moduleRef: ModuleRef,
     private readonly toolRegistry: McpRegistryService,
     @Inject(SsePingService) private readonly pingService: SsePingService,
-  ) {}
+  ) {
+    this.logger = createMcpLogger(McpSseService.name, this.options);
+  }
 
   /**
    * Initialize the SSE service and configure ping service

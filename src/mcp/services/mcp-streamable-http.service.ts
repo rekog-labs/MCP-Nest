@@ -12,10 +12,11 @@ import { McpOptions } from '../interfaces';
 import { McpExecutorService } from './mcp-executor.service';
 import { McpRegistryService } from './mcp-registry.service';
 import { buildMcpCapabilities } from '../utils/capabilities-builder';
+import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 @Injectable()
 export class McpStreamableHttpService implements OnModuleDestroy {
-  private readonly logger = new Logger(McpStreamableHttpService.name);
+  private readonly logger: Logger;
   private readonly transports: {
     [sessionId: string]: StreamableHTTPServerTransport;
   } = {};
@@ -31,6 +32,7 @@ export class McpStreamableHttpService implements OnModuleDestroy {
   ) {
     // Determine if we're in stateless mode
     this.isStatelessMode = !!options.streamableHttp?.statelessMode;
+    this.logger = createMcpLogger(McpStreamableHttpService.name, this.options);
   }
 
   /**

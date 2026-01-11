@@ -1,18 +1,20 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Inject, Injectable, Logger, Scope } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, Scope } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { McpRegistryService } from './mcp-registry.service';
 import { McpToolsHandler } from './handlers/mcp-tools.handler';
 import { McpResourcesHandler } from './handlers/mcp-resources.handler';
 import { McpPromptsHandler } from './handlers/mcp-prompts.handler';
 import { HttpRequest } from '../interfaces/http-adapter.interface';
+import { McpOptions } from '../interfaces';
+import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 /**
  * Request-scoped service for executing MCP tools
  */
 @Injectable({ scope: Scope.REQUEST })
 export class McpExecutorService {
-  private logger = new Logger(McpExecutorService.name);
+  private logger: Logger;
   private toolsHandler: McpToolsHandler;
   private resourcesHandler: McpResourcesHandler;
   private promptsHandler: McpPromptsHandler;
@@ -21,7 +23,9 @@ export class McpExecutorService {
     moduleRef: ModuleRef,
     registry: McpRegistryService,
     @Inject('MCP_MODULE_ID') mcpModuleId: string,
+    @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,
   ) {
+    this.logger = createMcpLogger(McpExecutorService.name, options);
     this.toolsHandler = new McpToolsHandler(moduleRef, registry, mcpModuleId);
     this.resourcesHandler = new McpResourcesHandler(
       moduleRef,

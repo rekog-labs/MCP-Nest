@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Inject, Injectable, Scope } from '@nestjs/common';
+import { Inject, Injectable, Optional, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
@@ -13,6 +13,7 @@ import { McpHandlerBase } from './mcp-handler.base';
 import { ZodTypeAny } from 'zod';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import { McpRequestWithUser } from 'src/authz';
+import { McpOptions } from '../../interfaces';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -20,8 +21,9 @@ export class McpToolsHandler extends McpHandlerBase {
     moduleRef: ModuleRef,
     registry: McpRegistryService,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
+    @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,
   ) {
-    super(moduleRef, registry, McpToolsHandler.name);
+    super(moduleRef, registry, McpToolsHandler.name, options);
   }
 
   private buildDefaultContentBlock(result: any) {
