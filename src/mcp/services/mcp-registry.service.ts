@@ -16,6 +16,9 @@ import {
   MCP_RESOURCE_METADATA_KEY,
   MCP_RESOURCE_TEMPLATE_METADATA_KEY,
   MCP_TOOL_METADATA_KEY,
+  MCP_PUBLIC_METADATA_KEY,
+  MCP_SCOPES_METADATA_KEY,
+  MCP_ROLES_METADATA_KEY,
   ToolMetadata,
 } from '../decorators';
 import { ResourceMetadata } from '../decorators/resource.decorator';
@@ -213,14 +216,49 @@ export class McpRegistryService implements OnApplicationBootstrap {
     this.logger.debug(
       `Tool discovered: ${token.name}.${methodName} in module: ${mcpModuleId}`,
     );
-    this.addDiscovery<ToolMetadata>(
-      'tool',
-      MCP_TOOL_METADATA_KEY,
-      mcpModuleId,
+
+    // Collect security metadata from decorators
+    const isPublic = Reflect.getMetadata(MCP_PUBLIC_METADATA_KEY, methodRef);
+    const requiredScopes = Reflect.getMetadata(
+      MCP_SCOPES_METADATA_KEY,
       methodRef,
-      token,
-      methodName,
     );
+    const requiredRoles = Reflect.getMetadata(
+      MCP_ROLES_METADATA_KEY,
+      methodRef,
+    );
+
+    // Add tool with security metadata
+    const baseMetadata: ToolMetadata = Reflect.getMetadata(
+      MCP_TOOL_METADATA_KEY,
+      methodRef,
+    );
+
+    if (!baseMetadata.name) {
+      baseMetadata.name = methodName;
+    }
+
+    // Enrich with security metadata
+    if (isPublic !== undefined) {
+      baseMetadata.isPublic = isPublic;
+    }
+    if (requiredScopes) {
+      baseMetadata.requiredScopes = requiredScopes;
+    }
+    if (requiredRoles) {
+      baseMetadata.requiredRoles = requiredRoles;
+    }
+
+    if (!this.discoveredToolsByMcpModuleId.has(mcpModuleId)) {
+      this.discoveredToolsByMcpModuleId.set(mcpModuleId, []);
+    }
+
+    this.discoveredToolsByMcpModuleId.get(mcpModuleId)?.push({
+      type: 'tool',
+      metadata: baseMetadata,
+      providerClass: token,
+      methodName,
+    });
   }
 
   private addDiscoveryResource(

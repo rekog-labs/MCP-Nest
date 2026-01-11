@@ -1,6 +1,7 @@
 ## Documentation
 
 - [Tools Guide](./tools.md) — How to create and register tools.
+  - [Per-Tool Authorization](./per-tool-authorization.md) — How to implement fine-grained authorization for individual tools.
 - [Server Examples](./server-examples.md) — Example server setups and configurations.
 - [Prompts Guide](./prompts.md) — How to define and use prompts.
 - [Resource Templates Guide](./resource-templates.md) — Resource URI templates and usage.

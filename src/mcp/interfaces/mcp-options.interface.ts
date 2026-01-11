@@ -25,6 +25,22 @@ export interface McpOptions {
   globalApiPrefix?: never;
   apiPrefix?: string;
   guards?: Type<CanActivate>[];
+  /**
+   * Allow unauthenticated sessions to connect and access @PublicTool() tools.
+   *
+   * When true (freemium mode):
+   * - Unauthenticated requests are allowed through guards
+   * - Can access tools marked with @PublicTool()
+   * - Must authenticate to access protected tools (based on scopes/roles)
+   *
+   * When false or undefined (standard OAuth flow - default):
+   * - Unauthenticated requests receive 401 response
+   * - Triggers MCP OAuth authorization flow
+   * - All tools require authentication
+   *
+   * @default false
+   */
+  allowUnauthenticatedAccess?: boolean;
   decorators?: ClassDecorator[];
   sse?: {
     pingEnabled?: boolean;

@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
-import { randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
 import 'reflect-metadata';
 import { GitHubOAuthProvider, McpAuthModule, McpModule } from '../../src';
@@ -69,6 +68,8 @@ dotenv.config();
       //   sessionIdGenerator: () => randomUUID(),
       //   statelessMode: false,
       // },
+      allowUnauthenticatedAccess:
+        process.env.ALLOW_UNAUTHENTICATED_ACCESS === 'true',
       guards: [McpAuthJwtGuard],
     }),
   ],

@@ -3,3 +3,6 @@ export * from './constants';
 export * from './resource.decorator';
 export * from './resource-template.decorator';
 export * from './prompt.decorator';
+export * from './public.decorator';
+export * from './tool-scopes.decorator';
+export * from './tool-roles.decorator';

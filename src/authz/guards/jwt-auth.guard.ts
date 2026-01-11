@@ -10,6 +10,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Request } from 'express';
 import { JwtPayload, JwtTokenService } from '../services/jwt-token.service';
 import { IOAuthStore } from '../stores/oauth-store.interface';
+import { McpOptions } from '../../mcp';
 
 export interface AuthenticatedRequest extends Request {
   user: JwtPayload;
@@ -23,14 +24,28 @@ export class McpAuthJwtGuard implements CanActivate {
     @Inject('IOAuthStore')
     private readonly store: IOAuthStore | null,
     private readonly moduleRef: ModuleRef,
+    @Optional()
+    @Inject('MCP_OPTIONS')
+    private readonly options?: McpOptions,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.extractTokenFromHeader(request);
 
+    // Check if unauthenticated access is allowed
+    const allowUnauthenticated =
+      this.options?.allowUnauthenticatedAccess ?? false;
+
     if (!token) {
-      throw new UnauthorizedException('Access token required');
+      if (allowUnauthenticated) {
+        // Allow unauthenticated sessions
+        // Per-tool authorization will decide what's accessible (@PublicTool() tools only)
+        return true;
+      } else {
+        // Standard OAuth flow: Reject and trigger authorization
+        throw new UnauthorizedException('Access token required');
+      }
     }
 
     // Resolve services dynamically if not injected directly
@@ -45,6 +60,7 @@ export class McpAuthJwtGuard implements CanActivate {
       throw new UnauthorizedException('Authentication service not available');
     }
 
+    // If a token is provided, it must be valid
     const payload = jwtTokenService.validateToken(token);
 
     if (!payload) {
@@ -75,6 +91,22 @@ export class McpAuthJwtGuard implements CanActivate {
         ud.username ||
         ud.email ||
         enriched.sub;
+
+      // Parse scopes: OAuth 2.0 standard is space-delimited string in 'scope' field
+      if (enriched.scope && typeof enriched.scope === 'string') {
+        enriched.scopes = enriched.scope
+          .split(' ')
+          .filter((s: string) => s.length > 0);
+      } else if (!enriched.scopes) {
+        enriched.scopes = [];
+      }
+
+      // Extract roles from user_data if present
+      if (!enriched.roles && ud.roles && Array.isArray(ud.roles)) {
+        enriched.roles = ud.roles;
+      } else if (!enriched.roles) {
+        enriched.roles = [];
+      }
     } catch {
       // Non-fatal; proceed with raw payload
     }
