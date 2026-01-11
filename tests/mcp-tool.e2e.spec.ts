@@ -517,7 +517,9 @@ describe('E2E: MCP ToolServer', () => {
         try {
           const tools = await client.listTools();
           expect(tools.tools.length).toBeGreaterThan(0);
-          const metaTool = tools.tools.find((t) => t.name === 'hello-world-with-meta');
+          const metaTool = tools.tools.find(
+            (t) => t.name === 'hello-world-with-meta',
+          );
           expect(metaTool).toBeDefined();
           expect(metaTool!._meta).toBeDefined();
           expect(metaTool!._meta?.title).toBe('Say Hello');
