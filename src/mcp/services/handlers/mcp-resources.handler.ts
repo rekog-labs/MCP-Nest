@@ -1,4 +1,10 @@
-import { Inject, Injectable, InjectionToken, Optional, Scope } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InjectionToken,
+  Optional,
+  Scope,
+} from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {

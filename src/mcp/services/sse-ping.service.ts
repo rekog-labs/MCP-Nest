@@ -30,9 +30,7 @@ export class SsePingService implements OnModuleInit, OnModuleDestroy {
   // Default to 30 seconds - this is a reasonable interval for most clients
   private pingIntervalMs = 30000;
 
-  constructor(
-    @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,
-  ) {
+  constructor(@Optional() @Inject('MCP_OPTIONS') options?: McpOptions) {
     this.logger = createMcpLogger(SsePingService.name, options);
   }
 
