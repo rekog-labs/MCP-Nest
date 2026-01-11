@@ -220,7 +220,6 @@ McpAuthModule supports multiple storage backends:
 - `@modelcontextprotocol/sdk` - Core MCP protocol implementation
 - `zod` - Parameter validation and schema definition
 - `path-to-regexp` - Dynamic URI matching for resource templates
-- `zod-to-json-schema` - Schema conversion for tool parameters
 - `passport` + provider strategies - OAuth authentication
 - `@nestjs/jwt` - JWT token management
 - `typeorm` (optional) - Database storage for OAuth data

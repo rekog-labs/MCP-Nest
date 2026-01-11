@@ -7,7 +7,6 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { Inject, Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { ZodTypeAny } from 'zod';
@@ -104,16 +103,22 @@ export class McpToolsHandler extends McpHandlerBase {
         );
         if (securitySchemes.length > 0) {
           toolSchema['securitySchemes'] = securitySchemes;
+          // Note: Currently securitySchemes are not supported in MCP sdk, adding to _meta as workaround
+          // (see https://developers.openai.com/apps-sdk/reference/)
+          toolSchema._meta = {
+            ...toolSchema._meta,
+            securitySchemes,
+          };
         }
 
         // Add input schema if defined
         if (tool.metadata.parameters) {
-          toolSchema['inputSchema'] = zodToJsonSchema(tool.metadata.parameters);
+          toolSchema['inputSchema'] = tool.metadata.parameters.toJSONSchema();
         }
 
         // Add output schema if defined, ensuring it has type: 'object'
         if (tool.metadata.outputSchema) {
-          const outputSchema = zodToJsonSchema(tool.metadata.outputSchema);
+          const outputSchema = tool.metadata.outputSchema.toJSONSchema();
 
           // Create a new object that explicitly includes type: 'object'
           const jsonSchema = {
@@ -176,7 +181,10 @@ export class McpToolsHandler extends McpHandlerBase {
               );
             }
             // Use validated arguments to ensure defaults and transformations are applied
-            request.params.arguments = validation.data;
+            request.params.arguments = validation.data as Record<
+              string,
+              unknown
+            >;
           }
 
           const contextId = ContextIdFactory.getByRequest(httpRequest);

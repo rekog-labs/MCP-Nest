@@ -40,8 +40,7 @@
     "express": ">=4.0.0",
     "reflect-metadata": ">=0.1.14",
     "typeorm": ">=0.3.25",
-    "zod": "^3.0.0",
-    "zod-to-json-schema": ">=3.23.0"
+    "zod": "^4.0.0"
   },
   "peerDependenciesMeta": {
     "@nestjs/platform-fastify": {
@@ -57,7 +56,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
-    "@modelcontextprotocol/sdk": "^1.20.2",
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "@nestjs/common": "^11.1.1",
     "@nestjs/core": "^11.1.1",
     "@nestjs/platform-express": "^11.1.1",

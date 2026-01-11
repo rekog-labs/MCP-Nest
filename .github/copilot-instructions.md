@@ -152,6 +152,5 @@ return {
 ### External Dependencies
 - `zod` for parameter validation
 - `path-to-regexp` for URI matching
-- `zod-to-json-schema` for OpenAPI-style schemas
 
 Remember: This module transforms NestJS services into MCP servers through decorators, not the other way around. The NestJS application hosts the MCP server, making existing business logic available to AI systems.

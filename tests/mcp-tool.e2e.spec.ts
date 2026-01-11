@@ -589,7 +589,7 @@ describe('E2E: MCP ToolServer', () => {
           });
         } catch (error) {
           expect(error).toBeDefined();
-          expect(error.message).toContain('Expected string, received number');
+          expect(error.message.toLowerCase()).toContain('expected string, received number');
         }
 
         await client.close();

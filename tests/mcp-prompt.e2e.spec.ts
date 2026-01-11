@@ -101,7 +101,7 @@ describe('E2E: MCP Prompt Server', () => {
       });
     } catch (error) {
       expect(error).toBeDefined();
-      expect(error.message).toContain('Expected string, received number');
+      expect(error.message).toContain('Invalid input: expected string, received number');
     }
     await client.close();
   });

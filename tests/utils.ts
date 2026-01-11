@@ -31,12 +31,7 @@ export async function createSseClient(
   const client = new Client(
     { name: 'example-client', version: '1.0.0' },
     {
-      capabilities: {
-        tools: {},
-        resources: {},
-        resourceTemplates: {},
-        prompts: {},
-      },
+      capabilities: {},
     },
   );
   const sseUrl = new URL(`http://localhost:${port}/sse`);
@@ -74,10 +69,6 @@ export async function createStreamableClient(
     { name: 'example-client', version: '1.0.0' },
     {
       capabilities: {
-        tools: {},
-        resources: {},
-        resourceTemplates: {},
-        prompts: {},
       },
     },
   );
@@ -106,12 +97,7 @@ export async function createStdioClient(options: {
   const client = new Client(
     { name: 'example-stdio-client', version: '1.0.0' },
     {
-      capabilities: {
-        tools: {},
-        resources: {},
-        resourceTemplates: {},
-        prompts: {},
-      },
+      capabilities: {},
     },
   );
 
@@ -142,10 +128,6 @@ export async function createSseClientWithElicitation(
     { name: 'example-client-elicitation', version: '1.0.0' },
     {
       capabilities: {
-        tools: {},
-        resources: {},
-        resourceTemplates: {},
-        prompts: {},
         elicitation: {},
       },
     },
@@ -186,10 +168,6 @@ export async function createStreamableClientWithElicitation(
     { name: 'example-client-elicitation', version: '1.0.0' },
     {
       capabilities: {
-        tools: {},
-        resources: {},
-        resourceTemplates: {},
-        prompts: {},
         elicitation: {},
       },
     },

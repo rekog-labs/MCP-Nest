@@ -31,13 +31,13 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 - 💉 **[Dependency Injection](docs/dependency-injection.md)**: Leverage NestJS DI system throughout MCP components
 - 📝 **[Logging Configuration](docs/server-examples.md#logging-configuration)**: Fine-grained control over MCP module logging levels
 
-**Are you interested to build ChatGPT widgets (with the OpenAI SDK)?** 
+**Are you interested to build ChatGPT widgets (with the OpenAI SDK)?**
 Find out how to do that with `@rekog/MCP-Nest` in this repository [MCP-Nest-Samples/pizzaz-openai-apps-sdk](https://github.com/rinormaloku/MCP-Nest-Samples/tree/main/pizzaz-openai-apps-sdk)
 
 ## Installation
 
 ```bash
-npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod@^3
+npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod@^4
 ```
 
 ### Optional dependencies
