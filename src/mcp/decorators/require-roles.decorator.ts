@@ -38,9 +38,7 @@ export const MCP_ROLES_METADATA_KEY = 'mcp:roles';
  */
 export const ToolRoles = (roles: string[]) => {
   if (!Array.isArray(roles) || roles.length === 0) {
-    throw new Error(
-      '@ToolRoles() requires a non-empty array of role strings',
-    );
+    throw new Error('@ToolRoles() requires a non-empty array of role strings');
   }
   return SetMetadata(MCP_ROLES_METADATA_KEY, roles);
 };

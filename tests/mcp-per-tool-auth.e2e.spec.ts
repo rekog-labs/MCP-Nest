@@ -309,36 +309,49 @@ describe('E2E: Per-Tool Authorization', () => {
       const tools = await client.listTools();
 
       // Find the public-search tool
-      const publicTool = tools.tools.find((t) => t.name === 'public-search');
+      const publicTool = tools.tools.find((t) => t.name === 'public-search') as any;
       expect(publicTool).toBeDefined();
-      expect(publicTool?.securitySchemes).toEqual([{ type: 'noauth' }]);
+      // SDK strips unknown properties like securitySchemes
+      // expect(publicTool?.securitySchemes).toEqual([{ type: 'noauth' }]);
+      expect(publicTool?._meta?.securitySchemes).toEqual([{ type: 'noauth' }]);
 
       // Find the user-profile tool (requires auth, no specific scopes)
       const userProfileTool = tools.tools.find(
         (t) => t.name === 'user-profile',
-      );
+      ) as any;
       expect(userProfileTool).toBeDefined();
-      expect(userProfileTool?.securitySchemes).toEqual([{ type: 'oauth2' }]);
+      // expect(userProfileTool?.securitySchemes).toEqual([{ type: 'oauth2' }]);
+      expect(userProfileTool?._meta?.securitySchemes).toEqual([{ type: 'oauth2' }]);
 
       // Find the admin-delete tool (requires specific scopes)
       const adminDeleteTool = tools.tools.find(
         (t) => t.name === 'admin-delete',
-      );
+      ) as any;
       expect(adminDeleteTool).toBeDefined();
-      expect(adminDeleteTool?.securitySchemes).toEqual([
-        { type: 'oauth2', scopes: ['admin', 'write'] },
-      ]);
+      // expect(adminDeleteTool?.securitySchemes).toEqual([
+      //   { type: 'oauth2', scopes: ['admin', 'write'] },
+      // ]);
+      expect(adminDeleteTool?._meta?.securitySchemes).toEqual([
+         { type: 'oauth2', scopes: ['admin', 'write'] },
+       ]);
 
       // Find the smart-search tool (both noauth and oauth2)
       const smartSearchTool = tools.tools.find(
         (t) => t.name === 'smart-search',
-      );
+      ) as any;
       expect(smartSearchTool).toBeDefined();
       // Should have both noauth and oauth2 with premium scope
-      expect(smartSearchTool?.securitySchemes).toContainEqual({
+      // expect(smartSearchTool?.securitySchemes).toContainEqual({
+      //   type: 'noauth',
+      // });
+      // expect(smartSearchTool?.securitySchemes).toContainEqual({
+      //   type: 'oauth2',
+      //   scopes: ['premium'],
+      // });
+      expect(smartSearchTool?._meta?.securitySchemes).toContainEqual({
         type: 'noauth',
       });
-      expect(smartSearchTool?.securitySchemes).toContainEqual({
+      expect(smartSearchTool?._meta?.securitySchemes).toContainEqual({
         type: 'oauth2',
         scopes: ['premium'],
       });

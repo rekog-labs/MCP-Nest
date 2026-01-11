@@ -176,10 +176,7 @@ describe('MCP Logging Configuration (e2e)', () => {
           McpModule.forRoot({
             name: 'test-mcp-server',
             version: '1.0.0',
-            transport: [
-              McpTransportType.SSE,
-              McpTransportType.STREAMABLE_HTTP,
-            ],
+            transport: [McpTransportType.SSE, McpTransportType.STREAMABLE_HTTP],
             logging: {
               level: ['error'],
             },

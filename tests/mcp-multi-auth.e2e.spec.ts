@@ -161,28 +161,27 @@ describe('E2E: Multiple McpAuthModule instances', () => {
     try {
       const server = app.getHttpServer();
       const port = server.address().port;
-      
+
       // Verify both servers are accessible
       expect(port).toBeDefined();
-      
+
       // Verify both auth modules have their own well-known endpoints with correct configs
       const request = (await import('supertest')).default;
-      
+
       // Check Server A's protected resource metadata
       const responseA = await request(server)
         .get('/.well-known/oauth-protected-resource')
         .expect(200);
-      
+
       // With instance-scoped auth modules, each should have its own configuration
       // Since both modules share the same well-known endpoint path, the last one will win
       // This is expected behavior - each auth module should use a different apiPrefix
       expect(responseA.body).toHaveProperty('scopes_supported');
       expect(Array.isArray(responseA.body.scopes_supported)).toBe(true);
-      
+
       // The test demonstrates that both modules can coexist without errors
       // In practice, users should configure different apiPrefix values for each auth module
       // to avoid endpoint collisions
-      
     } finally {
       await app.close();
     }

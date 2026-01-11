@@ -193,7 +193,7 @@ describe('E2E: MCP Resource Server', () => {
 
     expect(result.contents[0].uri).toBe('mcp://hello-world-world');
     expect(result.contents[0].mimeType).toBe('text/plain');
-    expect(result.contents[0].text).toBe('Hello World');
+    expect((result.contents[0] as any).text).toBe('Hello World');
 
     await client.close();
   });
@@ -209,7 +209,7 @@ describe('E2E: MCP Resource Server', () => {
       'mcp://hello-world-dynamic/Raphael_John',
     );
     expect(result.contents[0].mimeType).toBe('text/plain');
-    expect(result.contents[0].text).toBe('Hello Raphael_John');
+    expect((result.contents[0] as any).text).toBe('Hello Raphael_John');
 
     await client.close();
   });
@@ -225,7 +225,7 @@ describe('E2E: MCP Resource Server', () => {
       'mcp://hello-world-dynamic-multiple-paths/123/Raphael_John',
     );
     expect(result.contents[0].mimeType).toBe('text/plain');
-    expect(result.contents[0].text).toBe('Hello Raphael_John from 123');
+    expect((result.contents[0] as any).text).toBe('Hello Raphael_John from 123');
 
     await client.close();
   });
