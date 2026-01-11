@@ -4,7 +4,9 @@ import {
   ExecutionContext,
   UnauthorizedException,
   Inject,
+  Optional,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Request } from 'express';
 import { JwtPayload, JwtTokenService } from '../services/jwt-token.service';
 import { IOAuthStore } from '../stores/oauth-store.interface';
@@ -16,8 +18,11 @@ export interface AuthenticatedRequest extends Request {
 @Injectable()
 export class McpAuthJwtGuard implements CanActivate {
   constructor(
-    private readonly jwtTokenService: JwtTokenService,
-    @Inject('IOAuthStore') private readonly store: IOAuthStore,
+    @Optional() private readonly jwtTokenService: JwtTokenService | null,
+    @Optional()
+    @Inject('IOAuthStore')
+    private readonly store: IOAuthStore | null,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -28,7 +33,19 @@ export class McpAuthJwtGuard implements CanActivate {
       throw new UnauthorizedException('Access token required');
     }
 
-    const payload = this.jwtTokenService.validateToken(token);
+    // Resolve services dynamically if not injected directly
+    const jwtTokenService =
+      this.jwtTokenService ||
+      this.moduleRef.get(JwtTokenService, { strict: false });
+    const store =
+      this.store ||
+      this.moduleRef.get<IOAuthStore>('IOAuthStore', { strict: false });
+
+    if (!jwtTokenService || !store) {
+      throw new UnauthorizedException('Authentication service not available');
+    }
+
+    const payload = jwtTokenService.validateToken(token);
 
     if (!payload) {
       throw new UnauthorizedException('Invalid or expired access token');
@@ -38,7 +55,7 @@ export class McpAuthJwtGuard implements CanActivate {
     const enriched: any = { ...payload };
     try {
       if (!enriched.user_data && enriched.user_profile_id) {
-        const profile = await this.store.getUserProfileById(
+        const profile = await store.getUserProfileById(
           enriched.user_profile_id,
         );
         if (profile) {

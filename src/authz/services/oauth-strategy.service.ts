@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject, Optional } from '@nestjs/common';
 import passport from 'passport';
 import { OAuthModuleOptions } from '../providers/oauth-provider.interface';
 
@@ -6,9 +6,17 @@ export const STRATEGY_NAME = 'oauth-provider';
 
 @Injectable()
 export class OAuthStrategyService implements OnModuleInit {
+  private strategyName: string;
+
   constructor(
     @Inject('OAUTH_MODULE_OPTIONS') private options: OAuthModuleOptions,
-  ) {}
+    @Optional() @Inject('OAUTH_MODULE_ID') private authModuleId?: string,
+  ) {
+    // Use instance-specific strategy name if authModuleId is provided
+    this.strategyName = authModuleId
+      ? `${STRATEGY_NAME}-${authModuleId}`
+      : STRATEGY_NAME;
+  }
 
   onModuleInit() {
     this.registerStrategy();
@@ -47,10 +55,10 @@ export class OAuthStrategyService implements OnModuleInit {
       },
     );
 
-    passport.use(STRATEGY_NAME, strategy);
+    passport.use(this.strategyName, strategy);
   }
 
   getStrategyName(): string {
-    return STRATEGY_NAME;
+    return this.strategyName;
   }
 }
