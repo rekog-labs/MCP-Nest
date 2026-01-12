@@ -68,8 +68,7 @@ export async function createStreamableClient(
   const client = new Client(
     { name: 'example-client', version: '1.0.0' },
     {
-      capabilities: {
-      },
+      capabilities: {},
     },
   );
   const url = new URL(`http://localhost:${port}${endpoint}`);

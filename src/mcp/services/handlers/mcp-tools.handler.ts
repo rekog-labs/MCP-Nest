@@ -114,32 +114,27 @@ export class McpToolsHandler extends McpHandlerBase {
         }
 
         // Add input schema if defined
-        if (tool.metadata.parameters) {
-          const normalizedParameters = normalizeObjectSchema(
-            tool.metadata.parameters,
-          );
-          if (normalizedParameters) {
-            toolSchema['inputSchema'] =
-              toJsonSchemaCompat(normalizedParameters);
-          }
+        const normalizedInputParameters = normalizeObjectSchema(
+          tool.metadata.parameters,
+        );
+        if (normalizedInputParameters) {
+          toolSchema['inputSchema'] = toJsonSchemaCompat(normalizedInputParameters);
         }
 
         // Add output schema if defined, ensuring it has type: 'object'
-        if (tool.metadata.outputSchema) {
-          const normalizedOutputSchema = normalizeObjectSchema(
-            tool.metadata.outputSchema,
-          );
-          if (normalizedOutputSchema) {
-            const outputSchema = toJsonSchemaCompat(normalizedOutputSchema);
+        const normalizedOutputSchema = normalizeObjectSchema(
+          tool.metadata.outputSchema,
+        );
+        if (normalizedOutputSchema) {
+          const outputSchema = toJsonSchemaCompat(normalizedOutputSchema);
 
-            // Create a new object that explicitly includes type: 'object'
-            const jsonSchema = {
-              ...outputSchema,
-              type: 'object',
-            };
+          // Create a new object that explicitly includes type: 'object'
+          const jsonSchema = {
+            ...outputSchema,
+            type: 'object',
+          };
 
-            toolSchema['outputSchema'] = jsonSchema;
-          }
+          toolSchema['outputSchema'] = jsonSchema;
         }
 
         return toolSchema;

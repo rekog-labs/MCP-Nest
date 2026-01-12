@@ -225,7 +225,9 @@ describe('E2E: MCP Resource Server', () => {
       'mcp://hello-world-dynamic-multiple-paths/123/Raphael_John',
     );
     expect(result.contents[0].mimeType).toBe('text/plain');
-    expect((result.contents[0] as any).text).toBe('Hello Raphael_John from 123');
+    expect((result.contents[0] as any).text).toBe(
+      'Hello Raphael_John from 123',
+    );
 
     await client.close();
   });
