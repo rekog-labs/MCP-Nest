@@ -9,8 +9,8 @@ import {
 import { ModuleRef } from '@nestjs/core';
 import { Request } from 'express';
 import { JwtPayload, JwtTokenService } from '../services/jwt-token.service';
-import { IOAuthStore } from '../stores/oauth-store.interface';
-import { McpOptions } from '../../mcp';
+import type { IOAuthStore } from '../stores/oauth-store.interface';
+import type { McpOptions } from '../../mcp';
 
 export interface AuthenticatedRequest extends Request {
   user: JwtPayload;

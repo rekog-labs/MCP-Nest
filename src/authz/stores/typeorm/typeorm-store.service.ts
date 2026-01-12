@@ -9,11 +9,11 @@ import {
   OAuthUserProfileEntity,
 } from './entities';
 import { OAUTH_TYPEORM_CONNECTION_NAME } from './constants';
-import {
+import type {
   OAuthSession,
   OAuthUserProfile,
-} from '../../providers/oauth-provider.interface';
-import {
+} from '../../interfaces/oauth-common.interface';
+import type {
   AuthorizationCode,
   IOAuthStore,
   OAuthClient,

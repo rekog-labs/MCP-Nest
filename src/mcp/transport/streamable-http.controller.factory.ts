@@ -14,7 +14,7 @@ import {
   applyDecorators,
 } from '@nestjs/common';
 
-import { McpOptions } from '../interfaces';
+import type { McpOptions } from '../interfaces';
 import { McpStreamableHttpService } from '../services/mcp-streamable-http.service';
 import { normalizeEndpoint } from '../utils/normalize-endpoint';
 import { createMcpLogger } from '../utils/mcp-logger.factory';

@@ -100,9 +100,12 @@ export async function createStdioClient(options: {
     },
   );
 
+  const isBun = !!process.versions.bun;
   const transport = new StdioClientTransport({
-    command: 'ts-node-dev',
-    args: ['--respawn', options.serverScriptPath!],
+    command: isBun ? 'bun' : 'ts-node-dev',
+    args: isBun
+      ? ['run', options.serverScriptPath!]
+      : ['--respawn', options.serverScriptPath!],
   });
 
   await client.connect(transport);

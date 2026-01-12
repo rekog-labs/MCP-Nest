@@ -1,7 +1,7 @@
 import { SetMetadata } from '@nestjs/common';
-import { MCP_TOOL_METADATA_KEY } from './constants';
 import { z } from 'zod';
 import { ToolAnnotations as SdkToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import { MCP_TOOL_METADATA_KEY } from './constants';
 
 /**
  * Security scheme type for MCP tools

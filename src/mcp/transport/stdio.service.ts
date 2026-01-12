@@ -7,7 +7,8 @@ import {
   OnApplicationBootstrap,
 } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
-import { McpOptions, McpTransportType } from '../interfaces';
+import { McpTransportType } from '../interfaces';
+import type { McpOptions } from '../interfaces';
 import { McpExecutorService } from '../services/mcp-executor.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
 import { buildMcpCapabilities } from '../utils/capabilities-builder';

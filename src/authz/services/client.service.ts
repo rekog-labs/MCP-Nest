@@ -1,11 +1,11 @@
 import { BadRequestException, Injectable, Inject } from '@nestjs/common';
-import {
+import type {
   ClientRegistrationDto,
   IOAuthStore,
   OAuthClient,
 } from '../stores/oauth-store.interface';
 import { randomBytes } from 'crypto';
-import { OAuthModuleOptions } from '../providers/oauth-provider.interface';
+import type { OAuthModuleOptions } from '../providers/oauth-provider.interface';
 
 @Injectable()
 export class ClientService {

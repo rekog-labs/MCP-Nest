@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import * as jwt from 'jsonwebtoken';
-import { OAuthModuleOptions } from '../providers/oauth-provider.interface';
+import type { OAuthModuleOptions } from '../providers/oauth-provider.interface';
 
 export interface JwtPayload {
   sub: string; // user_id

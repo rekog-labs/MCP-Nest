@@ -11,7 +11,7 @@ import {
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
-import { McpOptions } from '../../interfaces';
+import type { McpOptions } from '../../interfaces';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpPromptsHandler extends McpHandlerBase {

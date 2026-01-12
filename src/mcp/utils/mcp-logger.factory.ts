@@ -1,5 +1,5 @@
 import { Logger, LogLevel } from '@nestjs/common';
-import { McpOptions } from '../interfaces';
+import type { McpOptions } from '../interfaces';
 
 /**
  * Logger that filters log messages based on configured log levels

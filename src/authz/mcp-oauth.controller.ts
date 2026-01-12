@@ -14,10 +14,14 @@ import {
   Res,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
-import { Request as ExpressRequest, NextFunction, Response } from 'express';
+import type {
+  Request as ExpressRequest,
+  NextFunction,
+  Response,
+} from 'express';
 import passport from 'passport';
 import { normalizeEndpoint } from '../mcp/utils/normalize-endpoint';
-import {
+import type {
   OAuthEndpointConfiguration,
   OAuthModuleOptions,
   OAuthSession,
@@ -26,7 +30,7 @@ import {
 import { ClientService } from './services/client.service';
 import { JwtTokenService, TokenPair } from './services/jwt-token.service';
 import { OAuthStrategyService } from './services/oauth-strategy.service';
-import { IOAuthStore } from './stores/oauth-store.interface';
+import type { IOAuthStore } from './stores/oauth-store.interface';
 
 interface OAuthCallbackRequest extends ExpressRequest {
   user?: {
