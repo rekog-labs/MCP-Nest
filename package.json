@@ -1,6 +1,6 @@
 {
   "name": "@rekog/mcp-nest",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "NestJS module for creating Model Context Protocol (MCP) servers",
   "main": "dist/index.js",
   "license": "MIT",
