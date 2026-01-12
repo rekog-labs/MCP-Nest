@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
@@ -43,4 +43,4 @@ jobs:
           npm version $TAG_VERSION --no-git-tag-version
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --provenance --access public
