@@ -9,11 +9,13 @@ import { Inject, Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
-import { ZodTypeAny } from 'zod';
+import { ZodType } from 'zod';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import { McpRequestWithUser } from 'src/authz';
 import { ToolAuthorizationService } from '../tool-authorization.service';
 import { McpOptions } from '../../interfaces/mcp-options.interface';
+import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
+import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -40,7 +42,7 @@ export class McpToolsHandler extends McpHandlerBase {
     ];
   }
 
-  private formatToolResult(result: any, outputSchema?: ZodTypeAny): any {
+  private formatToolResult(result: any, outputSchema?: ZodType): any {
     if (result && typeof result === 'object' && Array.isArray(result.content)) {
       return result;
     }
@@ -113,20 +115,31 @@ export class McpToolsHandler extends McpHandlerBase {
 
         // Add input schema if defined
         if (tool.metadata.parameters) {
-          toolSchema['inputSchema'] = tool.metadata.parameters.toJSONSchema();
+          const normalizedParameters = normalizeObjectSchema(
+            tool.metadata.parameters,
+          );
+          if (normalizedParameters) {
+            toolSchema['inputSchema'] =
+              toJsonSchemaCompat(normalizedParameters);
+          }
         }
 
         // Add output schema if defined, ensuring it has type: 'object'
         if (tool.metadata.outputSchema) {
-          const outputSchema = tool.metadata.outputSchema.toJSONSchema();
+          const normalizedOutputSchema = normalizeObjectSchema(
+            tool.metadata.outputSchema,
+          );
+          if (normalizedOutputSchema) {
+            const outputSchema = toJsonSchemaCompat(normalizedOutputSchema);
 
-          // Create a new object that explicitly includes type: 'object'
-          const jsonSchema = {
-            ...outputSchema,
-            type: 'object',
-          };
+            // Create a new object that explicitly includes type: 'object'
+            const jsonSchema = {
+              ...outputSchema,
+              type: 'object',
+            };
 
-          toolSchema['outputSchema'] = jsonSchema;
+            toolSchema['outputSchema'] = jsonSchema;
+          }
         }
 
         return toolSchema;
