@@ -43,4 +43,15 @@ jobs:
           npm version $TAG_VERSION --no-git-tag-version
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: |
+          TAG_VERSION=${{ github.event.release.tag_name }}
+          TAG_VERSION=${TAG_VERSION#v}
+
+          # Check if this is a pre-release version
+          if [[ "$TAG_VERSION" =~ (alpha|beta|rc|next|canary) ]]; then
+            echo "Publishing pre-release version with --tag next"
+            npm publish --provenance --access public --tag next
+          else
+            echo "Publishing stable version with --tag latest"
+            npm publish --provenance --access public --tag latest
+          fi
