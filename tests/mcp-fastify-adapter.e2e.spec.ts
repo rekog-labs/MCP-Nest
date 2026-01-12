@@ -246,7 +246,9 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
       const result = await client.request(detectRequest, CallToolResultSchema);
       expect(result.content).toBeDefined();
       expect(result.content[0]).toHaveProperty('text');
-      expect((result.content[0] as any).text).toContain('adapter working correctly');
+      expect((result.content[0] as any).text).toContain(
+        'adapter working correctly',
+      );
     });
   });
 
@@ -325,7 +327,9 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
       const result = await client.request(detectRequest, CallToolResultSchema);
       expect(result.content).toBeDefined();
       expect(result.content[0]).toHaveProperty('text');
-      expect((result.content[0] as any).text).toContain('adapter working correctly');
+      expect((result.content[0] as any).text).toContain(
+        'adapter working correctly',
+      );
     });
 
     it('should handle request scoping correctly', async () => {
@@ -433,9 +437,13 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
 
         // Both should contain the expected content
         expect(expressResult.content[0]).toHaveProperty('text');
-        expect((expressResult.content[0] as any).text).toContain('Compatibility Test');
+        expect((expressResult.content[0] as any).text).toContain(
+          'Compatibility Test',
+        );
         expect(fastifyResult.content[0]).toHaveProperty('text');
-        expect((fastifyResult.content[0] as any).text).toContain('Compatibility Test');
+        expect((fastifyResult.content[0] as any).text).toContain(
+          'Compatibility Test',
+        );
       } finally {
         await expressClient.close();
         await fastifyClient.close();
