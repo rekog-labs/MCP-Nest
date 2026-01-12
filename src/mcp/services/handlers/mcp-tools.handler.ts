@@ -13,9 +13,9 @@ import { ZodType } from 'zod';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import { McpRequestWithUser } from 'src/authz';
 import { ToolAuthorizationService } from '../tool-authorization.service';
-import { McpOptions } from '../../interfaces/mcp-options.interface';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
+import type { McpOptions } from '../../interfaces/mcp-options.interface';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -118,7 +118,9 @@ export class McpToolsHandler extends McpHandlerBase {
           tool.metadata.parameters,
         );
         if (normalizedInputParameters) {
-          toolSchema['inputSchema'] = toJsonSchemaCompat(normalizedInputParameters);
+          toolSchema['inputSchema'] = toJsonSchemaCompat(
+            normalizedInputParameters,
+          );
         }
 
         // Add output schema if defined, ensuring it has type: 'object'

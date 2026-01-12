@@ -3,7 +3,7 @@ import { ApplicationConfig, ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { buildMcpCapabilities } from '../utils/capabilities-builder';
-import { McpOptions } from '../interfaces';
+import type { McpOptions } from '../interfaces';
 import { McpExecutorService } from './mcp-executor.service';
 import { McpRegistryService } from './mcp-registry.service';
 import { SsePingService } from './sse-ping.service';

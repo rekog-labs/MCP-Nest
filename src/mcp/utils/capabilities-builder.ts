@@ -1,6 +1,6 @@
 import { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
 import { McpRegistryService } from '../services/mcp-registry.service';
-import { McpOptions } from '../interfaces';
+import type { McpOptions } from '../interfaces';
 
 /**
  * Utility function to build MCP server capabilities dynamically based on

@@ -4,7 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { McpAuthJwtGuard } from './guards/jwt-auth.guard';
 import { createMcpOAuthController } from './mcp-oauth.controller';
-import {
+import type {
   OAuthUserModuleOptions as AuthUserModuleOptions,
   OAuthEndpointConfiguration,
   OAuthModuleDefaults,

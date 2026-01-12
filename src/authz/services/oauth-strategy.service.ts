@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, Inject, Optional } from '@nestjs/common';
 import passport from 'passport';
-import { OAuthModuleOptions } from '../providers/oauth-provider.interface';
+import type { OAuthModuleOptions } from '../providers/oauth-provider.interface';
 
 export const STRATEGY_NAME = 'oauth-provider';
 

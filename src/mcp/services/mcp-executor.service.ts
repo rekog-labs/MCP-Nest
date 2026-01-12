@@ -7,7 +7,7 @@ import { McpResourcesHandler } from './handlers/mcp-resources.handler';
 import { McpPromptsHandler } from './handlers/mcp-prompts.handler';
 import { HttpRequest } from '../interfaces/http-adapter.interface';
 import { ToolAuthorizationService } from './tool-authorization.service';
-import { McpOptions } from '../interfaces/mcp-options.interface';
+import type { McpOptions } from '../interfaces/mcp-options.interface';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 /**

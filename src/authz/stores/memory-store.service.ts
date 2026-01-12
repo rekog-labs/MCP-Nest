@@ -4,7 +4,7 @@ import {
   OAuthSession,
   OAuthUserProfile,
 } from '../providers/oauth-provider.interface';
-import {
+import type {
   AuthorizationCode,
   IOAuthStore,
   OAuthClient,

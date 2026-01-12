@@ -2,9 +2,13 @@ import { Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import { Context, McpRequest, SerializableValue } from '../../interfaces';
+import type {
+  Context,
+  McpRequest,
+  SerializableValue,
+  McpOptions,
+} from '../../interfaces';
 import { McpRegistryService } from '../mcp-registry.service';
-import { McpOptions } from '../../interfaces';
 import { createMcpLogger } from '../../utils/mcp-logger.factory';
 
 export abstract class McpHandlerBase {

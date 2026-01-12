@@ -1,7 +1,9 @@
-import {
+import type {
   OAuthSession,
   OAuthUserProfile,
-} from '../providers/oauth-provider.interface';
+} from '../interfaces/oauth-common.interface';
+
+export const MCP_OAUTH_TOKEN = 'MCP_OAUTH_TOKEN';
 
 export interface OAuthClient {
   client_id: string;
