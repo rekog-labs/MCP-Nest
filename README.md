@@ -21,7 +21,7 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 - 🔧 **[Tools](docs/tools.md)**: Expose NestJS methods as MCP tools with automatic discovery and Zod validation
   - 🛠️ **[Elicitation](docs/tools.md#interactive-tool-calls)**: Interactive tool calls with user input elicitation
   - 🌐 **[HTTP Request Access](docs/tools.md#understanding-tool-method-parameters)**: Full access to request context within MCP handlers
-  - 🔐 **[Per-Tool Authorization](./per-tool-authorization.md)**: Implement fine-grained authorization for tools
+  - 🔐 **[Per-Tool Authorization](docs/per-tool-authorization.md)**: Implement fine-grained authorization for tools
 - 📁 **[Resources](docs/resources.md)**: Serve content and data through MCP resource system
 - 📚 **[Resource Templates](docs/resource-templates.md)**: Dynamic resources with parameterized URIs
 - 💬 **[Prompts](docs/prompts.md)**: Define reusable prompt templates for AI interactions
