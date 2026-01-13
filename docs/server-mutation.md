@@ -6,8 +6,6 @@ In some advanced use cases, you may want to mutate or extend the MCP server beha
 
 When importing the `McpModule`, you can provide a mutator function that receives the MCP server instance. This function allows you to modify the server's behavior, add custom middleware, or extend its functionality.
 
-Inject your service into any MCP tool, resource, or prompt class using standard NestJS constructor injection:
-
 ```typescript
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
