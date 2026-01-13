@@ -4,3 +4,4 @@ dist
 tsconfig.tsbuildinfo
 tsconfig.build.tsbuildinfo
 .claude
+/.idea/

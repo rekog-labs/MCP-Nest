@@ -7,6 +7,7 @@
 - [Resource Templates Guide](./resource-templates.md) — Resource URI templates and usage.
 - [Resources Guide](./resources.md) — Defining and exposing resources.
 - [Dependency Injection](docs/dependency-injection.md) — Leverage NestJS DI system throughout MCP components.
+- [Server mutation and instrumentation](docs/server-mutation.md) — Mutate the underlying mcp server for custom logic or instrumentation purposes.
 
 ### Advanced Usage
 
