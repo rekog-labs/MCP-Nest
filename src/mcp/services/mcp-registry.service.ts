@@ -26,7 +26,7 @@ import { match } from 'path-to-regexp';
 import { PromptMetadata } from '../decorators/prompt.decorator';
 import { Module } from '@nestjs/core/injector/module';
 import { ResourceTemplateMetadata } from '../decorators/resource-template.decorator';
-import { McpOptions } from '../interfaces';
+import type { McpOptions } from '../interfaces';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 /**

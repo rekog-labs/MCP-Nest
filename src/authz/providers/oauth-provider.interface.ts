@@ -1,4 +1,11 @@
-import { IOAuthStore } from '../stores/oauth-store.interface';
+import type { IOAuthStore } from '../stores/oauth-store.interface';
+import type {
+  OAuthSession,
+  OAuthUserProfile,
+} from '../interfaces/oauth-common.interface';
+
+// Re-export common interfaces
+export type { OAuthSession, OAuthUserProfile };
 
 // Define a minimal placeholder for TypeORM options so the type remains
 // available without requiring the optional `@nestjs/typeorm` package.
@@ -18,15 +25,6 @@ export interface OAuthProviderConfig {
   }) => any;
   scope?: string[];
   profileMapper: (profile: any) => OAuthUserProfile;
-}
-
-export interface OAuthUserProfile {
-  id: string;
-  username: string;
-  email?: string;
-  displayName?: string;
-  avatarUrl?: string;
-  raw?: any; // Original profile data
 }
 
 // Store configuration union type
@@ -147,16 +145,3 @@ export type OAuthModuleOptions = Required<
     cookieSecure: boolean;
     storeConfiguration?: StoreConfiguration;
   };
-
-export interface OAuthSession {
-  sessionId: string;
-  state: string;
-  clientId?: string;
-  redirectUri?: string;
-  codeChallenge?: string;
-  codeChallengeMethod?: string;
-  oauthState?: string;
-  scope?: string;
-  resource?: string;
-  expiresAt: number;
-}

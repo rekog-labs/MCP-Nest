@@ -309,7 +309,9 @@ describe('E2E: Per-Tool Authorization', () => {
       const tools = await client.listTools();
 
       // Find the public-search tool
-      const publicTool = tools.tools.find((t) => t.name === 'public-search') as any;
+      const publicTool = tools.tools.find(
+        (t) => t.name === 'public-search',
+      ) as any;
       expect(publicTool).toBeDefined();
       // SDK strips unknown properties like securitySchemes
       // expect(publicTool?.securitySchemes).toEqual([{ type: 'noauth' }]);
@@ -321,7 +323,9 @@ describe('E2E: Per-Tool Authorization', () => {
       ) as any;
       expect(userProfileTool).toBeDefined();
       // expect(userProfileTool?.securitySchemes).toEqual([{ type: 'oauth2' }]);
-      expect(userProfileTool?._meta?.securitySchemes).toEqual([{ type: 'oauth2' }]);
+      expect(userProfileTool?._meta?.securitySchemes).toEqual([
+        { type: 'oauth2' },
+      ]);
 
       // Find the admin-delete tool (requires specific scopes)
       const adminDeleteTool = tools.tools.find(
@@ -332,8 +336,8 @@ describe('E2E: Per-Tool Authorization', () => {
       //   { type: 'oauth2', scopes: ['admin', 'write'] },
       // ]);
       expect(adminDeleteTool?._meta?.securitySchemes).toEqual([
-         { type: 'oauth2', scopes: ['admin', 'write'] },
-       ]);
+        { type: 'oauth2', scopes: ['admin', 'write'] },
+      ]);
 
       // Find the smart-search tool (both noauth and oauth2)
       const smartSearchTool = tools.tools.find(

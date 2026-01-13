@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { HttpResponse } from '../interfaces/http-adapter.interface';
-import { McpOptions } from '../interfaces';
+import type { McpOptions } from '../interfaces';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 
 /**

@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { createMcpLogger } from './mcp-logger.factory';
-import { McpOptions } from '../interfaces';
+import type { McpOptions } from '../interfaces';
 
 describe('McpLoggerFactory', () => {
   describe('createMcpLogger', () => {

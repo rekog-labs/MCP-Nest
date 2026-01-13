@@ -8,7 +8,7 @@ import {
   HttpRequest,
   HttpResponse,
 } from '../interfaces/http-adapter.interface';
-import { McpOptions } from '../interfaces';
+import type { McpOptions } from '../interfaces';
 import { McpExecutorService } from './mcp-executor.service';
 import { McpRegistryService } from './mcp-registry.service';
 import { createMcpLogger } from '../utils/mcp-logger.factory';

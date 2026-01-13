@@ -3,7 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { randomBytes, createHash } from 'crypto';
 import { z } from 'zod';
-import { Tool, Context, McpModule } from '../src';
+import { Tool, McpModule } from '../src';
+import type { Context } from '../src';
 import jwt from 'jsonwebtoken';
 import { McpAuthModule } from '../src/authz/mcp-oauth.module';
 import { McpAuthJwtGuard } from '../src/authz/guards/jwt-auth.guard';
@@ -11,13 +12,13 @@ import {
   OAuthProviderConfig,
   OAuthUserProfile,
 } from '../src/authz/providers/oauth-provider.interface';
-import {
+import type {
   IOAuthStore,
   OAuthClient,
   AuthorizationCode,
   ClientRegistrationDto,
 } from '../src/authz/stores/oauth-store.interface';
-import { OAuthSession } from '../src/authz/providers/oauth-provider.interface';
+import type { OAuthSession } from '../src/authz/providers/oauth-provider.interface';
 import { createSseClient } from './utils';
 
 // Mock OAuth Provider for testing
@@ -270,6 +271,9 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
         .send(clientData)
         .expect(201);
 
+      // Capture client_id before toMatchObject potentially mutates response.body with matchers
+      const registeredClientId = response.body.client_id;
+
       expect(response.body).toMatchObject({
         client_id: expect.any(String),
         client_name: 'Test Client',
@@ -280,7 +284,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
       });
 
       // Verify client was stored
-      const storedClient = await mockStore.getClient(response.body.client_id);
+      const storedClient = await mockStore.getClient(registeredClientId);
       expect(storedClient).toBeDefined();
       expect(storedClient!.client_name).toBe('Test Client');
     });
@@ -591,6 +595,9 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
         })
         .expect(200);
 
+      // Capture access token before toMatchObject potentially mutates fields
+      const refreshedAccessToken = response.body.access_token;
+
       expect(response.body).toMatchObject({
         access_token: expect.any(String),
         refresh_token: expect.any(String),
@@ -604,7 +611,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
         testJwtSecret,
       );
       const refreshedAccessPayload: any = jwt.verify(
-        response.body.access_token,
+        refreshedAccessToken,
         testJwtSecret,
       );
 

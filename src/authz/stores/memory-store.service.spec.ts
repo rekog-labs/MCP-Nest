@@ -383,7 +383,7 @@ describe('MemoryStore', () => {
       it('should not throw when removing non-existent code', async () => {
         await expect(
           service.removeAuthCode('non-existent-code'),
-        ).resolves.not.toThrow();
+        ).resolves.toBeUndefined();
       });
     });
   });
@@ -468,7 +468,7 @@ describe('MemoryStore', () => {
       it('should not throw when removing non-existent session', async () => {
         await expect(
           service.removeOAuthSession('non-existent-session'),
-        ).resolves.not.toThrow();
+        ).resolves.toBeUndefined();
       });
     });
   });
