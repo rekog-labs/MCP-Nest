@@ -400,8 +400,59 @@ export class McpRegistryService implements OnApplicationBootstrap {
     );
   }
 
+  /**
+   * Convert RFC 6570 URI template to path-to-regexp compatible format.
+   * Handles both path parameters {param} and query parameters {?param} or {?param1,param2}
+   */
   private convertTemplate(template: string): string {
-    return template?.replace(/{(\w+)}/g, ':$1');
+    if (!template) return template;
+
+    // Remove RFC 6570 query parameter syntax {?...} from the template
+    // These will be handled separately via URL query string parsing
+    const withoutQueryParams = template.replace(/\{\?[^}]+\}/g, '');
+
+    // Convert path parameters {param} to path-to-regexp format :param
+    return withoutQueryParams.replace(/{(\w+)}/g, ':$1');
+  }
+
+  /**
+   * Extract query parameter names from an RFC 6570 URI template.
+   * E.g., 'mcp://example{?foo,bar}' returns ['foo', 'bar']
+   */
+  private extractTemplateQueryParams(template: string): string[] {
+    const queryParamMatch = template.match(/\{\?([^}]+)\}/);
+    if (!queryParamMatch) return [];
+    return queryParamMatch[1].split(',').map((p) => p.trim());
+  }
+
+  /**
+   * Parse query string from a URI and return as key-value pairs.
+   */
+  private parseQueryString(uri: string): Record<string, string> {
+    const queryIndex = uri.indexOf('?');
+    if (queryIndex === -1) return {};
+
+    const queryString = uri.substring(queryIndex + 1);
+    const params: Record<string, string> = {};
+
+    for (const pair of queryString.split('&')) {
+      const [key, value] = pair.split('=');
+      if (key) {
+        params[decodeURIComponent(key)] = value
+          ? decodeURIComponent(value)
+          : '';
+      }
+    }
+
+    return params;
+  }
+
+  /**
+   * Strip query string from a URI, returning only the path portion.
+   */
+  private stripQueryString(uri: string): string {
+    const queryIndex = uri.indexOf('?');
+    return queryIndex === -1 ? uri : uri.substring(0, queryIndex);
   }
 
   private convertUri(uri: string): string {
@@ -474,12 +525,16 @@ export class McpRegistryService implements OnApplicationBootstrap {
       }),
     );
 
-    const strippedInputUri = this.convertUri(uri);
+    // Strip query string from input URI for path matching
+    const strippedInputUri = this.stripQueryString(this.convertUri(uri));
+    // Parse query parameters from input URI
+    const inputQueryParams = this.parseQueryString(uri);
 
     for (const t of resourceTemplates) {
       if (!t.uriTemplate) continue;
 
       const rawTemplate = t.uriTemplate;
+      // Convert template (removes {?...} query params and converts {param} to :param)
       const templatePath = this.convertTemplate(this.convertUri(rawTemplate));
       const matcher = match(templatePath, { decode: decodeURIComponent });
       const result = matcher(strippedInputUri);
@@ -491,9 +546,21 @@ export class McpRegistryService implements OnApplicationBootstrap {
         );
         if (!foundResourceTemplate) continue;
 
+        // Get path params from matching
+        const pathParams = result.params as Record<string, string>;
+
+        // Get expected query params from template and filter input query params
+        const expectedQueryParams = this.extractTemplateQueryParams(rawTemplate);
+        const queryParams: Record<string, string> = {};
+        for (const paramName of expectedQueryParams) {
+          if (inputQueryParams[paramName] !== undefined) {
+            queryParams[paramName] = inputQueryParams[paramName];
+          }
+        }
+
         return {
           resourceTemplate: foundResourceTemplate,
-          params: result.params as Record<string, string>,
+          params: { ...pathParams, ...queryParams },
         };
       }
     }
