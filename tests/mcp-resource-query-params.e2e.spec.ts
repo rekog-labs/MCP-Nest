@@ -126,130 +126,157 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
   describe('Single query parameter {?param}', () => {
     it('should list resource templates with query parameter syntax', async () => {
       const client = await createSseClient(testPort);
+      try {
+        const resourceTemplates = await client.listResourceTemplates();
 
-      const resourceTemplates = await client.listResourceTemplates();
-
-      const pizzaCarousel = resourceTemplates.resourceTemplates.find(
-        (r) => r.name === 'pizza-carousel',
-      );
-      expect(pizzaCarousel).toBeDefined();
-      expect(pizzaCarousel?.uriTemplate).toBe(
-        'ui://widget/pizza-carousel{?pizzaTopping}',
-      );
+        const pizzaCarousel = resourceTemplates.resourceTemplates.find(
+          (r) => r.name === 'pizza-carousel',
+        );
+        expect(pizzaCarousel).toBeDefined();
+        expect(pizzaCarousel?.uriTemplate).toBe(
+          'ui://widget/pizza-carousel{?pizzaTopping}',
+        );
+      } finally {
+        await client.close();
+      }
     });
 
     it('should read resource with query parameter', async () => {
       const client = await createSseClient(testPort);
+      try {
+        const resource = await client.readResource({
+          uri: 'ui://widget/pizza-carousel?pizzaTopping=pepperoni',
+        });
 
-      const resource = await client.readResource({
-        uri: 'ui://widget/pizza-carousel?pizzaTopping=pepperoni',
-      });
-
-      expect(resource.contents).toHaveLength(1);
-      const content = JSON.parse(resource.contents[0].text as string);
-      expect(content.widget).toBe('carousel');
-      expect(content.filter).toBe('pepperoni');
+        expect(resource.contents).toHaveLength(1);
+        const content = JSON.parse((resource.contents[0] as any).text as string);
+        expect(content.widget).toBe('carousel');
+        expect(content.filter).toBe('pepperoni');
+      } finally {
+        await client.close();
+      }
     });
 
     it('should read resource without query parameter', async () => {
       const client = await createSseClient(testPort);
+      try {
+        const resource = await client.readResource({
+          uri: 'ui://widget/pizza-carousel',
+        });
 
-      const resource = await client.readResource({
-        uri: 'ui://widget/pizza-carousel',
-      });
-
-      expect(resource.contents).toHaveLength(1);
-      const content = JSON.parse(resource.contents[0].text as string);
-      expect(content.widget).toBe('carousel');
-      expect(content.filter).toBe('all');
+        expect(resource.contents).toHaveLength(1);
+        const content = JSON.parse((resource.contents[0] as any).text as string);
+        expect(content.widget).toBe('carousel');
+        expect(content.filter).toBe('all');
+      } finally {
+        await client.close();
+      }
     });
   });
 
   describe('Multiple query parameters {?param1,param2}', () => {
     it('should list resource templates with multiple query parameters', async () => {
       const client = await createSseClient(testPort);
+      try {
+        const resourceTemplates = await client.listResourceTemplates();
 
-      const resourceTemplates = await client.listResourceTemplates();
-
-      const pizzaList = resourceTemplates.resourceTemplates.find(
-        (r) => r.name === 'pizza-list-multi',
-      );
-      expect(pizzaList).toBeDefined();
-      expect(pizzaList?.uriTemplate).toBe(
-        'ui://widget/pizza-list{?topping,size}',
-      );
+        const pizzaList = resourceTemplates.resourceTemplates.find(
+          (r) => r.name === 'pizza-list-multi',
+        );
+        expect(pizzaList).toBeDefined();
+        expect(pizzaList?.uriTemplate).toBe(
+          'ui://widget/pizza-list{?topping,size}',
+        );
+      } finally {
+        await client.close();
+      }
     });
 
     it('should read resource with multiple query parameters', async () => {
       const client = await createSseClient(testPort);
+      try {
+        const resource = await client.readResource({
+          uri: 'ui://widget/pizza-list?topping=mushroom&size=large',
+        });
 
-      const resource = await client.readResource({
-        uri: 'ui://widget/pizza-list?topping=mushroom&size=large',
-      });
-
-      expect(resource.contents).toHaveLength(1);
-      const content = JSON.parse(resource.contents[0].text as string);
-      expect(content.widget).toBe('list');
-      expect(content.filter.topping).toBe('mushroom');
-      expect(content.filter.size).toBe('large');
+        expect(resource.contents).toHaveLength(1);
+        const content = JSON.parse((resource.contents[0] as any).text as string);
+        expect(content.widget).toBe('list');
+        expect(content.filter.topping).toBe('mushroom');
+        expect(content.filter.size).toBe('large');
+      } finally {
+        await client.close();
+      }
     });
 
     it('should read resource with partial query parameters', async () => {
       const client = await createSseClient(testPort);
+      try {
+        const resource = await client.readResource({
+          uri: 'ui://widget/pizza-list?topping=pepperoni',
+        });
 
-      const resource = await client.readResource({
-        uri: 'ui://widget/pizza-list?topping=pepperoni',
-      });
-
-      expect(resource.contents).toHaveLength(1);
-      const content = JSON.parse(resource.contents[0].text as string);
-      expect(content.widget).toBe('list');
-      expect(content.filter.topping).toBe('pepperoni');
-      expect(content.filter.size).toBe('any');
+        expect(resource.contents).toHaveLength(1);
+        const content = JSON.parse((resource.contents[0] as any).text as string);
+        expect(content.widget).toBe('list');
+        expect(content.filter.topping).toBe('pepperoni');
+        expect(content.filter.size).toBe('any');
+      } finally {
+        await client.close();
+      }
     });
   });
 
   describe('Mixed path and query parameters', () => {
     it('should list resource templates with mixed parameters', async () => {
       const client = await createSseClient(testPort);
+      try {
+        const resourceTemplates = await client.listResourceTemplates();
 
-      const resourceTemplates = await client.listResourceTemplates();
-
-      const pizzaMixed = resourceTemplates.resourceTemplates.find(
-        (r) => r.name === 'pizza-mixed',
-      );
-      expect(pizzaMixed).toBeDefined();
-      expect(pizzaMixed?.uriTemplate).toBe(
-        'ui://widget/pizza/{category}{?topping}',
-      );
+        const pizzaMixed = resourceTemplates.resourceTemplates.find(
+          (r) => r.name === 'pizza-mixed',
+        );
+        expect(pizzaMixed).toBeDefined();
+        expect(pizzaMixed?.uriTemplate).toBe(
+          'ui://widget/pizza/{category}{?topping}',
+        );
+      } finally {
+        await client.close();
+      }
     });
 
     it('should read resource with path and query parameters', async () => {
       const client = await createSseClient(testPort);
+      try {
+        const resource = await client.readResource({
+          uri: 'ui://widget/pizza/vegetarian?topping=olives',
+        });
 
-      const resource = await client.readResource({
-        uri: 'ui://widget/pizza/vegetarian?topping=olives',
-      });
-
-      expect(resource.contents).toHaveLength(1);
-      const content = JSON.parse(resource.contents[0].text as string);
-      expect(content.widget).toBe('mixed');
-      expect(content.category).toBe('vegetarian');
-      expect(content.filter).toBe('olives');
+        expect(resource.contents).toHaveLength(1);
+        const content = JSON.parse((resource.contents[0] as any).text as string);
+        expect(content.widget).toBe('mixed');
+        expect(content.category).toBe('vegetarian');
+        expect(content.filter).toBe('olives');
+      } finally {
+        await client.close();
+      }
     });
 
     it('should read resource with path parameter only', async () => {
       const client = await createSseClient(testPort);
+      try {
+        const resource = await client.readResource({
+          uri: 'ui://widget/pizza/meat-lovers',
+        });
 
-      const resource = await client.readResource({
-        uri: 'ui://widget/pizza/meat-lovers',
-      });
-
-      expect(resource.contents).toHaveLength(1);
-      const content = JSON.parse(resource.contents[0].text as string);
-      expect(content.widget).toBe('mixed');
-      expect(content.category).toBe('meat-lovers');
-      expect(content.filter).toBe('all');
+        expect(resource.contents).toHaveLength(1);
+        const content = JSON.parse((resource.contents[0] as any).text as string);
+        expect(content.widget).toBe('mixed');
+        expect(content.category).toBe('meat-lovers');
+        expect(content.filter).toBe('all');
+      } finally {
+        await client.close();
+      }
     });
   });
 });

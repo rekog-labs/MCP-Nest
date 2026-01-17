@@ -23,10 +23,8 @@
     "prepare": "npm run build",
     "start:playground": "ts-node-dev --respawn playground/servers/server-stateful.ts",
     "start:fastify": "ts-node-dev --respawn playground/servers/server-fastify.ts",
-    "test": "npx --node-options=--experimental-vm-modules jest",
-    "test:bun": "bun test src tests",
-    "test:watch": "npx --node-options=--experimental-vm-modules jest --watch",
-    "test:fastify": "ts-node playground/clients/http-fastify-client.ts",
+    "test": "bun test src tests",
+    "test:watch": "bun test src tests --watch",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\" \"playground/**/*.ts\" \"tests/**/*.ts\""
   },
