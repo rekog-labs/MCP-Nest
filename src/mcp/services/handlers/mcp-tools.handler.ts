@@ -85,8 +85,15 @@ export class McpToolsHandler extends McpHandlerBase {
       const effectiveModuleHasGuards = httpRequest.raw
         ? this.moduleHasGuards
         : false;
+      const allowUnauthenticatedAccess =
+        this.options.allowUnauthenticatedAccess ?? false;
       const authorizedTools = allTools.filter((tool) =>
-        this.authService.canAccessTool(user, tool, effectiveModuleHasGuards),
+        this.authService.canAccessTool(
+          user,
+          tool,
+          effectiveModuleHasGuards,
+          allowUnauthenticatedAccess,
+        ),
       );
 
       const tools = authorizedTools.map((tool) => {
@@ -172,10 +179,13 @@ export class McpToolsHandler extends McpHandlerBase {
         const effectiveModuleHasGuards = httpRequest.raw
           ? this.moduleHasGuards
           : false;
+        const allowUnauthenticatedAccess =
+          this.options.allowUnauthenticatedAccess ?? false;
         this.authService.validateToolAccess(
           user,
           toolInfo,
           effectiveModuleHasGuards,
+          allowUnauthenticatedAccess,
         );
 
         try {
