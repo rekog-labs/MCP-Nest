@@ -11,8 +11,8 @@ import {
 import type { McpOptions } from '../interfaces';
 import { McpExecutorService } from './mcp-executor.service';
 import { McpRegistryService } from './mcp-registry.service';
-import { buildMcpCapabilities } from '../utils/capabilities-builder';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
+import { createMcpServer } from '../utils/mcp-server.factory';
 
 @Injectable()
 export class McpStreamableHttpService implements OnModuleDestroy {
@@ -49,22 +49,11 @@ export class McpStreamableHttpService implements OnModuleDestroy {
         this.options.streamableHttp?.enableJsonResponse || false,
     });
 
-    // Create a new MCP server instance with dynamic capabilities
-    const capabilities = buildMcpCapabilities(
+    const server = createMcpServer(
       this.mcpModuleId,
       this.toolRegistry,
       this.options,
-    );
-    this.logger.debug(
-      `[Stateless] Built MCP capabilities: ${JSON.stringify(capabilities)}`,
-    );
-
-    const server = new McpServer(
-      { name: this.options.name, version: this.options.version },
-      {
-        capabilities: capabilities,
-        instructions: this.options.instructions || '',
-      },
+      this.logger,
     );
 
     // Connect the transport to the MCP server first
@@ -203,20 +192,11 @@ export class McpStreamableHttpService implements OnModuleDestroy {
         return;
       }
 
-      // Build capabilities
-      const capabilities = buildMcpCapabilities(
+      const mcpServer = createMcpServer(
         this.mcpModuleId,
         this.toolRegistry,
         this.options,
-      );
-
-      // Create MCP server
-      const mcpServer = new McpServer(
-        { name: this.options.name, version: this.options.version },
-        {
-          capabilities,
-          instructions: this.options.instructions || '',
-        },
+        this.logger,
       );
 
       // Create transport with session management

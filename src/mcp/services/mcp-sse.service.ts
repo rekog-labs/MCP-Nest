@@ -2,7 +2,6 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ApplicationConfig, ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { buildMcpCapabilities } from '../utils/capabilities-builder';
 import type { McpOptions } from '../interfaces';
 import { McpExecutorService } from './mcp-executor.service';
 import { McpRegistryService } from './mcp-registry.service';
@@ -10,6 +9,7 @@ import { SsePingService } from './sse-ping.service';
 import { normalizeEndpoint } from '../utils/normalize-endpoint';
 import { HttpAdapterFactory } from '../adapters';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
+import { createMcpServer } from '../utils/mcp-server.factory';
 
 @Injectable()
 export class McpSseService {
@@ -65,21 +65,11 @@ export class McpSseService {
     );
     const sessionId = transport.sessionId;
 
-    // Create a new MCP server instance with dynamic capabilities
-    const capabilities = buildMcpCapabilities(
+    const mcpServer = createMcpServer(
       this.mcpModuleId,
       this.toolRegistry,
       this.options,
-    );
-    this.logger.debug('Built MCP capabilities:', capabilities);
-
-    // Create a new MCP server for this session with dynamic capabilities
-    const mcpServer = new McpServer(
-      { name: this.options.name, version: this.options.version },
-      {
-        capabilities,
-        instructions: this.options.instructions || '',
-      },
+      this.logger,
     );
 
     // Store the transport and server for this session

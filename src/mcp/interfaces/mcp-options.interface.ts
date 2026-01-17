@@ -1,5 +1,6 @@
 import { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
 import { CanActivate, ModuleMetadata, Type } from '@nestjs/common';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 export enum McpTransportType {
   SSE = 'sse',
@@ -16,6 +17,7 @@ export interface McpOptions {
   instructions?: string;
 
   transport?: McpTransportType | McpTransportType[];
+  serverMutator?: (server: McpServer) => McpServer;
   sseEndpoint?: string;
   messagesEndpoint?: string;
   mcpEndpoint?: string;

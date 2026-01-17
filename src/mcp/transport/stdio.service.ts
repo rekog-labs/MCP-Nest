@@ -1,4 +1,3 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   Inject,
@@ -11,8 +10,8 @@ import { McpTransportType } from '../interfaces';
 import type { McpOptions } from '../interfaces';
 import { McpExecutorService } from '../services/mcp-executor.service';
 import { McpRegistryService } from '../services/mcp-registry.service';
-import { buildMcpCapabilities } from '../utils/capabilities-builder';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
+import { createMcpServer } from '../utils/mcp-server.factory';
 
 @Injectable()
 export class StdioService implements OnApplicationBootstrap {
@@ -33,21 +32,11 @@ export class StdioService implements OnApplicationBootstrap {
     }
     this.logger.log('Bootstrapping MCP STDIO...');
 
-    // Create a new MCP server instance with dynamic capabilities
-    const capabilities = buildMcpCapabilities(
+    const mcpServer = createMcpServer(
       this.mcpModuleId,
       this.toolRegistry,
       this.options,
-    );
-    this.logger.debug('Built MCP capabilities:', capabilities);
-
-    // Create MCP server with dynamic capabilities
-    const mcpServer = new McpServer(
-      { name: this.options.name, version: this.options.version },
-      {
-        capabilities,
-        instructions: this.options.instructions || '',
-      },
+      this.logger,
     );
 
     const contextId = ContextIdFactory.create();
