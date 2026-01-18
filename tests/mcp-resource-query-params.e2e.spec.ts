@@ -149,7 +149,9 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
         });
 
         expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse((resource.contents[0] as any).text as string);
+        const content = JSON.parse(
+          (resource.contents[0] as any).text as string,
+        );
         expect(content.widget).toBe('carousel');
         expect(content.filter).toBe('pepperoni');
       } finally {
@@ -165,7 +167,9 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
         });
 
         expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse((resource.contents[0] as any).text as string);
+        const content = JSON.parse(
+          (resource.contents[0] as any).text as string,
+        );
         expect(content.widget).toBe('carousel');
         expect(content.filter).toBe('all');
       } finally {
@@ -200,7 +204,9 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
         });
 
         expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse((resource.contents[0] as any).text as string);
+        const content = JSON.parse(
+          (resource.contents[0] as any).text as string,
+        );
         expect(content.widget).toBe('list');
         expect(content.filter.topping).toBe('mushroom');
         expect(content.filter.size).toBe('large');
@@ -217,7 +223,9 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
         });
 
         expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse((resource.contents[0] as any).text as string);
+        const content = JSON.parse(
+          (resource.contents[0] as any).text as string,
+        );
         expect(content.widget).toBe('list');
         expect(content.filter.topping).toBe('pepperoni');
         expect(content.filter.size).toBe('any');
@@ -253,7 +261,9 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
         });
 
         expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse((resource.contents[0] as any).text as string);
+        const content = JSON.parse(
+          (resource.contents[0] as any).text as string,
+        );
         expect(content.widget).toBe('mixed');
         expect(content.category).toBe('vegetarian');
         expect(content.filter).toBe('olives');
@@ -270,7 +280,9 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
         });
 
         expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse((resource.contents[0] as any).text as string);
+        const content = JSON.parse(
+          (resource.contents[0] as any).text as string,
+        );
         expect(content.widget).toBe('mixed');
         expect(content.category).toBe('meat-lovers');
         expect(content.filter).toBe('all');
