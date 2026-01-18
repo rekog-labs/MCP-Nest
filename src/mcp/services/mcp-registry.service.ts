@@ -31,7 +31,7 @@ import { createMcpLogger } from '../utils/mcp-logger.factory';
 import {
   MCP_FEATURE_REGISTRATION,
   McpFeatureRegistration,
-} from '../mcp.module';
+} from '../constants/feature-registration.constants';
 
 /**
  * Interface representing a discovered tool

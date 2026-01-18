@@ -23,20 +23,10 @@ import { createSseController } from './transport/sse.controller.factory';
 import { StdioService } from './transport/stdio.service';
 import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
 import { normalizeEndpoint } from './utils/normalize-endpoint';
-
-/**
- * Token used to store feature module registrations.
- * Each registration maps provider tokens to their target MCP server name.
- */
-export const MCP_FEATURE_REGISTRATION = 'MCP_FEATURE_REGISTRATION';
-
-/**
- * Represents a feature module registration that associates providers with a specific MCP server.
- */
-export interface McpFeatureRegistration {
-  serverName: string;
-  providerTokens: InjectionToken[];
-}
+import {
+  MCP_FEATURE_REGISTRATION,
+  McpFeatureRegistration,
+} from './constants/feature-registration.constants';
 
 let instanceIdCounter = 0;
 let featureIdCounter = 0;
