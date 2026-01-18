@@ -28,6 +28,10 @@ import { Module } from '@nestjs/core/injector/module';
 import { ResourceTemplateMetadata } from '../decorators/resource-template.decorator';
 import type { McpOptions } from '../interfaces';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
+import {
+  MCP_FEATURE_REGISTRATION,
+  McpFeatureRegistration,
+} from '../mcp.module';
 
 /**
  * Interface representing a discovered tool
@@ -68,9 +72,17 @@ export class McpRegistryService implements OnApplicationBootstrap {
    * This prevents unintentionally exposing tools from imported dependencies.
    */
   private discoverTools() {
+    // First, build a map of server names to module IDs
+    const serverNameToModuleId = this.buildServerNameToModuleIdMap();
+
+    // Then, collect feature registrations
+    const featureRegistrations = this.collectFeatureRegistrations();
+
     const getImportedMcpModules = (module: Module) =>
       Array.from(module.imports).filter(
-        (m) => (m.instance as any).__isMcpModule,
+        (m) =>
+          (m.instance as any).__isMcpModule &&
+          !(m.instance as any).__isMcpFeatureModule,
       );
 
     const pairs = Array.from(this.modulesContainer.values())
@@ -91,6 +103,203 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
         this.discoverToolsForModuleSubtree(mcpModuleId, [rootModule]);
       }
+    }
+
+    // Process feature registrations
+    this.processFeatureRegistrations(
+      featureRegistrations,
+      serverNameToModuleId,
+    );
+  }
+
+  /**
+   * Builds a map from server names to their module IDs.
+   */
+  private buildServerNameToModuleIdMap(): Map<string, string> {
+    const map = new Map<string, string>();
+
+    for (const module of this.modulesContainer.values()) {
+      if ((module.instance as any)?.__isMcpModule) {
+        const moduleId =
+          module.getProviderByKey<string>('MCP_MODULE_ID')?.instance;
+        const options =
+          module.getProviderByKey<McpOptions>('MCP_OPTIONS')?.instance;
+
+        if (moduleId && options?.name) {
+          map.set(options.name, moduleId);
+        }
+      }
+    }
+
+    return map;
+  }
+
+  /**
+   * Collects all feature registrations from modules that import McpModule.forFeature().
+   */
+  private collectFeatureRegistrations(): Array<{
+    registration: McpFeatureRegistration;
+    sourceModule: Module;
+  }> {
+    const registrations: Array<{
+      registration: McpFeatureRegistration;
+      sourceModule: Module;
+    }> = [];
+
+    for (const module of this.modulesContainer.values()) {
+      // Check for feature registration providers (tokens start with MCP_FEATURE_REGISTRATION)
+      for (const [key, provider] of module.providers) {
+        if (
+          typeof key === 'string' &&
+          key.startsWith(MCP_FEATURE_REGISTRATION) &&
+          provider?.instance
+        ) {
+          registrations.push({
+            registration: provider.instance as McpFeatureRegistration,
+            sourceModule: module,
+          });
+        }
+      }
+    }
+
+    return registrations;
+  }
+
+  /**
+   * Processes feature registrations and discovers tools from their providers.
+   */
+  private processFeatureRegistrations(
+    registrations: Array<{
+      registration: McpFeatureRegistration;
+      sourceModule: Module;
+    }>,
+    serverNameToModuleId: Map<string, string>,
+  ) {
+    for (const { registration, sourceModule } of registrations) {
+      const mcpModuleId = serverNameToModuleId.get(registration.serverName);
+
+      if (!mcpModuleId) {
+        this.logger.warn(
+          `McpModule.forFeature: No MCP server found with name '${registration.serverName}'. ` +
+            `Make sure McpModule.forRoot({ name: '${registration.serverName}', ... }) is imported.`,
+        );
+        continue;
+      }
+
+      this.logger.debug(
+        `Processing forFeature registration for server '${registration.serverName}' ` +
+          `with ${registration.providerTokens.length} provider(s)`,
+      );
+
+      // Find the module that actually provides these providers
+      // The sourceModule imports the forFeature module, so we look at its parent
+      const parentModule = this.findModuleWithProviders(
+        registration.providerTokens,
+        sourceModule,
+      );
+
+      if (parentModule) {
+        this.discoverToolsFromProviders(
+          mcpModuleId,
+          registration.providerTokens,
+          parentModule,
+        );
+      }
+    }
+  }
+
+  /**
+   * Finds a module that contains the specified providers.
+   * Searches the source module and its parent modules.
+   */
+  private findModuleWithProviders(
+    providerTokens: InjectionToken[],
+    sourceModule: Module,
+  ): Module | undefined {
+    // First check if the source module's parent has the providers
+    for (const module of this.modulesContainer.values()) {
+      if (module.imports.has(sourceModule)) {
+        // This module imports our source module, check if it has the providers
+        const hasAllProviders = providerTokens.every((token) =>
+          module.getProviderByKey(token),
+        );
+        if (hasAllProviders) {
+          return module;
+        }
+      }
+    }
+
+    // Fallback: search all modules
+    for (const module of this.modulesContainer.values()) {
+      const hasAllProviders = providerTokens.every((token) =>
+        module.getProviderByKey(token),
+      );
+      if (hasAllProviders) {
+        return module;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Discovers tools from specific providers within a module.
+   */
+  private discoverToolsFromProviders(
+    mcpModuleId: string,
+    providerTokens: InjectionToken[],
+    module: Module,
+  ) {
+    for (const token of providerTokens) {
+      const provider = module.getProviderByKey(token);
+      if (!provider?.instance || typeof provider.instance !== 'object') {
+        this.logger.warn(
+          `McpModule.forFeature: Provider '${String(token)}' not found or not instantiated`,
+        );
+        continue;
+      }
+
+      const instance = provider.instance as object;
+      this.metadataScanner.getAllMethodNames(instance).forEach((methodName) => {
+        const methodRef = instance[methodName] as object;
+        const methodMetaKeys = Reflect.getOwnMetadataKeys(methodRef);
+
+        if (methodMetaKeys.includes(MCP_TOOL_METADATA_KEY)) {
+          this.addDiscoveryTool(
+            mcpModuleId,
+            methodRef,
+            token as InjectionTokenWithName,
+            methodName,
+          );
+        }
+
+        if (methodMetaKeys.includes(MCP_RESOURCE_METADATA_KEY)) {
+          this.addDiscoveryResource(
+            mcpModuleId,
+            methodRef,
+            token as InjectionTokenWithName,
+            methodName,
+          );
+        }
+
+        if (methodMetaKeys.includes(MCP_RESOURCE_TEMPLATE_METADATA_KEY)) {
+          this.addDiscoveryResourceTemplate(
+            mcpModuleId,
+            methodRef,
+            token as InjectionTokenWithName,
+            methodName,
+          );
+        }
+
+        if (methodMetaKeys.includes(MCP_PROMPT_METADATA_KEY)) {
+          this.addDiscoveryPrompt(
+            mcpModuleId,
+            methodRef,
+            token as InjectionTokenWithName,
+            methodName,
+          );
+        }
+      });
     }
   }
 
@@ -550,7 +759,8 @@ export class McpRegistryService implements OnApplicationBootstrap {
         const pathParams = result.params as Record<string, string>;
 
         // Get expected query params from template and filter input query params
-        const expectedQueryParams = this.extractTemplateQueryParams(rawTemplate);
+        const expectedQueryParams =
+          this.extractTemplateQueryParams(rawTemplate);
         const queryParams: Record<string, string> = {};
         for (const paramName of expectedQueryParams) {
           if (inputQueryParams[paramName] !== undefined) {
