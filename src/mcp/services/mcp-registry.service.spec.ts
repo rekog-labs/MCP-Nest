@@ -211,7 +211,9 @@ describe('McpRegistryService - Multiple discovery roots', () => {
  *       AppModule (server-a, server-b)
  *          |
  *          |
- *        Tools
+ *      ToolsModule
+ *          |
+ *       Tools (forFeature to both)
  */
 describe('McpRegistryService - Single discovery root with multiple MCP servers', () => {
   const mcpModuleA = McpModule.forRoot({ name: 'server-a', version: '0.0.1' });
@@ -232,8 +234,17 @@ describe('McpRegistryService - Single discovery root with multiple MCP servers',
   }
 
   @Module({
-    imports: [mcpModuleA, mcpModuleB],
+    imports: [
+      McpModule.forFeature([Tools], 'server-a'),
+      McpModule.forFeature([Tools], 'server-b'),
+    ],
     providers: [Tools],
+    exports: [Tools],
+  })
+  class ToolsModule {}
+
+  @Module({
+    imports: [mcpModuleA, mcpModuleB, ToolsModule],
   })
   class AppModule {}
 

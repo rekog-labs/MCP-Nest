@@ -1,4 +1,10 @@
-import { DynamicModule, Module, Provider, Type } from '@nestjs/common';
+import {
+  DynamicModule,
+  InjectionToken,
+  Module,
+  Provider,
+  Type,
+} from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
 import { McpTransportType } from './interfaces';
 import type {
@@ -17,8 +23,20 @@ import { createSseController } from './transport/sse.controller.factory';
 import { StdioService } from './transport/stdio.service';
 import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
 import { normalizeEndpoint } from './utils/normalize-endpoint';
+import {
+  MCP_FEATURE_REGISTRATION,
+  McpFeatureRegistration,
+} from './constants/feature-registration.constants';
 
 let instanceIdCounter = 0;
+let featureIdCounter = 0;
+
+/**
+ * Lightweight module class used by McpModule.forFeature().
+ * This is separate from McpModule to avoid circular dependency issues.
+ */
+@Module({})
+export class McpFeatureModule {}
 
 @Module({
   imports: [DiscoveryModule],
@@ -29,6 +47,61 @@ export class McpModule {
    * To avoid import circular dependency issues, we use a marker property.
    */
   readonly __isMcpModule = true;
+
+  /**
+   * Registers tool providers to be associated with a specific MCP server.
+   *
+   * Use this method to organize tools into separate feature modules while
+   * associating them with a specific MCP server created by forRoot().
+   *
+   * @param providers - Array of provider classes that contain @Tool, @Resource, @ResourceTemplate, or @Prompt decorated methods
+   * @param serverName - The name of the MCP server (as specified in forRoot options) to register these tools with
+   * @returns A DynamicModule that can be imported into any module
+   *
+   * @example
+   * ```typescript
+   * // In feature.module.ts
+   * @Module({
+   *   imports: [McpModule.forFeature([UserTools, OrderTools], 'my-server')],
+   *   providers: [UserTools, OrderTools, UserService, OrderService],
+   *   exports: [UserTools, OrderTools],
+   * })
+   * export class FeatureModule {}
+   *
+   * // In app.module.ts
+   * @Module({
+   *   imports: [
+   *     McpModule.forRoot({ name: 'my-server', version: '1.0.0' }),
+   *     FeatureModule,
+   *   ],
+   * })
+   * export class AppModule {}
+   * ```
+   */
+  static forFeature(
+    providers: InjectionToken[],
+    serverName: string,
+  ): DynamicModule {
+    const registration: McpFeatureRegistration = {
+      serverName,
+      providerTokens: providers,
+    };
+
+    // Use a unique token for each forFeature call to allow multiple registrations
+    const registrationToken = `${MCP_FEATURE_REGISTRATION}_${featureIdCounter++}`;
+
+    return {
+      module: McpFeatureModule,
+      providers: [
+        {
+          provide: registrationToken,
+          useValue: registration,
+        },
+      ],
+      exports: [registrationToken],
+      global: true, // Make it global so the registration can be discovered from any module
+    };
+  }
 
   static forRoot(options: McpOptions): DynamicModule {
     const defaultOptions: Partial<McpOptions> = {
