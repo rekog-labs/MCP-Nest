@@ -134,7 +134,7 @@ class PromptProvider {
 @Module({
   imports: [McpModule.forFeature([UserTools], 'main-server')],
   providers: [UserTools, UserService],
-  exports: [UserTools],
+  exports: [],
 })
 class UserFeatureModule {}
 

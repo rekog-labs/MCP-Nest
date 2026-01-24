@@ -16,6 +16,10 @@ import { ToolAuthorizationService } from '../tool-authorization.service';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import type { McpOptions } from '../../interfaces/mcp-options.interface';
+import {
+  McpToolBuilder,
+  DYNAMIC_TOOL_HANDLER_TOKEN,
+} from '../mcp-tool-builder.service';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -210,27 +214,51 @@ export class McpToolsHandler extends McpHandlerBase {
           const contextId = ContextIdFactory.getByRequest(httpRequest);
           this.moduleRef.registerRequestByContextId(httpRequest, contextId);
 
-          const toolInstance = await this.moduleRef.resolve(
-            toolInfo.providerClass,
-            contextId,
-            { strict: false },
-          );
-
           const context = this.createContext(mcpServer, request);
+          let result: any;
 
-          if (!toolInstance) {
-            throw new McpError(
-              ErrorCode.MethodNotFound,
-              `Unknown tool: ${request.params.name}`,
+          // Check if this is a dynamic tool (registered via McpToolBuilder)
+          if (toolInfo.providerClass === DYNAMIC_TOOL_HANDLER_TOKEN) {
+            // Dynamic tool - get handler using static method with the correct moduleId
+            const handler = McpToolBuilder.getHandlerByModuleId(
+              this.mcpModuleId,
+              request.params.name,
+            );
+
+            if (!handler) {
+              throw new McpError(
+                ErrorCode.MethodNotFound,
+                `Handler not found for dynamic tool: ${request.params.name}`,
+              );
+            }
+
+            result = await handler(
+              request.params.arguments || {},
+              context,
+              httpRequest.raw as McpRequestWithUser,
+            );
+          } else {
+            // Decorator-based tool - resolve provider instance and call method
+            const toolInstance = await this.moduleRef.resolve(
+              toolInfo.providerClass,
+              contextId,
+              { strict: false },
+            );
+
+            if (!toolInstance) {
+              throw new McpError(
+                ErrorCode.MethodNotFound,
+                `Unknown tool: ${request.params.name}`,
+              );
+            }
+
+            result = await toolInstance[toolInfo.methodName].call(
+              toolInstance,
+              request.params.arguments,
+              context,
+              httpRequest.raw as McpRequestWithUser,
             );
           }
-
-          const result = await toolInstance[toolInfo.methodName].call(
-            toolInstance,
-            request.params.arguments,
-            context,
-            httpRequest.raw as McpRequestWithUser,
-          );
 
           const transformedResult = this.formatToolResult(
             result,

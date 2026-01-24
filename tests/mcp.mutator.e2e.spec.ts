@@ -18,11 +18,13 @@ class Tools {
   }
 }
 
-const composeMutators = (...mutators: Array<(server: McpServer) => McpServer>) => {
+const composeMutators = (
+  ...mutators: Array<(server: McpServer) => McpServer>
+) => {
   return (server: McpServer) => {
     return mutators.reduce((srv, mutator) => mutator(srv), server);
-  }
-}
+  };
+};
 
 let fakeTelemetry = jest.fn();
 
@@ -32,10 +34,10 @@ const telemetryMutator = (server: McpServer) => {
   server.connect = async (transport) => {
     fakeTelemetry();
     return originalConnect.call(server, transport);
-  }
+  };
 
   return server;
-}
+};
 
 describe('MCP with mutated telemetry server', () => {
   let app: INestApplication;
@@ -46,7 +48,7 @@ describe('MCP with mutated telemetry server', () => {
 
   beforeEach(async () => {
     fakeTelemetry.mockClear();
-  })
+  });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({

@@ -777,4 +777,26 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
     return undefined;
   }
+
+  /**
+   * Register a tool programmatically (for dynamic tools).
+   * Use McpToolBuilder.registerTool() instead of calling this directly.
+   *
+   * @param mcpModuleId - The module ID to register the tool with
+   * @param tool - The discovered tool object to register
+   */
+  registerDynamicTool(
+    mcpModuleId: string,
+    tool: DiscoveredTool<ToolMetadata>,
+  ): void {
+    if (!this.discoveredToolsByMcpModuleId.has(mcpModuleId)) {
+      this.discoveredToolsByMcpModuleId.set(mcpModuleId, []);
+    }
+
+    this.logger.debug(
+      `Dynamic tool registered: ${tool.metadata.name} in module: ${mcpModuleId}`,
+    );
+
+    this.discoveredToolsByMcpModuleId.get(mcpModuleId)?.push(tool);
+  }
 }
