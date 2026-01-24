@@ -270,6 +270,25 @@ export class GreetingTool {
     return result;
   }
 
+  @Tool({
+    name: 'greet-with-details',
+    description: 'A tool to test input validation with required parameters',
+    parameters: z.object({
+      name: z.string().length(3, 'Name must be at least 3 characters long'),
+      age: z.number().min(1).max(100),
+    }),
+  })
+  async execute({ name, age }) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Received: ${name}, ${age} years old.`,
+        },
+      ],
+    };
+  }
+
   // Tool requiring specific scopes
   @Tool({
     name: 'admin-greet',
@@ -351,6 +370,7 @@ export class GreetingTool {
       openWorldHint: false,
     },
   })
+
   @ToolScopes(['admin', 'write', 'delete'])
   @ToolRoles(['super-admin'])
   async superAdminGreet(
