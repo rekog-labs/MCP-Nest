@@ -584,88 +584,86 @@ describe('E2E: MCP ToolServer', () => {
         const client = await clientCreator(port);
 
         try {
-          await client.callTool({
+          const result: any = await client.callTool({
             name: 'hello-world',
             arguments: { name: 123 } as any, // Wrong type for 'name'
           });
-        } catch (error) {
-          expect(error).toBeDefined();
-          expect(error.message.toLowerCase()).toContain(
-            'expected string, received number',
+          expect(result.isError).toBe(true);
+          expect(result.content[0].text).toContain('Invalid parameters:');
+          expect(result.content[0].text).toContain('[name]');
+          expect(result.content[0].text).toContain(
+            'Invalid input: expected string, received number',
           );
+        } finally {
+          await client.close();
         }
-
-        await client.close();
       });
 
-      it('should reject missing arguments for hello-world', async () => {
+      it('should accept missing arguments for hello-world (defaults)', async () => {
         const client = await clientCreator(port);
 
         try {
-          await client.callTool({
+          const result: any = await client.callTool({
             name: 'hello-world',
             arguments: {} as any,
           });
-        } catch (error) {
-          expect(error).toBeDefined();
-          expect(error.message).toContain('Required');
+          expect(result.isError).not.toBe(true);
+          expect(result.content[0].type).toBe('text');
+          expect(result.content[0].text).toContain(
+            'Hello, Repository User Name World!',
+          );
+        } finally {
+          await client.close();
         }
-
-        await client.close();
       });
 
       it('should test input validation with truly required parameters', async () => {
         const client = await clientCreator(port);
 
         try {
-          await client.callTool({
+          const result: any = await client.callTool({
             name: 'validation-test-tool',
             arguments: {}, // Missing both required parameters
           });
-          // If we reach here, validation is NOT working
-          expect(true).toBe(false); // Force failure
-        } catch (error) {
-          expect(error).toBeDefined();
-          console.log('Validation error:', error.message);
-          // Expect MCP InvalidParams error
-          expect(
-            error.message.includes('Invalid parameters') ||
-              error.message.includes('Required') ||
-              error.message.includes('string') ||
-              error.message.includes('number') ||
-              error.code === -32602, // ErrorCode.InvalidParams
-          ).toBe(true);
+          expect(result.isError).toBe(true);
+          expect(result.content[0].text).toContain('Invalid parameters:');
+          expect(result.content[0].text).toContain('[requiredString]');
+          expect(result.content[0].text).toContain('[requiredNumber]');
+          expect(result.content[0].text).toContain(
+            'Invalid input: expected string, received undefined',
+          );
+          expect(result.content[0].text).toContain(
+            'Invalid input: expected number, received undefined',
+          );
+        } finally {
+          await client.close();
         }
-
-        await client.close();
       });
 
       it('should test input validation with wrong types', async () => {
         const client = await clientCreator(port);
 
         try {
-          await client.callTool({
+          const result: any = await client.callTool({
             name: 'validation-test-tool',
             arguments: {
               requiredString: 123, // Wrong type
               requiredNumber: 'not a number', // Wrong type
             },
           });
-          // If we reach here, validation is NOT working
-          expect(true).toBe(false); // Force failure
-        } catch (error) {
-          expect(error).toBeDefined();
-          console.log('Type validation error:', error.message);
-          // Expect MCP InvalidParams error
-          expect(
-            error.message.includes('Invalid parameters') ||
-              error.message.includes('Expected string') ||
-              error.message.includes('Expected number') ||
-              error.code === -32602, // ErrorCode.InvalidParams
-          ).toBe(true);
+          expect(result.isError).toBe(true);
+          expect(result.content[0].text).toContain('Invalid parameters:');
+          expect(result.content[0].text).toContain('[requiredString]');
+          expect(result.content[0].text).toContain('[requiredNumber]');
+          expect(result.content[0].text).toContain(
+            'Invalid input: expected string, received number',
+          );
+          expect(result.content[0].text).toContain(
+            'Invalid input: expected number, received string',
+          );
+        } finally {
+          await client.close();
         }
-
-        await client.close();
       });
 
       it('should call the tool and receive an error', async () => {

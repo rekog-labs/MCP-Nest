@@ -199,10 +199,22 @@ export class McpToolsHandler extends McpHandlerBase {
               request.params.arguments || {},
             );
             if (!validation.success) {
-              throw new McpError(
-                ErrorCode.InvalidParams,
-                `Invalid parameters: ${validation.error.message}`,
-              );
+              const issues = validation.error.issues
+                .map((issue) => {
+                  const path = issue.path.length > 0 ? issue.path.join('.') : '';
+                  const location = path ? `[${path}]: ` : '';
+                  return `${location}${issue.message}`;
+                })
+                .join('; ');
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: `Invalid parameters: ${issues}`,
+                  },
+                ],
+                isError: true,
+              };
             }
             // Use validated arguments to ensure defaults and transformations are applied
             request.params.arguments = validation.data as Record<
