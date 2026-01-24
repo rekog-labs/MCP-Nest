@@ -15,3 +15,8 @@ export type {
 } from './mcp-tool.interface';
 
 export type { HttpRequest } from './http-adapter.interface';
+
+export type {
+  DynamicToolDefinition,
+  DynamicToolHandler,
+} from './dynamic-tool.interface';
