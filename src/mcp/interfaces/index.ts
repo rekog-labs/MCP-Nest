@@ -12,6 +12,9 @@ export type {
   McpRequestSchema,
   McpRequest,
   Context,
+  CreateUrlElicitationParams,
+  CreateUrlElicitationResult,
+  ElicitationContext,
 } from './mcp-tool.interface';
 
 export type { HttpRequest } from './http-adapter.interface';

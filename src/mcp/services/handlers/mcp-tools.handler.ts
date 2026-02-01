@@ -4,6 +4,7 @@ import {
   ErrorCode,
   ListToolsRequestSchema,
   McpError,
+  UrlElicitationRequiredError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { Inject, Injectable, Scope } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
@@ -20,10 +21,13 @@ import {
   McpToolBuilder,
   DYNAMIC_TOOL_HANDLER_TOKEN,
 } from '../mcp-tool-builder.service';
+import { ElicitationService } from '../../../elicitation/services/elicitation.service';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
   private readonly moduleHasGuards: boolean;
+  private _elicitationService?: ElicitationService;
+  private _elicitationServiceResolved = false;
 
   constructor(
     moduleRef: ModuleRef,
@@ -35,6 +39,26 @@ export class McpToolsHandler extends McpHandlerBase {
     super(moduleRef, registry, McpToolsHandler.name, options);
     this.moduleHasGuards =
       this.options.guards !== undefined && this.options.guards.length > 0;
+  }
+
+  /**
+   * Lazily resolve ElicitationService at runtime.
+   * This allows the service to be available even when McpElicitationModule
+   * is imported as a sibling module (not a direct dependency).
+   */
+  private getElicitationService(): ElicitationService | undefined {
+    if (!this._elicitationServiceResolved) {
+      this._elicitationServiceResolved = true;
+      try {
+        this._elicitationService = this.moduleRef.get(ElicitationService, {
+          strict: false,
+        });
+      } catch {
+        // ElicitationService not available - module not configured
+        this._elicitationService = undefined;
+      }
+    }
+    return this._elicitationService;
   }
 
   private buildDefaultContentBlock(result: any) {
@@ -226,7 +250,13 @@ export class McpToolsHandler extends McpHandlerBase {
           const contextId = ContextIdFactory.getByRequest(httpRequest);
           this.moduleRef.registerRequestByContextId(httpRequest, contextId);
 
-          const context = this.createContext(mcpServer, request);
+          // Extract user ID for elicitation binding (prefer sub claim, fall back to user_profile_id)
+          const userId = user?.sub ?? user?.user_profile_id;
+
+          const context = this.createContext(mcpServer, request, {
+            userId,
+            elicitationService: this.getElicitationService(),
+          });
           let result: any;
 
           // Check if this is a dynamic tool (registered via McpToolBuilder)
@@ -285,6 +315,10 @@ export class McpToolsHandler extends McpHandlerBase {
           this.logger.error(error);
           // Re-throw McpErrors (like validation errors) so they are handled by the MCP protocol layer
           if (error instanceof McpError) {
+            throw error;
+          }
+          // Re-throw UrlElicitationRequiredError so the client can handle it
+          if (error instanceof UrlElicitationRequiredError) {
             throw error;
           }
           // For other errors, return formatted error response
