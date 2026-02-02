@@ -111,7 +111,7 @@ Refer to [`playground/README.md`](playground/README.md) for details.
 [ci-image]: https://github.com/rekog-labs/MCP-Nest/actions/workflows/pipeline.yml/badge.svg
 [npm-url]: https://www.npmjs.com/package/@rekog/mcp-nest
 [npm-version-image]: https://img.shields.io/npm/v/@rekog/mcp-nest
-[npm-downloads-image]: https://img.shields.io/npm/dm/@rekog/mcp-nest
+[npm-downloads-image]: https://img.shields.io/npm/d18m/@rekog/mcp-nest
 [npm-license-image]: https://img.shields.io/npm/l/@rekog/mcp-nest
 [code-coverage-url]: https://codecov.io/gh/rekog-labs/mcp-nest
 [code-coverage-image]: https://codecov.io/gh/rekog-labs/mcp-nest/branch/main/graph/badge.svg
