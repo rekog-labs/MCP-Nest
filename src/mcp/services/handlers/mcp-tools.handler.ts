@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
-  CallToolRequestSchema,
+  CallToolRequestSchema, CallToolResult,
   ErrorCode,
   ListToolsRequestSchema,
   McpError,
@@ -36,12 +36,12 @@ export class McpToolsHandler extends McpHandlerBase {
   constructor(
     moduleRef: ModuleRef,
     registry: McpRegistryService,
+    reflector: Reflector,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,
     private readonly authService: ToolAuthorizationService,
-    private readonly reflector: Reflector,
   ) {
-    super(moduleRef, registry, McpToolsHandler.name, options);
+    super(moduleRef, registry, reflector, McpToolsHandler.name, options);
     this.moduleHasGuards =
       this.options.guards !== undefined && this.options.guards.length > 0;
   }
@@ -79,71 +79,11 @@ export class McpToolsHandler extends McpHandlerBase {
     };
   }
 
-  private getExceptionTypes(filter: Type<ExceptionFilter>): Type<Error>[] {
-    return (
-      this.reflector.get<Type<Error>[]>(FILTER_CATCH_EXCEPTIONS, filter) ?? []
-    );
-  }
-
-  private isExceptionFiltered(
-    error: Error,
-    filter: Type<ExceptionFilter>,
-  ): boolean {
-    const exceptionTypes = this.getExceptionTypes(filter);
-    if (exceptionTypes.length === 0) {
-      return true;
-    }
-
-    return exceptionTypes.some((type) => error instanceof type);
-  }
-
-  private handleError(
-    error: Error,
-    toolInfo: DiscoveredTool<ToolMetadata>,
-    httpRequest: HttpRequest,
-  ) {
-    const clazz = toolInfo.providerClass as new () => unknown;
-    const method = clazz.prototype[toolInfo.methodName] as (
-      ...args: unknown[]
-    ) => unknown;
-
-    const methodFilters =
-      this.reflector.get<Type<ExceptionFilter>[]>(
-        EXCEPTION_FILTERS_METADATA,
-        method,
-      ) ?? [];
-
-    const classFilters =
-      this.reflector.get<Type<ExceptionFilter>[]>(
-        EXCEPTION_FILTERS_METADATA,
-        clazz,
-      ) ?? [];
-
-    const allFilters = [...methodFilters, ...classFilters];
-
-    for (const FilterClass of allFilters) {
-      if (this.isExceptionFiltered(error, FilterClass)) {
-        const filterInstance = new FilterClass();
-        const host = new ExecutionContextHost(
-          [httpRequest.raw],
-          toolInfo.providerClass as Type,
-          method,
-        );
-        host.setType('http');
-        const result = filterInstance.catch(error, host);
-
-        const text =
-          typeof result === 'string' ? result : JSON.stringify(result);
-
-        return {
-          content: [{ type: 'text', text }],
-          isError: true,
-        };
-      }
-    }
-
+  protected override createErrorResponse(
+    errorText: string,
+  ): CallToolResult | never {
     return {
-      content: [{ type: 'text', text: error.message }],
+      content: [{ type: 'text', text: errorText }],
       isError: true,
     };
   }
@@ -361,12 +301,6 @@ export class McpToolsHandler extends McpHandlerBase {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return transformedResult;
         } catch (error) {
-          this.logger.error(error);
-          // Re-throw McpErrors (like validation errors) so they are handled by the MCP protocol layer
-          if (error instanceof McpError) {
-            throw error;
-          }
-
           // We are assuming error as at least a message property
           return this.handleError(error as Error, toolInfo, httpRequest);
         }

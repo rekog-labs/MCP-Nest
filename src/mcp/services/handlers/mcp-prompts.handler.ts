@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional, Scope } from '@nestjs/common';
-import { ContextIdFactory, ModuleRef } from '@nestjs/core';
+import { ContextIdFactory, ModuleRef, Reflector } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   ErrorCode,
@@ -8,20 +8,22 @@ import {
   McpError,
   PromptArgument,
 } from '@modelcontextprotocol/sdk/types.js';
-import { McpRegistryService } from '../mcp-registry.service';
+import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
-import type { McpOptions } from '../../interfaces';
+import type { McpOptions } from '../../interfaces/mcp-options.interface';
+import { PromptMetadata } from '../../decorators';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpPromptsHandler extends McpHandlerBase {
   constructor(
     moduleRef: ModuleRef,
     registry: McpRegistryService,
+    reflector: Reflector,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,
   ) {
-    super(moduleRef, registry, McpPromptsHandler.name, options);
+    super(moduleRef, registry, reflector, McpPromptsHandler.name, options);
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
@@ -57,10 +59,11 @@ export class McpPromptsHandler extends McpHandlerBase {
       GetPromptRequestSchema,
       async (request) => {
         this.logger.debug('GetPromptRequestSchema is being called');
+        let promptInfo: DiscoveredTool<PromptMetadata> | undefined;
 
         try {
           const name = request.params.name;
-          const promptInfo = this.registry.findPrompt(this.mcpModuleId, name);
+          promptInfo = this.registry.findPrompt(this.mcpModuleId, name);
 
           if (!promptInfo) {
             throw new McpError(

@@ -32,19 +32,21 @@ export class McpExecutorService {
     this.toolsHandler = new McpToolsHandler(
       moduleRef,
       registry,
+      reflector,
       mcpModuleId,
       options,
       authService,
-      reflector,
     );
     this.resourcesHandler = new McpResourcesHandler(
       moduleRef,
       registry,
+      reflector,
       mcpModuleId,
     );
     this.promptsHandler = new McpPromptsHandler(
       moduleRef,
       registry,
+      reflector,
       mcpModuleId,
     );
   }

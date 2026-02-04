@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Injectable } from '@nestjs/common';
+import { McpError } from '@modelcontextprotocol/sdk/types.js';
 import { McpModule } from '../src/mcp/mcp.module';
 import { createSseClient } from './utils';
 import { Resource, ResourceTemplate } from '../src';
@@ -114,6 +115,17 @@ export class GreetingToolResource {
   })
   async sayHelloMultiplePathsDynamicError() {
     throw new Error('any error');
+  }
+
+  @ResourceTemplate({
+    name: 'hello-world-not-found',
+    description: 'A resource that throws not found',
+    mimeType: 'text/plain',
+    uriTemplate: 'mcp://hello-world-not-found/{id}',
+  })
+  async sayHelloNotFound({ uri }: { uri: string }) {
+    // https://modelcontextprotocol.io/specification/2025-06-18/server/resources#error-handling
+    throw new McpError(-32002, 'Resource not found', { uri });
   }
 }
 
@@ -232,22 +244,24 @@ describe('E2E: MCP Resource Server', () => {
     await client.close();
   });
 
-  it('should return an error when the resource is not found', async () => {
+  it('should throw internal error when resource throws generic error', async () => {
     const client = await createSseClient(testPort);
 
-    const result = await client.readResource({
-      uri: 'mcp://hello-world-dynamic-multiple-paths-error/123/Raphael_John',
-    });
+    await expect(
+      client.readResource({
+        uri: 'mcp://hello-world-dynamic-multiple-paths-error/123/Raphael_John',
+      }),
+    ).rejects.toThrow('any error');
 
-    expect(result).toEqual({
-      contents: [
-        {
-          uri: 'mcp://hello-world-dynamic-multiple-paths-error/123/Raphael_John',
-          mimeType: 'text/plain',
-          text: 'any error',
-        },
-      ],
-      isError: true,
+    await client.close();
+  });
+
+  it('should throw resource not found error', async () => {
+    const client = await createSseClient(testPort);
+    const uri = 'mcp://hello-world-not-found/123';
+
+    await expect(client.readResource({ uri })).rejects.toMatchObject({
+      code: -32002,
     });
 
     await client.close();
