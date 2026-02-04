@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Inject, Injectable, Logger, Optional, Scope } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
+import { ModuleRef, Reflector } from '@nestjs/core';
 import { McpRegistryService } from './mcp-registry.service';
 import { McpToolsHandler } from './handlers/mcp-tools.handler';
 import { McpResourcesHandler } from './handlers/mcp-resources.handler';
@@ -26,6 +26,7 @@ export class McpExecutorService {
     @Inject('MCP_MODULE_ID') mcpModuleId: string,
     @Inject('MCP_OPTIONS') options: McpOptions,
     authService: ToolAuthorizationService,
+    reflector: Reflector,
   ) {
     this.logger = createMcpLogger(McpExecutorService.name, options);
     this.toolsHandler = new McpToolsHandler(
@@ -34,6 +35,7 @@ export class McpExecutorService {
       mcpModuleId,
       options,
       authService,
+      reflector,
     );
     this.resourcesHandler = new McpResourcesHandler(
       moduleRef,

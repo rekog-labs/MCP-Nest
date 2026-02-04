@@ -6,8 +6,8 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { Inject, Injectable, Scope } from '@nestjs/common';
-import { ContextIdFactory, ModuleRef } from '@nestjs/core';
-import { McpRegistryService } from '../mcp-registry.service';
+import { ContextIdFactory, ModuleRef, Reflector } from '@nestjs/core';
+import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { ZodType } from 'zod';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
@@ -20,6 +20,14 @@ import {
   McpToolBuilder,
   DYNAMIC_TOOL_HANDLER_TOKEN,
 } from '../mcp-tool-builder.service';
+import {
+  EXCEPTION_FILTERS_METADATA,
+  FILTER_CATCH_EXCEPTIONS,
+} from '@nestjs/common/constants';
+import { ExceptionFilter, Type } from '@nestjs/common';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
+import { DynamicToolHandler } from '../../interfaces';
+import { ToolMetadata } from '../../decorators';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -31,6 +39,7 @@ export class McpToolsHandler extends McpHandlerBase {
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,
     private readonly authService: ToolAuthorizationService,
+    private readonly reflector: Reflector,
   ) {
     super(moduleRef, registry, McpToolsHandler.name, options);
     this.moduleHasGuards =
@@ -67,6 +76,75 @@ export class McpToolsHandler extends McpHandlerBase {
 
     return {
       content: this.buildDefaultContentBlock(result),
+    };
+  }
+
+  private getExceptionTypes(filter: Type<ExceptionFilter>): Type<Error>[] {
+    return (
+      this.reflector.get<Type<Error>[]>(FILTER_CATCH_EXCEPTIONS, filter) ?? []
+    );
+  }
+
+  private isExceptionFiltered(
+    error: Error,
+    filter: Type<ExceptionFilter>,
+  ): boolean {
+    const exceptionTypes = this.getExceptionTypes(filter);
+    if (exceptionTypes.length === 0) {
+      return true;
+    }
+
+    return exceptionTypes.some((type) => error instanceof type);
+  }
+
+  private handleError(
+    error: Error,
+    toolInfo: DiscoveredTool<ToolMetadata>,
+    httpRequest: HttpRequest,
+  ) {
+    const clazz = toolInfo.providerClass as new () => unknown;
+    const method = clazz.prototype[toolInfo.methodName] as (
+      ...args: unknown[]
+    ) => unknown;
+
+    const methodFilters =
+      this.reflector.get<Type<ExceptionFilter>[]>(
+        EXCEPTION_FILTERS_METADATA,
+        method,
+      ) ?? [];
+
+    const classFilters =
+      this.reflector.get<Type<ExceptionFilter>[]>(
+        EXCEPTION_FILTERS_METADATA,
+        clazz,
+      ) ?? [];
+
+    const allFilters = [...methodFilters, ...classFilters];
+
+    for (const FilterClass of allFilters) {
+      if (this.isExceptionFiltered(error, FilterClass)) {
+        const filterInstance = new FilterClass();
+        const host = new ExecutionContextHost(
+          [httpRequest.raw],
+          toolInfo.providerClass as Type,
+          method,
+        );
+        host.setType('http');
+        const result = filterInstance.catch(error, host);
+
+        const text =
+          typeof result === 'string' ? result : JSON.stringify(result);
+
+        return {
+          content: [{ type: 'text', text }],
+          isError: true,
+        };
+      }
+    }
+
+    return {
+      content: [{ type: 'text', text: error.message }],
+      isError: true,
     };
   }
 
@@ -201,7 +279,8 @@ export class McpToolsHandler extends McpHandlerBase {
             if (!validation.success) {
               const issues = validation.error.issues
                 .map((issue) => {
-                  const path = issue.path.length > 0 ? issue.path.join('.') : '';
+                  const path =
+                    issue.path.length > 0 ? issue.path.join('.') : '';
                   const location = path ? `[${path}]: ` : '';
                   return `${location}${issue.message}`;
                 })
@@ -287,11 +366,9 @@ export class McpToolsHandler extends McpHandlerBase {
           if (error instanceof McpError) {
             throw error;
           }
-          // For other errors, return formatted error response
-          return {
-            content: [{ type: 'text', text: error.message }],
-            isError: true,
-          };
+
+          // We are assuming error as at least a message property
+          return this.handleError(error as Error, toolInfo, httpRequest);
         }
       },
     );

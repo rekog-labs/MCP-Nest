@@ -24,7 +24,7 @@
     "start:playground": "ts-node-dev --respawn playground/servers/server-stateful.ts",
     "start:fastify": "ts-node-dev --respawn playground/servers/server-fastify.ts",
     "start:multi-server": "ts-node-dev --respawn playground/servers/multi-server-example/main.ts",
-    "test": "bun test src tests",
+    "test": "bun test src tests --only",
     "test:watch": "bun test src tests --watch",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\" \"playground/**/*.ts\" \"tests/**/*.ts\""
