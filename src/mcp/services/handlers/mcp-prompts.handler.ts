@@ -103,11 +103,7 @@ export class McpPromptsHandler extends McpHandlerBase {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return result;
         } catch (error) {
-          this.logger.error(error);
-          return {
-            contents: [{ mimeType: 'text/plain', text: error.message }],
-            isError: true,
-          };
+          this.handleError(error as Error, promptInfo!, httpRequest);
         }
       },
     );
