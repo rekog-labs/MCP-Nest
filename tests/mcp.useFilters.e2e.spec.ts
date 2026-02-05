@@ -255,7 +255,7 @@ describe('E2E: MCP UseFilters', () => {
     });
 
     describe('Class Level', () => {
-      it.only('should catch any error with catch-all filter', async () => {
+      it('should catch any error with catch-all filter', async () => {
         const client = await createSseClient(port);
         try {
           await expect(
