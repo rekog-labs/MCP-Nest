@@ -19,6 +19,7 @@ import {
   MCP_PUBLIC_METADATA_KEY,
   MCP_SCOPES_METADATA_KEY,
   MCP_ROLES_METADATA_KEY,
+  MCP_GUARDS_METADATA_KEY,
   ToolMetadata,
 } from '../decorators';
 import { ResourceMetadata } from '../decorators/resource.decorator';
@@ -436,6 +437,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
       MCP_ROLES_METADATA_KEY,
       methodRef,
     );
+    const guards = Reflect.getMetadata(MCP_GUARDS_METADATA_KEY, methodRef);
 
     // Add tool with security metadata
     const baseMetadata: ToolMetadata = Reflect.getMetadata(
@@ -456,6 +458,9 @@ export class McpRegistryService implements OnApplicationBootstrap {
     }
     if (requiredRoles) {
       baseMetadata.requiredRoles = requiredRoles;
+    }
+    if (guards) {
+      baseMetadata.guards = guards;
     }
 
     if (!this.discoveredToolsByMcpModuleId.has(mcpModuleId)) {

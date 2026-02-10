@@ -6,3 +6,4 @@ export * from './prompt.decorator';
 export * from './public.decorator';
 export * from './tool-scopes.decorator';
 export * from './tool-roles.decorator';
+export * from './tool-guards.decorator';
