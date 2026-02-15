@@ -5,7 +5,7 @@ import {
   Optional,
   Scope,
 } from '@nestjs/common';
-import { ContextIdFactory, ModuleRef } from '@nestjs/core';
+import { ContextIdFactory, ModuleRef, Reflector } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   ErrorCode,
@@ -13,6 +13,7 @@ import {
   ListResourceTemplatesRequestSchema,
   McpError,
   ReadResourceRequestSchema,
+  ReadResourceResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
@@ -24,10 +25,11 @@ export class McpResourcesHandler extends McpHandlerBase {
   constructor(
     moduleRef: ModuleRef,
     registry: McpRegistryService,
+    reflector: Reflector,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,
   ) {
-    super(moduleRef, registry, McpResourcesHandler.name, options);
+    super(moduleRef, registry, reflector, McpResourcesHandler.name, options);
   }
 
   registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
@@ -103,7 +105,6 @@ export class McpResourcesHandler extends McpHandlerBase {
               `Unknown resource: ${uri}`,
             );
           }
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return await this.handleRequest(
             httpRequest,
             providerClass,
@@ -113,11 +114,11 @@ export class McpResourcesHandler extends McpHandlerBase {
             methodName,
           );
         } catch (error) {
-          this.logger.error(error);
-          return {
-            contents: [{ uri, mimeType: 'text/plain', text: error.message }],
-            isError: true,
-          };
+          return this.handleError(
+            error as Error,
+            (resourceInfo?.resource ?? resourceTemplateInfo?.resourceTemplate)!,
+            httpRequest,
+          );
         }
       },
     );
@@ -155,7 +156,6 @@ export class McpResourcesHandler extends McpHandlerBase {
 
     this.logger.debug(result, 'ReadResourceRequestSchema result');
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return result;
+    return result as ReadResourceResult;
   }
 }

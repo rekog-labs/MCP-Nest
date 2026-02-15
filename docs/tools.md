@@ -152,6 +152,99 @@ async sayHelloInteractive({ name }, context: Context) {
 }
 ```
 
+## Exception Handling with @UseFilters
+
+NestJS's `@UseFilters` and `@Catch` decorators work out of the box for tools, resources, and prompts. This allows you to create custom exception filters to handle errors consistently across your MCP server.
+
+### Creating an Exception Filter
+
+```typescript
+import { Catch, ExceptionFilter } from '@nestjs/common';
+
+class CustomError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+  ) {
+    super(message);
+  }
+}
+
+@Catch(CustomError)
+class CustomErrorFilter implements ExceptionFilter {
+  catch(exception: CustomError) {
+    return `[${exception.code}] ${exception.message}`;
+  }
+}
+
+@Catch()
+class CatchAllFilter implements ExceptionFilter {
+  catch(exception: Error) {
+    return `Unexpected error: ${exception.message}`;
+  }
+}
+```
+
+### Using Filters with Tools, Resources, and Prompts
+
+Filters can be applied at the method level or class level:
+
+```typescript
+import { Injectable, UseFilters } from '@nestjs/common';
+import { Tool, Resource, Prompt } from '@rekog/mcp-nest';
+import { z } from 'zod';
+
+@Injectable()
+@UseFilters(CatchAllFilter)
+class MyService {
+  @Tool({
+    name: 'my-tool',
+    description: 'A tool with custom error handling',
+    parameters: z.object({ input: z.string() }),
+  })
+  @UseFilters(CustomErrorFilter)
+  async myTool({ input }) {
+    if (!input) {
+      throw new CustomError('Input is required', 'VALIDATION_ERROR');
+    }
+    return `Processed: ${input}`;
+  }
+
+  @Resource({
+    name: 'my-resource',
+    description: 'A resource with error handling',
+    uri: 'mcp://my-resource',
+    mimeType: 'text/plain',
+  })
+  async myResource({ uri }) {
+    throw new Error('Resource unavailable');
+  }
+
+  @Prompt({
+    name: 'my-prompt',
+    description: 'A prompt with error handling',
+  })
+  async myPrompt() {
+    throw new CustomError('Prompt failed', 'PROMPT_ERROR');
+  }
+}
+```
+
+### How Errors Are Returned
+
+The filter's return value is handled differently based on the capability type:
+
+- **Tools**: Errors are returned as `{ content: [{ type: 'text', text: filterResult }], isError: true }`
+- **Resources & Prompts**: Errors are thrown as MCP internal errors (code `-32603`) with the filter result in the message
+
+### Filter Precedence
+
+1. Method-level filters are checked first
+2. Class-level filters are checked if no method-level filter matches
+3. If no filter matches the exception type, default error handling is used
+
+A catch-all filter (`@Catch()` with no arguments) will catch any exception that wasn't caught by more specific filters.
+
 ## Testing Your Tools
 
 ### 1. Start the Server
