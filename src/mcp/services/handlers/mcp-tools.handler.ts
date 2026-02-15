@@ -1,13 +1,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
-  CallToolRequestSchema, CallToolResult,
+  CallToolRequestSchema,
+  CallToolResult,
   ErrorCode,
   ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Inject, Injectable, Scope } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  Scope,
+  Type,
+} from '@nestjs/common';
 import { ContextIdFactory, ModuleRef, Reflector } from '@nestjs/core';
 import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
+import { ToolGuardExecutionContext, ToolMetadata } from '../../decorators';
 import { McpHandlerBase } from './mcp-handler.base';
 import { ZodType } from 'zod';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
@@ -20,14 +29,6 @@ import {
   McpToolBuilder,
   DYNAMIC_TOOL_HANDLER_TOKEN,
 } from '../mcp-tool-builder.service';
-import {
-  EXCEPTION_FILTERS_METADATA,
-  FILTER_CATCH_EXCEPTIONS,
-} from '@nestjs/common/constants';
-import { ExceptionFilter, Type } from '@nestjs/common';
-import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
-import { DynamicToolHandler } from '../../interfaces';
-import { ToolMetadata } from '../../decorators';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpToolsHandler extends McpHandlerBase {
@@ -88,13 +89,98 @@ export class McpToolsHandler extends McpHandlerBase {
     };
   }
 
+  /**
+   * Creates an ExecutionContext for @ToolGuards() evaluation.
+   *
+   * Only the fields documented in ToolGuardExecutionContext are available.
+   * Invalid fields throw with a descriptive message rather than silently
+   * returning garbage.
+   */
+  private createToolGuardExecutionContext(
+    httpRequest: HttpRequest,
+    tool: DiscoveredTool<ToolMetadata>,
+  ): ToolGuardExecutionContext & ExecutionContext {
+    const providerClass = tool.providerClass as Type;
+    const methodHandler =
+      providerClass.prototype?.[tool.methodName] ?? (() => {});
+
+    const unavailable = (method: string): never => {
+      throw new Error(
+        `${method} is not available in @ToolGuards() context. ` +
+          `MCP tools share a single HTTP endpoint, so only a limited API is available.` +
+          `See ToolGuardExecutionContext for the supported API.`,
+      );
+    };
+
+    return {
+      switchToHttp: () => ({
+        getRequest: <T = unknown>() => httpRequest.raw as T,
+        getResponse: () => unavailable('switchToHttp().getResponse()'),
+        getNext: () => unavailable('switchToHttp().getNext()'),
+      }),
+      getClass: <T = unknown>() => providerClass as Type<T>,
+      getHandler: () => methodHandler as () => void,
+      getArgs: () => unavailable('getArgs()'),
+      getArgByIndex: () => unavailable('getArgByIndex()'),
+      getType: <TContext extends string = string>() => 'http' as TContext,
+      switchToRpc: () => unavailable('switchToRpc()'),
+      switchToWs: () => unavailable('switchToWs()'),
+    };
+  }
+
+  /**
+   * Evaluates all @ToolGuards() for a tool.
+   * Returns true if the tool has no guards or all guards pass.
+   */
+  private async checkToolGuards(
+    tool: DiscoveredTool<ToolMetadata>,
+    httpRequest: HttpRequest,
+  ): Promise<boolean> {
+    const guards = tool.metadata.guards;
+    if (!guards || guards.length === 0) {
+      return true;
+    }
+
+    // Guards require HTTP context - not available on STDIO
+    if (!httpRequest.raw) {
+      this.logger.warn(
+        `@ToolGuards() on tool '${tool.metadata.name}' cannot be evaluated without HTTP context (STDIO transport). ` +
+          `The tool will be hidden. Use HTTP transport to support guarded tools.`,
+      );
+      return false;
+    }
+
+    const context = this.createToolGuardExecutionContext(httpRequest, tool);
+
+    for (const GuardClass of guards) {
+      try {
+        const guard = this.moduleRef.get<CanActivate>(GuardClass, {
+          strict: false,
+        });
+        const result = guard.canActivate(context);
+        const canActivate = result instanceof Promise ? await result : result;
+        if (!canActivate) {
+          return false;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `@ToolGuards() guard ${GuardClass.name} threw on tool '${tool.metadata.name}': ${error.message}. ` +
+            `The tool will be hidden. If this is unexpected, ensure the guard only uses ` +
+            `the API available in ToolGuardExecutionContext.`,
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
   registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
     if (this.registry.getTools(this.mcpModuleId).length === 0) {
       this.logger.debug('No tools registered, skipping tool handlers');
       return;
     }
 
-    mcpServer.server.setRequestHandler(ListToolsRequestSchema, () => {
+    mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Extract user from request (may be undefined if not authenticated or STDIO)
       // For STDIO transport, httpRequest.raw is undefined, so bypass auth entirely
       const user = httpRequest.raw
@@ -109,7 +195,9 @@ export class McpToolsHandler extends McpHandlerBase {
         : false;
       const allowUnauthenticatedAccess =
         this.options.allowUnauthenticatedAccess ?? false;
-      const authorizedTools = allTools.filter((tool) =>
+
+      // Filter by JWT-based authorization (scopes, roles, public)
+      const jwtAuthorizedTools = allTools.filter((tool) =>
         this.authService.canAccessTool(
           user,
           tool,
@@ -117,6 +205,14 @@ export class McpToolsHandler extends McpHandlerBase {
           allowUnauthenticatedAccess,
         ),
       );
+
+      // Filter by @ToolGuards() - evaluate each tool's guards
+      const authorizedTools: typeof jwtAuthorizedTools = [];
+      for (const tool of jwtAuthorizedTools) {
+        if (await this.checkToolGuards(tool, httpRequest)) {
+          authorizedTools.push(tool);
+        }
+      }
 
       const tools = authorizedTools.map((tool) => {
         // Create base schema
@@ -209,6 +305,15 @@ export class McpToolsHandler extends McpHandlerBase {
           effectiveModuleHasGuards,
           allowUnauthenticatedAccess,
         );
+
+        // Validate @ToolGuards()
+        const guardsPassed = await this.checkToolGuards(toolInfo, httpRequest);
+        if (!guardsPassed) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `Access denied: insufficient permissions for tool '${request.params.name}'`,
+          );
+        }
 
         try {
           // Validate input parameters against the tool's schema

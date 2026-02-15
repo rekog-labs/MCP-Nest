@@ -370,6 +370,56 @@ npx @modelcontextprotocol/inspector@0.16.2
 
 Connect to `http://localhost:3030/mcp` to test your tools interactively and see progress reporting in real-time.
 
+## Tool Guards
+
+Tools can be protected with NestJS guards for access control. When guards are specified, tools are:
+- **Hidden** from `tools/list` for unauthorized users.
+- **Blocked** from execution with "Access denied" error.
+
+```typescript
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Tool, ToolGuards } from '@rekog/mcp-nest';
+import { z } from 'zod';
+
+@Injectable()
+class AdminGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    return request?.user?.role === 'admin';
+  }
+}
+
+@Injectable()
+export class MyTools {
+  @Tool({
+    name: 'admin-action',
+    description: 'Only visible and executable by admins',
+    parameters: z.object({ target: z.string() }),
+  })
+  @ToolGuards([AdminGuard])
+  async adminAction({ target }) {
+    return { content: [{ type: 'text', text: `Admin action on ${target}` }] };
+  }
+
+  @Tool({
+    name: 'secure-action',
+    description: 'Requires both authentication and admin role',
+    parameters: z.object({}),
+  })
+  @ToolGuards([AuthGuard, AdminGuard])
+  async secureAction() {
+    return { content: [{ type: 'text', text: 'Secure action complete' }] };
+  }
+}
+```
+
+`@ToolGuards()` can be combined with `@PublicTool()`, `@ToolScopes()`, and `@ToolRoles()`. JWT-based authorization checks run first, then guards are evaluated.
+
+Multiple guards use AND logic: all guards must pass for access to be granted.
+
+Guards require HTTP context and are not supported with STDIO transport. 
+Tools with `@ToolGuards()` will be hidden when using STDIO.
+
 ## Example Location
 
 See the complete example at: `playground/resources/greeting.tool.ts`
