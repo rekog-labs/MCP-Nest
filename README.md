@@ -29,6 +29,7 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 - 🏠 **[Built-in Authorization Server](docs/built-in-authorization-server.md)** — Using the built-in Authorization Server for easy setups. **(Beta)**
 - 🌐 **[External Authorization Server](docs/external-authorization-server/README.md)** — Securing your MCP server with an external authorization server (Keycloak, Auth0, etc).
 - 💉 **[Dependency Injection](docs/dependency-injection.md)**: Leverage NestJS DI system throughout MCP components
+- 🔍 **[Server mutation and instrumentation](docs/server-mutation.md)** — Mutate the underlying mcp server for custom logic or instrumentation purposes.
 
 **Are you interested to build ChatGPT widgets (with the OpenAI SDK) or MCP apps?**
 Find out how to do that with `@rekog/MCP-Nest` in this repository [MCP-Nest-Samples](https://github.com/rinormaloku/MCP-Nest-Samples)

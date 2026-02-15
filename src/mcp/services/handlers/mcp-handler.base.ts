@@ -1,22 +1,34 @@
-import { Logger } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
+import { ExceptionFilter, Logger, Type } from '@nestjs/common';
+import { ModuleRef, Reflector } from '@nestjs/core';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import type {
+import {
+  CallToolResult,
+  McpError,
+  Progress,
+  ErrorCode,
+} from '@modelcontextprotocol/sdk/types.js';
+import {
   Context,
   McpRequest,
   SerializableValue,
-  McpOptions,
+  HttpRequest,
 } from '../../interfaces';
-import { McpRegistryService } from '../mcp-registry.service';
+import { McpOptions } from '../../interfaces/mcp-options.interface';
+import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
 import { createMcpLogger } from '../../utils/mcp-logger.factory';
+import {
+  EXCEPTION_FILTERS_METADATA,
+  FILTER_CATCH_EXCEPTIONS,
+} from '@nestjs/common/constants';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 
 export abstract class McpHandlerBase {
   protected logger: Logger;
 
-  constructor(
+  protected constructor(
     protected readonly moduleRef: ModuleRef,
     protected readonly registry: McpRegistryService,
+    private readonly reflector: Reflector,
     loggerContext: string,
     options?: McpOptions,
   ) {
@@ -109,5 +121,80 @@ export abstract class McpHandlerBase {
       mcpServer,
       mcpRequest,
     };
+  }
+
+  protected createErrorResponse(errorText: string): CallToolResult | never {
+    throw new McpError(ErrorCode.InternalError, errorText);
+  }
+
+  protected handleError(
+    error: Error,
+    capabilityInfo: DiscoveredTool<object>,
+    httpRequest: HttpRequest,
+  ) {
+    this.logger.error(error);
+
+    // Re-throw McpErrors (like validation errors) so they are handled by the MCP protocol layer
+    if (error instanceof McpError) {
+      throw error;
+    }
+
+    const clazz = capabilityInfo.providerClass as new () => unknown;
+    const method = clazz.prototype[capabilityInfo.methodName] as (
+      ...args: unknown[]
+    ) => unknown;
+
+    const methodFilters =
+      this.reflector.get<Type<ExceptionFilter>[]>(
+        EXCEPTION_FILTERS_METADATA,
+        method,
+      ) ?? [];
+
+    const classFilters =
+      this.reflector.get<Type<ExceptionFilter>[]>(
+        EXCEPTION_FILTERS_METADATA,
+        clazz,
+      ) ?? [];
+
+    const allFilters = [...methodFilters, ...classFilters];
+
+    for (const FilterClass of allFilters) {
+      if (this.isExceptionFiltered(error, FilterClass)) {
+        const filterInstance = new FilterClass();
+        const host = new ExecutionContextHost(
+          [httpRequest.raw],
+          capabilityInfo.providerClass as Type,
+          method,
+        );
+        host.setType('http');
+        const result = filterInstance.catch(error, host);
+
+        const text =
+          typeof result === 'string' ? result : JSON.stringify(result);
+
+        return this.createErrorResponse(text);
+      }
+    }
+
+    return this.createErrorResponse(error.message);
+  }
+
+  private getExceptionTypes(filter: Type<ExceptionFilter>): Type<Error>[] {
+    return (
+      this.reflector.get<Type<Error>[]>(FILTER_CATCH_EXCEPTIONS, filter) ?? []
+    );
+  }
+
+  private isExceptionFiltered(
+    error: Error,
+    filter: Type<ExceptionFilter>,
+  ): boolean {
+    const exceptionTypes = this.getExceptionTypes(filter);
+
+    if (exceptionTypes.length === 0) {
+      return true;
+    }
+
+    return exceptionTypes.some((type) => error instanceof type);
   }
 }

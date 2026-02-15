@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   CallToolRequestSchema,
+  CallToolResult,
   ErrorCode,
   ListToolsRequestSchema,
   McpError,
@@ -13,11 +14,8 @@ import {
   Scope,
   Type,
 } from '@nestjs/common';
-import { ContextIdFactory, ModuleRef } from '@nestjs/core';
-import {
-  DiscoveredTool,
-  McpRegistryService,
-} from '../mcp-registry.service';
+import { ContextIdFactory, ModuleRef, Reflector } from '@nestjs/core';
+import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
 import { ToolGuardExecutionContext, ToolMetadata } from '../../decorators';
 import { McpHandlerBase } from './mcp-handler.base';
 import { ZodType } from 'zod';
@@ -39,11 +37,12 @@ export class McpToolsHandler extends McpHandlerBase {
   constructor(
     moduleRef: ModuleRef,
     registry: McpRegistryService,
+    reflector: Reflector,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,
     private readonly authService: ToolAuthorizationService,
   ) {
-    super(moduleRef, registry, McpToolsHandler.name, options);
+    super(moduleRef, registry, reflector, McpToolsHandler.name, options);
     this.moduleHasGuards =
       this.options.guards !== undefined && this.options.guards.length > 0;
   }
@@ -78,6 +77,15 @@ export class McpToolsHandler extends McpHandlerBase {
 
     return {
       content: this.buildDefaultContentBlock(result),
+    };
+  }
+
+  protected override createErrorResponse(
+    errorText: string,
+  ): CallToolResult | never {
+    return {
+      content: [{ type: 'text', text: errorText }],
+      isError: true,
     };
   }
 
@@ -150,8 +158,7 @@ export class McpToolsHandler extends McpHandlerBase {
           strict: false,
         });
         const result = guard.canActivate(context);
-        const canActivate =
-          result instanceof Promise ? await result : result;
+        const canActivate = result instanceof Promise ? await result : result;
         if (!canActivate) {
           return false;
         }
@@ -167,7 +174,6 @@ export class McpToolsHandler extends McpHandlerBase {
 
     return true;
   }
-
   registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
     if (this.registry.getTools(this.mcpModuleId).length === 0) {
       this.logger.debug('No tools registered, skipping tool handlers');
@@ -318,7 +324,8 @@ export class McpToolsHandler extends McpHandlerBase {
             if (!validation.success) {
               const issues = validation.error.issues
                 .map((issue) => {
-                  const path = issue.path.length > 0 ? issue.path.join('.') : '';
+                  const path =
+                    issue.path.length > 0 ? issue.path.join('.') : '';
                   const location = path ? `[${path}]: ` : '';
                   return `${location}${issue.message}`;
                 })
@@ -399,16 +406,8 @@ export class McpToolsHandler extends McpHandlerBase {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return transformedResult;
         } catch (error) {
-          this.logger.error(error);
-          // Re-throw McpErrors (like validation errors) so they are handled by the MCP protocol layer
-          if (error instanceof McpError) {
-            throw error;
-          }
-          // For other errors, return formatted error response
-          return {
-            content: [{ type: 'text', text: error.message }],
-            isError: true,
-          };
+          // We are assuming error as at least a message property
+          return this.handleError(error as Error, toolInfo, httpRequest);
         }
       },
     );
