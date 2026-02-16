@@ -154,7 +154,7 @@ export class McpResourcesHandler extends McpHandlerBase {
       httpRequest,
     );
 
-    this.logger.debug(result, 'ReadResourceRequestSchema result');
+    this.logger.debug('ReadResourceRequestSchema result', result);
 
     return result as ReadResourceResult;
   }

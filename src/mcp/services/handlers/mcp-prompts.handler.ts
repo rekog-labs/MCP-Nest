@@ -98,7 +98,7 @@ export class McpPromptsHandler extends McpHandlerBase {
             httpRequest.raw,
           );
 
-          this.logger.debug(result, 'GetPromptRequestSchema result');
+          this.logger.debug('GetPromptRequestSchema result', result);
 
           // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return result;
