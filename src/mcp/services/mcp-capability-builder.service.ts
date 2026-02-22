@@ -85,11 +85,13 @@ export class McpCapabilityBuilder {
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,
   ) {
     this.logger = createMcpLogger(McpCapabilityBuilder.name, this.options);
-    [globalHandlers, globalResourceHandlers, globalPromptHandlers].forEach((store) => {
-      if (!store.has(mcpModuleId)) {
-        store.set(mcpModuleId, new Map());
-      }
-    });
+    [globalHandlers, globalResourceHandlers, globalPromptHandlers].forEach(
+      (store) => {
+        if (!store.has(mcpModuleId)) {
+          store.set(mcpModuleId, new Map());
+        }
+      },
+    );
   }
 
   /**
@@ -212,5 +214,23 @@ export class McpCapabilityBuilder {
     name: string,
   ): DynamicPromptHandler | undefined {
     return globalPromptHandlers.get(mcpModuleId)?.get(name);
+  }
+
+  removeTool(name: string): void {
+    this.logger.debug(`Removing dynamic tool: ${name}`);
+    globalHandlers.get(this.mcpModuleId)?.delete(name);
+    this.registry.removeDynamicCapability(this.mcpModuleId, 'tool', name);
+  }
+
+  removeResource(uri: string): void {
+    this.logger.debug(`Removing dynamic resource: ${uri}`);
+    globalResourceHandlers.get(this.mcpModuleId)?.delete(uri);
+    this.registry.removeDynamicCapability(this.mcpModuleId, 'resource', uri);
+  }
+
+  removePrompt(name: string): void {
+    this.logger.debug(`Removing dynamic prompt: ${name}`);
+    globalPromptHandlers.get(this.mcpModuleId)?.delete(name);
+    this.registry.removeDynamicCapability(this.mcpModuleId, 'prompt', name);
   }
 }

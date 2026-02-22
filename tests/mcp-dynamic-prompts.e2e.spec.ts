@@ -126,6 +126,18 @@ class Server2DynamicPrompts implements OnModuleInit {
 // Modules
 // ============================================================================
 
+const deregServerModule = McpModule.forRoot({
+  name: 'dereg-prompt-server',
+  version: '1.0.0',
+  mcpEndpoint: '/dereg/mcp',
+});
+
+@Module({
+  imports: [deregServerModule],
+  providers: [DynamicPromptsService],
+})
+class DeregistrationPromptsAppModule {}
+
 const basicServerModule = McpModule.forRoot({
   name: 'basic-prompt-server',
   version: '1.0.0',
@@ -356,6 +368,111 @@ describe('E2E: Dynamic Prompt Registration via McpCapabilityBuilder', () => {
       } finally {
         await client1.close();
         await client2.close();
+      }
+    });
+  });
+
+  describe('Deregistration', () => {
+    let app: INestApplication;
+    let serverPort: number;
+    let capabilityBuilder: McpCapabilityBuilder;
+
+    beforeAll(async () => {
+      const moduleFixture: TestingModule = await Test.createTestingModule({
+        imports: [DeregistrationPromptsAppModule],
+      }).compile();
+
+      app = moduleFixture.createNestApplication();
+      await app.listen(0);
+      serverPort = (app.getHttpServer().address() as import('net').AddressInfo).port;
+      capabilityBuilder = moduleFixture.get(McpCapabilityBuilder, { strict: false });
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('should remove a prompt from the listing', async () => {
+      capabilityBuilder.registerPrompt({
+        name: 'temp-prompt',
+        description: 'Temporary prompt',
+        handler: async () => ({
+          description: 'Temporary prompt',
+          messages: [{ role: 'user', content: { type: 'text', text: 'temp' } }],
+        }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        let result = await client.listPrompts();
+        expect(result.prompts.find((p) => p.name === 'temp-prompt')).toBeDefined();
+
+        capabilityBuilder.removePrompt('temp-prompt');
+
+        result = await client.listPrompts();
+        expect(result.prompts.find((p) => p.name === 'temp-prompt')).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should return an error when getting a removed prompt', async () => {
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        await expect(
+          client.getPrompt({ name: 'temp-prompt', arguments: {} }),
+        ).rejects.toThrow();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should not affect other prompts when one is removed', async () => {
+      capabilityBuilder.registerPrompt({
+        name: 'prompt-to-keep',
+        description: 'Should remain',
+        handler: async () => ({
+          description: 'Should remain',
+          messages: [{ role: 'user', content: { type: 'text', text: 'kept' } }],
+        }),
+      });
+      capabilityBuilder.registerPrompt({
+        name: 'prompt-to-remove',
+        description: 'Should be removed',
+        handler: async () => ({
+          description: 'Should be removed',
+          messages: [{ role: 'user', content: { type: 'text', text: 'gone' } }],
+        }),
+      });
+
+      capabilityBuilder.removePrompt('prompt-to-remove');
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const result = await client.listPrompts();
+        expect(result.prompts.find((p) => p.name === 'prompt-to-keep')).toBeDefined();
+        expect(result.prompts.find((p) => p.name === 'prompt-to-remove')).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should reflect a newly registered prompt on a running server', async () => {
+      capabilityBuilder.registerPrompt({
+        name: 'hot-registered-prompt',
+        description: 'Registered after server started',
+        handler: async () => ({
+          description: 'Registered after server started',
+          messages: [{ role: 'user', content: { type: 'text', text: 'hot' } }],
+        }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const result = await client.listPrompts();
+        expect(result.prompts.find((p) => p.name === 'hot-registered-prompt')).toBeDefined();
+      } finally {
+        await client.close();
       }
     });
   });

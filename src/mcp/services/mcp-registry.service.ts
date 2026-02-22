@@ -806,4 +806,27 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
     this.discoveredCapabilitiesByMcpModuleId.get(mcpModuleId)?.push(capability);
   }
+
+  removeDynamicCapability(
+    mcpModuleId: string,
+    type: DiscoveredCapability<object>['type'],
+    identifier: string,
+  ): void {
+    const capabilities =
+      this.discoveredCapabilitiesByMcpModuleId.get(mcpModuleId);
+    if (!capabilities) {
+      return;
+    }
+
+    this.logger.debug(
+      `Dynamic ${type} removed: ${identifier} in module: ${mcpModuleId}`,
+    );
+
+    this.discoveredCapabilitiesByMcpModuleId.set(
+      mcpModuleId,
+      capabilities.filter(
+        (c) => !(c.type === type && c.methodName === identifier),
+      ),
+    );
+  }
 }

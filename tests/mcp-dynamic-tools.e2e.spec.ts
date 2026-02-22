@@ -161,6 +161,18 @@ class Server2DynamicTools implements OnModuleInit {
 // Module: Basic dynamic tools
 // ============================================================================
 
+const deregServerModule = McpModule.forRoot({
+  name: 'dereg-server',
+  version: '1.0.0',
+  mcpEndpoint: '/dereg/mcp',
+});
+
+@Module({
+  imports: [deregServerModule],
+  providers: [DynamicToolsService],
+})
+class DeregistrationToolsAppModule {}
+
 const basicServerModule = McpModule.forRoot({
   name: 'basic-server',
   version: '1.0.0',
@@ -545,6 +557,99 @@ describe('E2E: Dynamic Tool Registration via McpCapabilityBuilder', () => {
       } finally {
         await client1.close();
         await client2.close();
+      }
+    });
+  });
+
+  describe('Deregistration', () => {
+    let app: INestApplication;
+    let serverPort: number;
+    let capabilityBuilder: McpCapabilityBuilder;
+
+    beforeAll(async () => {
+      const moduleFixture: TestingModule = await Test.createTestingModule({
+        imports: [DeregistrationToolsAppModule],
+      }).compile();
+
+      app = moduleFixture.createNestApplication();
+      await app.listen(0);
+      serverPort = (app.getHttpServer().address() as import('net').AddressInfo).port;
+      capabilityBuilder = moduleFixture.get(McpCapabilityBuilder, { strict: false });
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('should remove a tool from the listing', async () => {
+      capabilityBuilder.registerTool({
+        name: 'temp-tool',
+        description: 'Temporary tool',
+        handler: async () => ({ content: [{ type: 'text', text: 'temp' }] }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        let tools = await client.listTools();
+        expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeDefined();
+
+        capabilityBuilder.removeTool('temp-tool');
+
+        tools = await client.listTools();
+        expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should return an error when calling a removed tool', async () => {
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        await expect(
+          client.callTool({ name: 'temp-tool', arguments: {} }),
+        ).rejects.toThrow();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should not affect other tools when one is removed', async () => {
+      capabilityBuilder.registerTool({
+        name: 'tool-to-keep',
+        description: 'Should remain',
+        handler: async () => ({ content: [{ type: 'text', text: 'kept' }] }),
+      });
+      capabilityBuilder.registerTool({
+        name: 'tool-to-remove',
+        description: 'Should be removed',
+        handler: async () => ({ content: [{ type: 'text', text: 'gone' }] }),
+      });
+
+      capabilityBuilder.removeTool('tool-to-remove');
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const tools = await client.listTools();
+        expect(tools.tools.find((t) => t.name === 'tool-to-keep')).toBeDefined();
+        expect(tools.tools.find((t) => t.name === 'tool-to-remove')).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should reflect a newly registered tool on a running server', async () => {
+      capabilityBuilder.registerTool({
+        name: 'hot-registered-tool',
+        description: 'Registered after server started',
+        handler: async () => ({ content: [{ type: 'text', text: 'hot' }] }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const tools = await client.listTools();
+        expect(tools.tools.find((t) => t.name === 'hot-registered-tool')).toBeDefined();
+      } finally {
+        await client.close();
       }
     });
   });

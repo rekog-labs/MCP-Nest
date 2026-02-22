@@ -114,6 +114,18 @@ class Server2DynamicResources implements OnModuleInit {
 // Modules
 // ============================================================================
 
+const deregServerModule = McpModule.forRoot({
+  name: 'dereg-resource-server',
+  version: '1.0.0',
+  mcpEndpoint: '/dereg/mcp',
+});
+
+@Module({
+  imports: [deregServerModule],
+  providers: [DynamicResourcesService],
+})
+class DeregistrationResourcesAppModule {}
+
 const basicServerModule = McpModule.forRoot({
   name: 'basic-resource-server',
   version: '1.0.0',
@@ -338,6 +350,111 @@ describe('E2E: Dynamic Resource Registration via McpCapabilityBuilder', () => {
       } finally {
         await client1.close();
         await client2.close();
+      }
+    });
+  });
+
+  describe('Deregistration', () => {
+    let app: INestApplication;
+    let serverPort: number;
+    let capabilityBuilder: McpCapabilityBuilder;
+
+    beforeAll(async () => {
+      const moduleFixture: TestingModule = await Test.createTestingModule({
+        imports: [DeregistrationResourcesAppModule],
+      }).compile();
+
+      app = moduleFixture.createNestApplication();
+      await app.listen(0);
+      serverPort = (app.getHttpServer().address() as import('net').AddressInfo).port;
+      capabilityBuilder = moduleFixture.get(McpCapabilityBuilder, { strict: false });
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('should remove a resource from the listing', async () => {
+      capabilityBuilder.registerResource({
+        uri: 'mcp://temp-resource',
+        name: 'temp-resource',
+        description: 'Temporary resource',
+        handler: async () => ({
+          contents: [{ uri: 'mcp://temp-resource', mimeType: 'text/plain', text: 'temp' }],
+        }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        let result = await client.listResources();
+        expect(result.resources.find((r) => r.name === 'temp-resource')).toBeDefined();
+
+        capabilityBuilder.removeResource('mcp://temp-resource');
+
+        result = await client.listResources();
+        expect(result.resources.find((r) => r.name === 'temp-resource')).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should return an error when reading a removed resource', async () => {
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        await expect(
+          client.readResource({ uri: 'mcp://temp-resource' }),
+        ).rejects.toThrow();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should not affect other resources when one is removed', async () => {
+      capabilityBuilder.registerResource({
+        uri: 'mcp://resource-to-keep',
+        name: 'resource-to-keep',
+        description: 'Should remain',
+        handler: async () => ({
+          contents: [{ uri: 'mcp://resource-to-keep', mimeType: 'text/plain', text: 'kept' }],
+        }),
+      });
+      capabilityBuilder.registerResource({
+        uri: 'mcp://resource-to-remove',
+        name: 'resource-to-remove',
+        description: 'Should be removed',
+        handler: async () => ({
+          contents: [{ uri: 'mcp://resource-to-remove', mimeType: 'text/plain', text: 'gone' }],
+        }),
+      });
+
+      capabilityBuilder.removeResource('mcp://resource-to-remove');
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const result = await client.listResources();
+        expect(result.resources.find((r) => r.name === 'resource-to-keep')).toBeDefined();
+        expect(result.resources.find((r) => r.name === 'resource-to-remove')).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should reflect a newly registered resource on a running server', async () => {
+      capabilityBuilder.registerResource({
+        uri: 'mcp://hot-registered-resource',
+        name: 'hot-registered-resource',
+        description: 'Registered after server started',
+        handler: async () => ({
+          contents: [{ uri: 'mcp://hot-registered-resource', mimeType: 'text/plain', text: 'hot' }],
+        }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const result = await client.listResources();
+        expect(result.resources.find((r) => r.name === 'hot-registered-resource')).toBeDefined();
+      } finally {
+        await client.close();
       }
     });
   });
