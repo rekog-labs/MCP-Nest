@@ -18,7 +18,7 @@ export type DynamicToolHandler = (
  *
  * @example
  * ```typescript
- * toolBuilder.registerTool({
+ * registry.registerTool({
  *   name: 'search-knowledge',
  *   description: 'Search the knowledge base',
  *   parameters: z.object({ query: z.string() }),

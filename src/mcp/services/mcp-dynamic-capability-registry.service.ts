@@ -104,7 +104,7 @@ export class McpDynamicCapabilityRegistryService {
    *
    * @example
    * ```typescript
-   * toolBuilder.registerTool({
+   * registry.registerTool({
    *   name: 'search-knowledge',
    *   description: await getDescriptionFromDB(),
    *   parameters: z.object({ query: z.string() }),

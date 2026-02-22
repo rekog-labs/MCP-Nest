@@ -94,7 +94,7 @@ export class GreetingTool {
 
 - **[Tools Guide](docs/tools.md)** - Define and expose NestJS methods as MCP tools
 - **[Discovery and Registration of Tools](docs/tool-discovery-and-registration.md)** - Automatic discovery and manual registration of tools
-- **[Dynamic Tools Guide](docs/dynamic-tools.md)** - Register tools programmatically at runtime
+- **[Dynamic Capabilities Guide](docs/dynamic-capabilities.md)** - Register tools, resources, and prompts programmatically at runtime
 - **[Resources Guide](docs/resources.md)** - Serve static and dynamic content
 - **[Resource Templates Guide](docs/resource-templates.md)** - Create parameterized resources
 - **[Prompts Guide](docs/prompts.md)** - Build reusable prompt templates

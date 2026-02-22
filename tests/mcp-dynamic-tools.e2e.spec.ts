@@ -28,13 +28,13 @@ import { z } from 'zod';
 
 @Injectable()
 class DynamicToolsService implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   async onModuleInit() {
     // Simulate loading tool configuration from a database
     const collections = ['documents', 'knowledge', 'faq'];
 
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'search-knowledge',
       description: `Search the knowledge base. Available collections: ${collections.join(', ')}`,
       parameters: z.object({
@@ -63,7 +63,7 @@ class DynamicToolsService implements OnModuleInit {
     });
 
     // Register another dynamic tool
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'get-collections',
       description: 'Get available collections',
       handler: async () => {
@@ -99,10 +99,10 @@ class StaticTools {
 
 @Injectable()
 class OutputSchemaToolService implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   onModuleInit() {
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'structured-output-tool',
       description: 'A tool with output schema validation',
       parameters: z.object({ id: z.string() }),
@@ -129,10 +129,10 @@ class OutputSchemaToolService implements OnModuleInit {
 
 @Injectable()
 class Server1DynamicTools implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   onModuleInit() {
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'server1-dynamic-tool',
       description: 'Dynamic tool for server 1',
       handler: async () => {
@@ -144,10 +144,10 @@ class Server1DynamicTools implements OnModuleInit {
 
 @Injectable()
 class Server2DynamicTools implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   onModuleInit() {
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'server2-dynamic-tool',
       description: 'Dynamic tool for server 2',
       handler: async () => {

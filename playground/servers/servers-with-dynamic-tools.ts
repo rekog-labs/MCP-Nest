@@ -55,7 +55,7 @@ class SimpleGreetingTool {
 
 @Injectable()
 class DynamicToolsService implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   /**
    * onModuleInit runs before the server starts accepting requests.
@@ -68,7 +68,7 @@ class DynamicToolsService implements OnModuleInit {
     const collections = await this.loadCollectionsFromDatabase();
 
     // Register a dynamic search tool with description built from DB data
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'search-dynamic',
       description: `Search across collections. Available: ${collections.join(', ')}`,
       parameters: z.object({
@@ -97,7 +97,7 @@ class DynamicToolsService implements OnModuleInit {
     });
 
     // Register another dynamic tool
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'get-collections',
       description: 'Get list of available collections',
       handler: async () => {
@@ -114,7 +114,7 @@ class DynamicToolsService implements OnModuleInit {
     });
 
     // Register a dynamic tool with structured output
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'get-stats',
       description: 'Get search statistics with structured output',
       outputSchema: z.object({
