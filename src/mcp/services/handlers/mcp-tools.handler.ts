@@ -15,7 +15,7 @@ import {
   Type,
 } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef, Reflector } from '@nestjs/core';
-import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
+import { DiscoveredCapability, McpRegistryService } from '../mcp-registry.service';
 import { ToolGuardExecutionContext, ToolMetadata } from '../../decorators';
 import { McpHandlerBase } from './mcp-handler.base';
 import { ZodType } from 'zod';
@@ -98,7 +98,7 @@ export class McpToolsHandler extends McpHandlerBase {
    */
   private createToolGuardExecutionContext(
     httpRequest: HttpRequest,
-    tool: DiscoveredTool<ToolMetadata>,
+    tool: DiscoveredCapability<ToolMetadata>,
   ): ToolGuardExecutionContext & ExecutionContext {
     const providerClass = tool.providerClass as Type;
     const methodHandler =
@@ -133,7 +133,7 @@ export class McpToolsHandler extends McpHandlerBase {
    * Returns true if the tool has no guards or all guards pass.
    */
   private async checkToolGuards(
-    tool: DiscoveredTool<ToolMetadata>,
+    tool: DiscoveredCapability<ToolMetadata>,
     httpRequest: HttpRequest,
   ): Promise<boolean> {
     const guards = tool.metadata.guards;

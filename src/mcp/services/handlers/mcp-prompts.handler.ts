@@ -8,7 +8,7 @@ import {
   McpError,
   PromptArgument,
 } from '@modelcontextprotocol/sdk/types.js';
-import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
+import { DiscoveredCapability, McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import type { McpOptions } from '../../interfaces/mcp-options.interface';
@@ -63,7 +63,7 @@ export class McpPromptsHandler extends McpHandlerBase {
       GetPromptRequestSchema,
       async (request) => {
         this.logger.debug('GetPromptRequestSchema is being called');
-        let promptInfo: DiscoveredTool<PromptMetadata> | undefined;
+        let promptInfo: DiscoveredCapability<PromptMetadata> | undefined;
 
         try {
           const name = request.params.name;

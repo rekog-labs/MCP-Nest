@@ -57,7 +57,7 @@ describe('McpRegistryService', () => {
       mockResourceTemplate('resTemplate2', '/templates/{type}/{id}'),
     ];
 
-    (service as any).discoveredToolsByMcpModuleId = new Map([
+    (service as any).discoveredCapabilitiesByMcpModuleId = new Map([
       [mockMcpModuleId, [...mockResources, ...mockResourceTemplates]],
     ]);
   });

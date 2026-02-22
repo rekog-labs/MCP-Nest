@@ -14,7 +14,7 @@ import {
   HttpRequest,
 } from '../../interfaces';
 import { McpOptions } from '../../interfaces/mcp-options.interface';
-import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
+import { DiscoveredCapability, McpRegistryService } from '../mcp-registry.service';
 import { createMcpLogger } from '../../utils/mcp-logger.factory';
 import {
   EXCEPTION_FILTERS_METADATA,
@@ -129,7 +129,7 @@ export abstract class McpHandlerBase {
 
   protected handleError(
     error: Error,
-    capabilityInfo: DiscoveredTool<object>,
+    capabilityInfo: DiscoveredCapability<object>,
     httpRequest: HttpRequest,
   ) {
     this.logger.error(error);
