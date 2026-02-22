@@ -475,5 +475,37 @@ describe('E2E: Dynamic Prompt Registration via McpDynamicCapabilityRegistryServi
         await client.close();
       }
     });
+
+    it('should overwrite a prompt when registered with the same name', async () => {
+      capabilityBuilder.registerPrompt({
+        name: 'duplicate-prompt',
+        description: 'First version',
+        handler: async () => ({
+          description: 'First version',
+          messages: [{ role: 'user', content: { type: 'text', text: 'first' } }],
+        }),
+      });
+      capabilityBuilder.registerPrompt({
+        name: 'duplicate-prompt',
+        description: 'Second version',
+        handler: async () => ({
+          description: 'Second version',
+          messages: [{ role: 'user', content: { type: 'text', text: 'second' } }],
+        }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const result = await client.listPrompts();
+        const matches = result.prompts.filter((p) => p.name === 'duplicate-prompt');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].description).toBe('Second version');
+
+        const got: any = await client.getPrompt({ name: 'duplicate-prompt', arguments: {} });
+        expect(got.messages[0].content.text).toBe('second');
+      } finally {
+        await client.close();
+      }
+    });
   });
 });

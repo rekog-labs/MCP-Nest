@@ -457,5 +457,37 @@ describe('E2E: Dynamic Resource Registration via McpDynamicCapabilityRegistrySer
         await client.close();
       }
     });
+
+    it('should overwrite a resource when registered with the same uri', async () => {
+      capabilityBuilder.registerResource({
+        uri: 'mcp://duplicate-resource',
+        name: 'duplicate-resource',
+        description: 'First version',
+        handler: async () => ({
+          contents: [{ uri: 'mcp://duplicate-resource', mimeType: 'text/plain', text: 'first' }],
+        }),
+      });
+      capabilityBuilder.registerResource({
+        uri: 'mcp://duplicate-resource',
+        name: 'duplicate-resource',
+        description: 'Second version',
+        handler: async () => ({
+          contents: [{ uri: 'mcp://duplicate-resource', mimeType: 'text/plain', text: 'second' }],
+        }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const result = await client.listResources();
+        const matches = result.resources.filter((r) => r.uri === 'mcp://duplicate-resource');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].description).toBe('Second version');
+
+        const read = await client.readResource({ uri: 'mcp://duplicate-resource' });
+        expect((read.contents[0] as any).text).toBe('second');
+      } finally {
+        await client.close();
+      }
+    });
   });
 });

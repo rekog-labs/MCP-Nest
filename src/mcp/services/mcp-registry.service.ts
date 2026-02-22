@@ -800,11 +800,25 @@ export class McpRegistryService implements OnApplicationBootstrap {
       this.discoveredCapabilitiesByMcpModuleId.set(mcpModuleId, []);
     }
 
-    this.logger.debug(
-      `Dynamic ${capability.type} registered: ${capability.metadata['name']} in module: ${mcpModuleId}`,
+    const capabilities =
+      this.discoveredCapabilitiesByMcpModuleId.get(mcpModuleId)!;
+
+    const existingIndex = capabilities.findIndex(
+      (c) =>
+        c.type === capability.type && c.methodName === capability.methodName,
     );
 
-    this.discoveredCapabilitiesByMcpModuleId.get(mcpModuleId)?.push(capability);
+    if (existingIndex !== -1) {
+      this.logger.warn(
+        `Dynamic ${capability.type} '${capability.methodName}' already registered in module: ${mcpModuleId}. Overwriting.`,
+      );
+      capabilities[existingIndex] = capability;
+    } else {
+      this.logger.debug(
+        `Dynamic ${capability.type} registered: ${capability.metadata['name']} in module: ${mcpModuleId}`,
+      );
+      capabilities.push(capability);
+    }
   }
 
   removeDynamicCapability(

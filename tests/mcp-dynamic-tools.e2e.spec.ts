@@ -652,5 +652,31 @@ describe('E2E: Dynamic Tool Registration via McpDynamicCapabilityRegistryService
         await client.close();
       }
     });
+
+    it('should overwrite a tool when registered with the same name', async () => {
+      capabilityBuilder.registerTool({
+        name: 'duplicate-tool',
+        description: 'First version',
+        handler: async () => ({ content: [{ type: 'text', text: 'first' }] }),
+      });
+      capabilityBuilder.registerTool({
+        name: 'duplicate-tool',
+        description: 'Second version',
+        handler: async () => ({ content: [{ type: 'text', text: 'second' }] }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const tools = await client.listTools();
+        const matches = tools.tools.filter((t) => t.name === 'duplicate-tool');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].description).toBe('Second version');
+
+        const result: any = await client.callTool({ name: 'duplicate-tool', arguments: {} });
+        expect(result.content[0].text).toBe('second');
+      } finally {
+        await client.close();
+      }
+    });
   });
 });
