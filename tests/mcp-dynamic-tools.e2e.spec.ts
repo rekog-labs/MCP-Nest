@@ -5,16 +5,16 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Tool, McpCapabilityBuilder } from '../src';
+import { Tool, McpDynamicCapabilityRegistryService } from '../src';
 import { McpModule } from '../src/mcp/mcp.module';
 import { createStreamableClient } from './utils';
 import { z } from 'zod';
 
 /**
- * Test Suite: Dynamic Tool Registration via McpCapabilityBuilder
+ * Test Suite: Dynamic Tool Registration via McpDynamicCapabilityRegistryService
  *
  * Validates that tools can be registered programmatically at runtime
- * using the McpCapabilityBuilder service, in addition to decorator-based tools.
+ * using the McpDynamicCapabilityRegistryService service, in addition to decorator-based tools.
  *
  * This enables:
  * - Tools with dynamic descriptions from databases
@@ -28,7 +28,7 @@ import { z } from 'zod';
 
 @Injectable()
 class DynamicToolsService implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpCapabilityBuilder) {}
+  constructor(private readonly toolBuilder: McpDynamicCapabilityRegistryService) {}
 
   async onModuleInit() {
     // Simulate loading tool configuration from a database
@@ -99,7 +99,7 @@ class StaticTools {
 
 @Injectable()
 class OutputSchemaToolService implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpCapabilityBuilder) {}
+  constructor(private readonly toolBuilder: McpDynamicCapabilityRegistryService) {}
 
   onModuleInit() {
     this.toolBuilder.registerTool({
@@ -129,7 +129,7 @@ class OutputSchemaToolService implements OnModuleInit {
 
 @Injectable()
 class Server1DynamicTools implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpCapabilityBuilder) {}
+  constructor(private readonly toolBuilder: McpDynamicCapabilityRegistryService) {}
 
   onModuleInit() {
     this.toolBuilder.registerTool({
@@ -144,7 +144,7 @@ class Server1DynamicTools implements OnModuleInit {
 
 @Injectable()
 class Server2DynamicTools implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpCapabilityBuilder) {}
+  constructor(private readonly toolBuilder: McpDynamicCapabilityRegistryService) {}
 
   onModuleInit() {
     this.toolBuilder.registerTool({
@@ -254,7 +254,7 @@ class MultiServerAppModule {}
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic Tool Registration via McpCapabilityBuilder', () => {
+describe('E2E: Dynamic Tool Registration via McpDynamicCapabilityRegistryService', () => {
   jest.setTimeout(15000);
 
   describe('Basic Dynamic Tools', () => {
@@ -564,7 +564,7 @@ describe('E2E: Dynamic Tool Registration via McpCapabilityBuilder', () => {
   describe('Deregistration', () => {
     let app: INestApplication;
     let serverPort: number;
-    let capabilityBuilder: McpCapabilityBuilder;
+    let capabilityBuilder: McpDynamicCapabilityRegistryService;
 
     beforeAll(async () => {
       const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -574,7 +574,7 @@ describe('E2E: Dynamic Tool Registration via McpCapabilityBuilder', () => {
       app = moduleFixture.createNestApplication();
       await app.listen(0);
       serverPort = (app.getHttpServer().address() as import('net').AddressInfo).port;
-      capabilityBuilder = moduleFixture.get(McpCapabilityBuilder, { strict: false });
+      capabilityBuilder = moduleFixture.get(McpDynamicCapabilityRegistryService, { strict: false });
     });
 
     afterAll(async () => {
