@@ -785,23 +785,23 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
   /**
    * Register a tool programmatically (for dynamic tools).
-   * Use McpToolBuilder.registerTool() instead of calling this directly.
+   * Use McpCapabilityBuilder.registerTool() instead of calling this directly.
    *
    * @param mcpModuleId - The module ID to register the tool with
-   * @param tool - The discovered tool object to register
+   * @param capability - The discovered capability object to register
    */
-  registerDynamicTool(
+  registerDynamicCapability<T extends object>(
     mcpModuleId: string,
-    tool: DiscoveredTool<ToolMetadata>,
+    capability: DiscoveredTool<T>,
   ): void {
     if (!this.discoveredToolsByMcpModuleId.has(mcpModuleId)) {
       this.discoveredToolsByMcpModuleId.set(mcpModuleId, []);
     }
 
     this.logger.debug(
-      `Dynamic tool registered: ${tool.metadata.name} in module: ${mcpModuleId}`,
+      `Dynamic ${capability.type} registered: ${capability.metadata['name']} in module: ${mcpModuleId}`,
     );
 
-    this.discoveredToolsByMcpModuleId.get(mcpModuleId)?.push(tool);
+    this.discoveredToolsByMcpModuleId.get(mcpModuleId)?.push(capability);
   }
 }
