@@ -35,9 +35,9 @@ import {
 } from '../constants/feature-registration.constants';
 
 /**
- * Interface representing a discovered tool
+ * Interface representing a discovered capability
  */
-export type DiscoveredTool<T extends object> = {
+export type DiscoveredCapability<T extends object> = {
   type: 'tool' | 'resource' | 'resource-template' | 'prompt';
   metadata: T;
   providerClass: InjectionToken;
@@ -52,8 +52,10 @@ export type InjectionTokenWithName = InjectionToken & { name: string };
 @Injectable()
 export class McpRegistryService implements OnApplicationBootstrap {
   private readonly logger: Logger;
-  private discoveredToolsByMcpModuleId: Map<string, DiscoveredTool<any>[]> =
-    new Map();
+  private discoveredCapabilitiesByMcpModuleId: Map<
+    string,
+    DiscoveredCapability<any>[]
+  > = new Map();
 
   constructor(
     private readonly discovery: DiscoveryService,
@@ -386,11 +388,11 @@ export class McpRegistryService implements OnApplicationBootstrap {
       metadata['name'] = methodName;
     }
 
-    if (!this.discoveredToolsByMcpModuleId.has(mcpModuleId)) {
-      this.discoveredToolsByMcpModuleId.set(mcpModuleId, []);
+    if (!this.discoveredCapabilitiesByMcpModuleId.has(mcpModuleId)) {
+      this.discoveredCapabilitiesByMcpModuleId.set(mcpModuleId, []);
     }
 
-    this.discoveredToolsByMcpModuleId.get(mcpModuleId)?.push({
+    this.discoveredCapabilitiesByMcpModuleId.get(mcpModuleId)?.push({
       type,
       metadata,
       providerClass: token,
@@ -463,11 +465,11 @@ export class McpRegistryService implements OnApplicationBootstrap {
       baseMetadata.guards = guards;
     }
 
-    if (!this.discoveredToolsByMcpModuleId.has(mcpModuleId)) {
-      this.discoveredToolsByMcpModuleId.set(mcpModuleId, []);
+    if (!this.discoveredCapabilitiesByMcpModuleId.has(mcpModuleId)) {
+      this.discoveredCapabilitiesByMcpModuleId.set(mcpModuleId, []);
     }
 
-    this.discoveredToolsByMcpModuleId.get(mcpModuleId)?.push({
+    this.discoveredCapabilitiesByMcpModuleId.get(mcpModuleId)?.push({
       type: 'tool',
       metadata: baseMetadata,
       providerClass: token,
@@ -517,15 +519,15 @@ export class McpRegistryService implements OnApplicationBootstrap {
    * Return all discovered MCP module IDs
    */
   getMcpModuleIds(): string[] {
-    return Array.from(this.discoveredToolsByMcpModuleId.keys());
+    return Array.from(this.discoveredCapabilitiesByMcpModuleId.keys());
   }
 
   /**
    * Get all discovered tools
    */
-  getTools(mcpModuleId: string): DiscoveredTool<ToolMetadata>[] {
+  getTools(mcpModuleId: string): DiscoveredCapability<ToolMetadata>[] {
     return (
-      this.discoveredToolsByMcpModuleId
+      this.discoveredCapabilitiesByMcpModuleId
         .get(mcpModuleId)
         ?.filter((tool) => tool.type === 'tool') ?? []
     );
@@ -537,7 +539,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
   findTool(
     mcpModuleId: string,
     name: string,
-  ): DiscoveredTool<ToolMetadata> | undefined {
+  ): DiscoveredCapability<ToolMetadata> | undefined {
     return this.getTools(mcpModuleId).find(
       (tool) => tool.metadata.name === name,
     );
@@ -546,9 +548,9 @@ export class McpRegistryService implements OnApplicationBootstrap {
   /**
    * Get all discovered resources
    */
-  getResources(mcpModuleId: string): DiscoveredTool<ResourceMetadata>[] {
+  getResources(mcpModuleId: string): DiscoveredCapability<ResourceMetadata>[] {
     return (
-      this.discoveredToolsByMcpModuleId
+      this.discoveredCapabilitiesByMcpModuleId
         .get(mcpModuleId)
         ?.filter((tool) => tool.type === 'resource') ?? []
     );
@@ -560,7 +562,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
   findResource(
     mcpModuleId: string,
     name: string,
-  ): DiscoveredTool<ResourceMetadata> | undefined {
+  ): DiscoveredCapability<ResourceMetadata> | undefined {
     return this.getResources(mcpModuleId).find(
       (tool) => tool.metadata.name === name,
     );
@@ -571,9 +573,9 @@ export class McpRegistryService implements OnApplicationBootstrap {
    */
   getResourceTemplates(
     mcpModuleId: string,
-  ): DiscoveredTool<ResourceTemplateMetadata>[] {
+  ): DiscoveredCapability<ResourceTemplateMetadata>[] {
     return (
-      this.discoveredToolsByMcpModuleId
+      this.discoveredCapabilitiesByMcpModuleId
         .get(mcpModuleId)
         ?.filter((tool) => tool.type === 'resource-template') ?? []
     );
@@ -585,7 +587,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
   findResourceTemplate(
     mcpModuleId: string,
     name: string,
-  ): DiscoveredTool<ResourceTemplateMetadata> | undefined {
+  ): DiscoveredCapability<ResourceTemplateMetadata> | undefined {
     return this.getResourceTemplates(mcpModuleId).find(
       (tool) => tool.metadata.name === name,
     );
@@ -594,9 +596,9 @@ export class McpRegistryService implements OnApplicationBootstrap {
   /**
    * Get all discovered prompts
    */
-  getPrompts(mcpModuleId: string): DiscoveredTool<PromptMetadata>[] {
+  getPrompts(mcpModuleId: string): DiscoveredCapability<PromptMetadata>[] {
     return (
-      this.discoveredToolsByMcpModuleId
+      this.discoveredCapabilitiesByMcpModuleId
         .get(mcpModuleId)
         ?.filter((tool) => tool.type === 'prompt') ?? []
     );
@@ -608,7 +610,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
   findPrompt(
     mcpModuleId: string,
     name: string,
-  ): DiscoveredTool<PromptMetadata> | undefined {
+  ): DiscoveredCapability<PromptMetadata> | undefined {
     return this.getPrompts(mcpModuleId).find(
       (tool) => tool.metadata.name === name,
     );
@@ -686,7 +688,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     uri: string,
   ):
     | {
-        resource: DiscoveredTool<ResourceMetadata>;
+        resource: DiscoveredCapability<ResourceMetadata>;
         params: Record<string, string>;
       }
     | undefined {
@@ -728,7 +730,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     uri: string,
   ):
     | {
-        resourceTemplate: DiscoveredTool<ResourceTemplateMetadata>;
+        resourceTemplate: DiscoveredCapability<ResourceTemplateMetadata>;
         params: Record<string, string>;
       }
     | undefined {
@@ -785,23 +787,60 @@ export class McpRegistryService implements OnApplicationBootstrap {
 
   /**
    * Register a tool programmatically (for dynamic tools).
-   * Use McpToolBuilder.registerTool() instead of calling this directly.
+   * Use McpDynamicCapabilityRegistryService.registerTool() instead of calling this directly.
    *
    * @param mcpModuleId - The module ID to register the tool with
-   * @param tool - The discovered tool object to register
+   * @param capability - The discovered capability object to register
    */
-  registerDynamicTool(
+  registerDynamicCapability<T extends object>(
     mcpModuleId: string,
-    tool: DiscoveredTool<ToolMetadata>,
+    capability: DiscoveredCapability<T>,
   ): void {
-    if (!this.discoveredToolsByMcpModuleId.has(mcpModuleId)) {
-      this.discoveredToolsByMcpModuleId.set(mcpModuleId, []);
+    if (!this.discoveredCapabilitiesByMcpModuleId.has(mcpModuleId)) {
+      this.discoveredCapabilitiesByMcpModuleId.set(mcpModuleId, []);
+    }
+
+    const capabilities =
+      this.discoveredCapabilitiesByMcpModuleId.get(mcpModuleId)!;
+
+    const existingIndex = capabilities.findIndex(
+      (c) =>
+        c.type === capability.type && c.methodName === capability.methodName,
+    );
+
+    if (existingIndex !== -1) {
+      this.logger.warn(
+        `Dynamic ${capability.type} '${capability.methodName}' already registered in module: ${mcpModuleId}. Overwriting.`,
+      );
+      capabilities[existingIndex] = capability;
+    } else {
+      this.logger.debug(
+        `Dynamic ${capability.type} registered: ${capability.metadata['name']} in module: ${mcpModuleId}`,
+      );
+      capabilities.push(capability);
+    }
+  }
+
+  removeDynamicCapability(
+    mcpModuleId: string,
+    type: DiscoveredCapability<object>['type'],
+    identifier: string,
+  ): void {
+    const capabilities =
+      this.discoveredCapabilitiesByMcpModuleId.get(mcpModuleId);
+    if (!capabilities) {
+      return;
     }
 
     this.logger.debug(
-      `Dynamic tool registered: ${tool.metadata.name} in module: ${mcpModuleId}`,
+      `Dynamic ${type} removed: ${identifier} in module: ${mcpModuleId}`,
     );
 
-    this.discoveredToolsByMcpModuleId.get(mcpModuleId)?.push(tool);
+    this.discoveredCapabilitiesByMcpModuleId.set(
+      mcpModuleId,
+      capabilities.filter(
+        (c) => !(c.type === type && c.methodName === identifier),
+      ),
+    );
   }
 }

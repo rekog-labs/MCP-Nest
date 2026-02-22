@@ -5,16 +5,16 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Tool, McpToolBuilder } from '../src';
+import { Tool, McpDynamicCapabilityRegistryService } from '../src';
 import { McpModule } from '../src/mcp/mcp.module';
 import { createStreamableClient } from './utils';
 import { z } from 'zod';
 
 /**
- * Test Suite: Dynamic Tool Registration via McpToolBuilder
+ * Test Suite: Dynamic Tool Registration via McpDynamicCapabilityRegistryService
  *
  * Validates that tools can be registered programmatically at runtime
- * using the McpToolBuilder service, in addition to decorator-based tools.
+ * using the McpDynamicCapabilityRegistryService service, in addition to decorator-based tools.
  *
  * This enables:
  * - Tools with dynamic descriptions from databases
@@ -28,13 +28,13 @@ import { z } from 'zod';
 
 @Injectable()
 class DynamicToolsService implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpToolBuilder) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   async onModuleInit() {
     // Simulate loading tool configuration from a database
     const collections = ['documents', 'knowledge', 'faq'];
 
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'search-knowledge',
       description: `Search the knowledge base. Available collections: ${collections.join(', ')}`,
       parameters: z.object({
@@ -63,7 +63,7 @@ class DynamicToolsService implements OnModuleInit {
     });
 
     // Register another dynamic tool
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'get-collections',
       description: 'Get available collections',
       handler: async () => {
@@ -99,10 +99,10 @@ class StaticTools {
 
 @Injectable()
 class OutputSchemaToolService implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpToolBuilder) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   onModuleInit() {
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'structured-output-tool',
       description: 'A tool with output schema validation',
       parameters: z.object({ id: z.string() }),
@@ -129,10 +129,10 @@ class OutputSchemaToolService implements OnModuleInit {
 
 @Injectable()
 class Server1DynamicTools implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpToolBuilder) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   onModuleInit() {
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'server1-dynamic-tool',
       description: 'Dynamic tool for server 1',
       handler: async () => {
@@ -144,10 +144,10 @@ class Server1DynamicTools implements OnModuleInit {
 
 @Injectable()
 class Server2DynamicTools implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpToolBuilder) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   onModuleInit() {
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'server2-dynamic-tool',
       description: 'Dynamic tool for server 2',
       handler: async () => {
@@ -160,6 +160,18 @@ class Server2DynamicTools implements OnModuleInit {
 // ============================================================================
 // Module: Basic dynamic tools
 // ============================================================================
+
+const deregServerModule = McpModule.forRoot({
+  name: 'dereg-server',
+  version: '1.0.0',
+  mcpEndpoint: '/dereg/mcp',
+});
+
+@Module({
+  imports: [deregServerModule],
+  providers: [DynamicToolsService],
+})
+class DeregistrationToolsAppModule {}
 
 const basicServerModule = McpModule.forRoot({
   name: 'basic-server',
@@ -242,7 +254,7 @@ class MultiServerAppModule {}
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic Tool Registration via McpToolBuilder', () => {
+describe('E2E: Dynamic Tool Registration via McpDynamicCapabilityRegistryService', () => {
   jest.setTimeout(15000);
 
   describe('Basic Dynamic Tools', () => {
@@ -545,6 +557,152 @@ describe('E2E: Dynamic Tool Registration via McpToolBuilder', () => {
       } finally {
         await client1.close();
         await client2.close();
+      }
+    });
+  });
+
+  describe('Deregistration', () => {
+    let app: INestApplication;
+    let serverPort: number;
+    let capabilityBuilder: McpDynamicCapabilityRegistryService;
+
+    beforeAll(async () => {
+      const moduleFixture: TestingModule = await Test.createTestingModule({
+        imports: [DeregistrationToolsAppModule],
+      }).compile();
+
+      app = moduleFixture.createNestApplication();
+      await app.listen(0);
+      serverPort = (app.getHttpServer().address() as import('net').AddressInfo).port;
+      capabilityBuilder = moduleFixture.get(McpDynamicCapabilityRegistryService, { strict: false });
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('should remove a tool from the listing', async () => {
+      capabilityBuilder.registerTool({
+        name: 'temp-tool',
+        description: 'Temporary tool',
+        handler: async () => ({ content: [{ type: 'text', text: 'temp' }] }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        let tools = await client.listTools();
+        expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeDefined();
+
+        capabilityBuilder.removeTool('temp-tool');
+
+        tools = await client.listTools();
+        expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should return an error when calling a removed tool', async () => {
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        await expect(
+          client.callTool({ name: 'temp-tool', arguments: {} }),
+        ).rejects.toThrow();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should not affect other tools when one is removed', async () => {
+      capabilityBuilder.registerTool({
+        name: 'tool-to-keep',
+        description: 'Should remain',
+        handler: async () => ({ content: [{ type: 'text', text: 'kept' }] }),
+      });
+      capabilityBuilder.registerTool({
+        name: 'tool-to-remove',
+        description: 'Should be removed',
+        handler: async () => ({ content: [{ type: 'text', text: 'gone' }] }),
+      });
+
+      capabilityBuilder.removeTool('tool-to-remove');
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const tools = await client.listTools();
+        expect(tools.tools.find((t) => t.name === 'tool-to-keep')).toBeDefined();
+        expect(tools.tools.find((t) => t.name === 'tool-to-remove')).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should reflect a newly registered tool on a running server', async () => {
+      capabilityBuilder.registerTool({
+        name: 'hot-registered-tool',
+        description: 'Registered after server started',
+        handler: async () => ({ content: [{ type: 'text', text: 'hot' }] }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const tools = await client.listTools();
+        expect(tools.tools.find((t) => t.name === 'hot-registered-tool')).toBeDefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should re-register a tool after removal', async () => {
+      capabilityBuilder.registerTool({
+        name: 'reregistered-tool',
+        description: 'Original',
+        handler: async () => ({ content: [{ type: 'text', text: 'original' }] }),
+      });
+      capabilityBuilder.removeTool('reregistered-tool');
+      capabilityBuilder.registerTool({
+        name: 'reregistered-tool',
+        description: 'Replacement',
+        handler: async () => ({ content: [{ type: 'text', text: 'replacement' }] }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const tools = await client.listTools();
+        const matches = tools.tools.filter((t) => t.name === 'reregistered-tool');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].description).toBe('Replacement');
+
+        const result: any = await client.callTool({ name: 'reregistered-tool', arguments: {} });
+        expect(result.content[0].text).toBe('replacement');
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should overwrite a tool when registered with the same name', async () => {
+      capabilityBuilder.registerTool({
+        name: 'duplicate-tool',
+        description: 'First version',
+        handler: async () => ({ content: [{ type: 'text', text: 'first' }] }),
+      });
+      capabilityBuilder.registerTool({
+        name: 'duplicate-tool',
+        description: 'Second version',
+        handler: async () => ({ content: [{ type: 'text', text: 'second' }] }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const tools = await client.listTools();
+        const matches = tools.tools.filter((t) => t.name === 'duplicate-tool');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].description).toBe('Second version');
+
+        const result: any = await client.callTool({ name: 'duplicate-tool', arguments: {} });
+        expect(result.content[0].text).toBe('second');
+      } finally {
+        await client.close();
       }
     });
   });

@@ -19,6 +19,10 @@ import { McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import type { Context, McpOptions } from '../../interfaces';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
+import {
+  McpDynamicCapabilityRegistryService,
+  DYNAMIC_RESOURCE_HANDLER_TOKEN,
+} from '../mcp-dynamic-capability-registry.service';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpResourcesHandler extends McpHandlerBase {
@@ -132,6 +136,24 @@ export class McpResourcesHandler extends McpHandlerBase {
     requestParams: Record<string, unknown>,
     methodName: string,
   ) {
+    if (providerClass === DYNAMIC_RESOURCE_HANDLER_TOKEN) {
+      const handler = McpDynamicCapabilityRegistryService.getResourceHandlerByModuleId(
+        this.mcpModuleId,
+        methodName,
+      );
+
+      if (!handler) {
+        throw new McpError(
+          ErrorCode.MethodNotFound,
+          `Handler not found for dynamic resource: ${uri}`,
+        );
+      }
+
+      const result = await handler(requestParams, context, httpRequest.raw);
+      this.logger.debug('ReadResourceRequestSchema result', result);
+      return result as ReadResourceResult;
+    }
+
     const contextId = ContextIdFactory.getByRequest(httpRequest);
     this.moduleRef.registerRequestByContextId(httpRequest, contextId);
 

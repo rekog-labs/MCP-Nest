@@ -2,7 +2,7 @@ import { SetMetadata } from '@nestjs/common';
 import { MCP_PROMPT_METADATA_KEY } from './constants';
 import { ZodObject, ZodType } from 'zod';
 
-type PromptArgsRawShape = {
+export type PromptArgsRawShape = {
   [k: string]: ZodType;
 };
 

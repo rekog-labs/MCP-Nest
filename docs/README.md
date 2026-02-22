@@ -2,7 +2,7 @@
 
 - [Tools Guide](./tools.md) — How to create and register tools.
   - [Discovery and Registration of Tools](./tool-discovery-and-registration.md) — Automatic discovery and manual registration of tools.
-  - [Dynamic Tools Guide](./dynamic-tools.md) — Register tools programmatically at runtime from databases or configuration.
+  - [Dynamic Capabilities Guide](./dynamic-capabilities.md) — Register tools, resources, and prompts programmatically at runtime from databases or configuration.
   - [Per-Tool Authorization](./per-tool-authorization.md) — How to implement fine-grained authorization for individual tools.
 - [Server Examples](./server-examples.md) — Example server setups and configurations.
 - [Prompts Guide](./prompts.md) — How to define and use prompts.

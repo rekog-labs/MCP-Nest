@@ -1,6 +1,6 @@
 import { Injectable, Module, OnModuleInit } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { McpModule, McpTransportType, McpToolBuilder, Tool } from '../../src';
+import { McpModule, McpTransportType, McpDynamicCapabilityRegistryService, Tool } from '../../src';
 import { z } from 'zod';
 
 /**
@@ -11,7 +11,7 @@ import { z } from 'zod';
  * 2. Server 1 (port 3031): Only has static decorator-based tools
  * 3. Server 2 (port 3032): Has both static tools AND dynamic tools registered at runtime
  *
- * Dynamic tools are registered using McpToolBuilder in the onModuleInit lifecycle hook,
+ * Dynamic tools are registered using McpDynamicCapabilityRegistryService in the onModuleInit lifecycle hook,
  * allowing you to:
  * - Load tool descriptions from databases
  * - Create tools based on runtime configuration
@@ -55,11 +55,11 @@ class SimpleGreetingTool {
 
 @Injectable()
 class DynamicToolsService implements OnModuleInit {
-  constructor(private readonly toolBuilder: McpToolBuilder) {}
+  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
 
   /**
    * onModuleInit runs before the server starts accepting requests.
-   * This is where you register dynamic tools using McpToolBuilder.
+   * This is where you register dynamic tools using McpDynamicCapabilityRegistryService.
    */
   async onModuleInit() {
     console.log('📝 Registering dynamic tools...');
@@ -68,7 +68,7 @@ class DynamicToolsService implements OnModuleInit {
     const collections = await this.loadCollectionsFromDatabase();
 
     // Register a dynamic search tool with description built from DB data
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'search-dynamic',
       description: `Search across collections. Available: ${collections.join(', ')}`,
       parameters: z.object({
@@ -97,7 +97,7 @@ class DynamicToolsService implements OnModuleInit {
     });
 
     // Register another dynamic tool
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'get-collections',
       description: 'Get list of available collections',
       handler: async () => {
@@ -114,7 +114,7 @@ class DynamicToolsService implements OnModuleInit {
     });
 
     // Register a dynamic tool with structured output
-    this.toolBuilder.registerTool({
+    this.registry.registerTool({
       name: 'get-stats',
       description: 'Get search statistics with structured output',
       outputSchema: z.object({

@@ -8,11 +8,15 @@ import {
   McpError,
   PromptArgument,
 } from '@modelcontextprotocol/sdk/types.js';
-import { DiscoveredTool, McpRegistryService } from '../mcp-registry.service';
+import { DiscoveredCapability, McpRegistryService } from '../mcp-registry.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import type { McpOptions } from '../../interfaces/mcp-options.interface';
 import { PromptMetadata } from '../../decorators';
+import {
+  McpDynamicCapabilityRegistryService,
+  DYNAMIC_PROMPT_HANDLER_TOKEN,
+} from '../mcp-dynamic-capability-registry.service';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpPromptsHandler extends McpHandlerBase {
@@ -59,7 +63,7 @@ export class McpPromptsHandler extends McpHandlerBase {
       GetPromptRequestSchema,
       async (request) => {
         this.logger.debug('GetPromptRequestSchema is being called');
-        let promptInfo: DiscoveredTool<PromptMetadata> | undefined;
+        let promptInfo: DiscoveredCapability<PromptMetadata> | undefined;
 
         try {
           const name = request.params.name;
@@ -70,6 +74,32 @@ export class McpPromptsHandler extends McpHandlerBase {
               ErrorCode.MethodNotFound,
               `Unknown prompt: ${name}`,
             );
+          }
+
+          const context = this.createContext(mcpServer, request);
+
+          if (promptInfo.providerClass === DYNAMIC_PROMPT_HANDLER_TOKEN) {
+            const handler = McpDynamicCapabilityRegistryService.getPromptHandlerByModuleId(
+              this.mcpModuleId,
+              name,
+            );
+
+            if (!handler) {
+              throw new McpError(
+                ErrorCode.MethodNotFound,
+                `Handler not found for dynamic prompt: ${name}`,
+              );
+            }
+
+            const result = await handler(
+              request.params.arguments,
+              context,
+              httpRequest.raw,
+            );
+
+            this.logger.debug('GetPromptRequestSchema result', result);
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+            return result;
           }
 
           const contextId = ContextIdFactory.getByRequest(httpRequest);
@@ -88,7 +118,6 @@ export class McpPromptsHandler extends McpHandlerBase {
             );
           }
 
-          const context = this.createContext(mcpServer, request);
           const methodName = promptInfo.methodName;
 
           const result = await promptInstance[methodName].call(

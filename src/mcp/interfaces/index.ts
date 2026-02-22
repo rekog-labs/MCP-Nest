@@ -20,3 +20,13 @@ export type {
   DynamicToolDefinition,
   DynamicToolHandler,
 } from './dynamic-tool.interface';
+
+export type {
+  DynamicResourceDefinition,
+  DynamicResourceHandler,
+} from './dynamic-resource.interface';
+
+export type {
+  DynamicPromptDefinition,
+  DynamicPromptHandler,
+} from './dynamic-prompt.interface';

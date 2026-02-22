@@ -14,11 +14,11 @@ export type DynamicToolHandler = (
 
 /**
  * Definition for a dynamically registered tool.
- * Use this with McpToolBuilder.registerTool() to register tools at runtime.
+ * Use this with McpDynamicCapabilityRegistryService.registerTool() to register tools at runtime.
  *
  * @example
  * ```typescript
- * toolBuilder.registerTool({
+ * registry.registerTool({
  *   name: 'search-knowledge',
  *   description: 'Search the knowledge base',
  *   parameters: z.object({ query: z.string() }),

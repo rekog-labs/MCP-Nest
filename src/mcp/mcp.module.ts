@@ -19,7 +19,7 @@ import { McpSseService } from './services/mcp-sse.service';
 import { McpStreamableHttpService } from './services/mcp-streamable-http.service';
 import { SsePingService } from './services/sse-ping.service';
 import { ToolAuthorizationService } from './services/tool-authorization.service';
-import { McpToolBuilder } from './services/mcp-tool-builder.service';
+import { McpDynamicCapabilityRegistryService } from './services/mcp-dynamic-capability-registry.service';
 import { createSseController } from './transport/sse.controller.factory';
 import { StdioService } from './transport/stdio.service';
 import { createStreamableHttpController } from './transport/streamable-http.controller.factory';
@@ -144,7 +144,7 @@ export class McpModule {
         McpRegistryService,
         McpSseService,
         McpStreamableHttpService,
-        McpToolBuilder,
+        McpDynamicCapabilityRegistryService,
       ],
     };
   }
@@ -175,7 +175,7 @@ export class McpModule {
       SsePingService,
       McpSseService,
       McpStreamableHttpService,
-      McpToolBuilder,
+      McpDynamicCapabilityRegistryService,
       StdioService,
     ];
 
@@ -193,7 +193,7 @@ export class McpModule {
         McpRegistryService,
         McpSseService,
         McpStreamableHttpService,
-        McpToolBuilder,
+        McpDynamicCapabilityRegistryService,
       ],
     };
   }
@@ -336,7 +336,7 @@ export class McpModule {
       SsePingService,
       McpSseService,
       McpStreamableHttpService,
-      McpToolBuilder,
+      McpDynamicCapabilityRegistryService,
       StdioService,
     ];
 
