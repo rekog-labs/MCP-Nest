@@ -653,6 +653,33 @@ describe('E2E: Dynamic Tool Registration via McpDynamicCapabilityRegistryService
       }
     });
 
+    it('should re-register a tool after removal', async () => {
+      capabilityBuilder.registerTool({
+        name: 'reregistered-tool',
+        description: 'Original',
+        handler: async () => ({ content: [{ type: 'text', text: 'original' }] }),
+      });
+      capabilityBuilder.removeTool('reregistered-tool');
+      capabilityBuilder.registerTool({
+        name: 'reregistered-tool',
+        description: 'Replacement',
+        handler: async () => ({ content: [{ type: 'text', text: 'replacement' }] }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const tools = await client.listTools();
+        const matches = tools.tools.filter((t) => t.name === 'reregistered-tool');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].description).toBe('Replacement');
+
+        const result: any = await client.callTool({ name: 'reregistered-tool', arguments: {} });
+        expect(result.content[0].text).toBe('replacement');
+      } finally {
+        await client.close();
+      }
+    });
+
     it('should overwrite a tool when registered with the same name', async () => {
       capabilityBuilder.registerTool({
         name: 'duplicate-tool',

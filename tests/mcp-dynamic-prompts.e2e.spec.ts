@@ -476,6 +476,39 @@ describe('E2E: Dynamic Prompt Registration via McpDynamicCapabilityRegistryServi
       }
     });
 
+    it('should re-register a prompt after removal', async () => {
+      capabilityBuilder.registerPrompt({
+        name: 'reregistered-prompt',
+        description: 'Original',
+        handler: async () => ({
+          description: 'Original',
+          messages: [{ role: 'user', content: { type: 'text', text: 'original' } }],
+        }),
+      });
+      capabilityBuilder.removePrompt('reregistered-prompt');
+      capabilityBuilder.registerPrompt({
+        name: 'reregistered-prompt',
+        description: 'Replacement',
+        handler: async () => ({
+          description: 'Replacement',
+          messages: [{ role: 'user', content: { type: 'text', text: 'replacement' } }],
+        }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const result = await client.listPrompts();
+        const matches = result.prompts.filter((p) => p.name === 'reregistered-prompt');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].description).toBe('Replacement');
+
+        const got: any = await client.getPrompt({ name: 'reregistered-prompt', arguments: {} });
+        expect(got.messages[0].content.text).toBe('replacement');
+      } finally {
+        await client.close();
+      }
+    });
+
     it('should overwrite a prompt when registered with the same name', async () => {
       capabilityBuilder.registerPrompt({
         name: 'duplicate-prompt',

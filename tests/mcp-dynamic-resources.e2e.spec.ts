@@ -458,6 +458,39 @@ describe('E2E: Dynamic Resource Registration via McpDynamicCapabilityRegistrySer
       }
     });
 
+    it('should re-register a resource after removal', async () => {
+      capabilityBuilder.registerResource({
+        uri: 'mcp://reregistered-resource',
+        name: 'reregistered-resource',
+        description: 'Original',
+        handler: async () => ({
+          contents: [{ uri: 'mcp://reregistered-resource', mimeType: 'text/plain', text: 'original' }],
+        }),
+      });
+      capabilityBuilder.removeResource('mcp://reregistered-resource');
+      capabilityBuilder.registerResource({
+        uri: 'mcp://reregistered-resource',
+        name: 'reregistered-resource',
+        description: 'Replacement',
+        handler: async () => ({
+          contents: [{ uri: 'mcp://reregistered-resource', mimeType: 'text/plain', text: 'replacement' }],
+        }),
+      });
+
+      const client = await createStreamableClient(serverPort, { endpoint: '/dereg/mcp' });
+      try {
+        const result = await client.listResources();
+        const matches = result.resources.filter((r) => r.uri === 'mcp://reregistered-resource');
+        expect(matches).toHaveLength(1);
+        expect(matches[0].description).toBe('Replacement');
+
+        const read = await client.readResource({ uri: 'mcp://reregistered-resource' });
+        expect((read.contents[0] as any).text).toBe('replacement');
+      } finally {
+        await client.close();
+      }
+    });
+
     it('should overwrite a resource when registered with the same uri', async () => {
       capabilityBuilder.registerResource({
         uri: 'mcp://duplicate-resource',
