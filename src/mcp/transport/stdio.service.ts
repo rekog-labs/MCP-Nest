@@ -9,7 +9,7 @@ import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import { McpTransportType } from '../interfaces';
 import type { McpOptions } from '../interfaces';
 import { McpExecutorService } from '../services/mcp-executor.service';
-import { McpRegistryService } from '../services/mcp-registry.service';
+import { McpRegistryDiscoveryService } from '../services/mcp-registry-discovery.service';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 import { createMcpServer } from '../utils/mcp-server.factory';
 
@@ -21,7 +21,7 @@ export class StdioService implements OnApplicationBootstrap {
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     private readonly moduleRef: ModuleRef,
-    private readonly toolRegistry: McpRegistryService,
+    private readonly toolRegistry: McpRegistryDiscoveryService,
   ) {
     this.logger = createMcpLogger(StdioService.name, this.options);
   }

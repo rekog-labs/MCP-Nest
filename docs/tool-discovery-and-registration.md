@@ -2,7 +2,7 @@
 
 ## Tool Discovery Overview
 
-Tools are discovered automatically during application bootstrap via the `McpRegistryService`:
+Tools are discovered automatically during application bootstrap via the `McpRegistryDiscoveryService`:
 
 1. **Automatic discovery**: Tools in the module where `McpModule.forRoot()` is defined are discovered automatically.
 2. **Manual registration**: Tools in other modules can be registered using `McpModule.forFeature()`.

@@ -152,7 +152,7 @@ AppModule
 
 ## Discovery Process
 
-At bootstrap, `McpRegistryService`:
+At bootstrap, `McpRegistryDiscoveryService`:
 
 1. **Builds server name map**: `'public-server' → mcp-module-0`, `'admin-server' → mcp-module-1`
 

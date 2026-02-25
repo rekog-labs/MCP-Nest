@@ -1,5 +1,5 @@
 import { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
-import { McpRegistryService } from '../services/mcp-registry.service';
+import { McpRegistryDiscoveryService } from '../services/mcp-registry-discovery.service';
 import type { McpOptions } from '../interfaces';
 
 /**
@@ -8,7 +8,7 @@ import type { McpOptions } from '../interfaces';
  */
 export function buildMcpCapabilities(
   mcpModuleId: string,
-  registry: McpRegistryService,
+  registry: McpRegistryDiscoveryService,
   options: McpOptions,
 ): ServerCapabilities {
   // Start with user-provided capabilities or empty object

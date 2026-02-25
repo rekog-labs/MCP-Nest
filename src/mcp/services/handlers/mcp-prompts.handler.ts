@@ -8,7 +8,7 @@ import {
   McpError,
   PromptArgument,
 } from '@modelcontextprotocol/sdk/types.js';
-import { DiscoveredCapability, McpRegistryService } from '../mcp-registry.service';
+import { DiscoveredCapability, McpRegistryDiscoveryService } from '../mcp-registry-discovery.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import type { McpOptions } from '../../interfaces/mcp-options.interface';
@@ -22,7 +22,7 @@ import {
 export class McpPromptsHandler extends McpHandlerBase {
   constructor(
     moduleRef: ModuleRef,
-    registry: McpRegistryService,
+    registry: McpRegistryDiscoveryService,
     reflector: Reflector,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,

@@ -15,7 +15,7 @@ import {
   ReadResourceRequestSchema,
   ReadResourceResult,
 } from '@modelcontextprotocol/sdk/types.js';
-import { McpRegistryService } from '../mcp-registry.service';
+import { McpRegistryDiscoveryService } from '../mcp-registry-discovery.service';
 import { McpHandlerBase } from './mcp-handler.base';
 import type { Context, McpOptions } from '../../interfaces';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
@@ -28,7 +28,7 @@ import {
 export class McpResourcesHandler extends McpHandlerBase {
   constructor(
     moduleRef: ModuleRef,
-    registry: McpRegistryService,
+    registry: McpRegistryDiscoveryService,
     reflector: Reflector,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     @Optional() @Inject('MCP_OPTIONS') options?: McpOptions,

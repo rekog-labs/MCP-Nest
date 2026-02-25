@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { McpOptions } from '../interfaces';
 import { McpExecutorService } from './mcp-executor.service';
-import { McpRegistryService } from './mcp-registry.service';
+import { McpRegistryDiscoveryService } from './mcp-registry-discovery.service';
 import { SsePingService } from './sse-ping.service';
 import { normalizeEndpoint } from '../utils/normalize-endpoint';
 import { HttpAdapterFactory } from '../adapters';
@@ -27,7 +27,7 @@ export class McpSseService {
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     private readonly applicationConfig: ApplicationConfig,
     private readonly moduleRef: ModuleRef,
-    private readonly toolRegistry: McpRegistryService,
+    private readonly toolRegistry: McpRegistryDiscoveryService,
     @Inject(SsePingService) private readonly pingService: SsePingService,
   ) {
     this.logger = createMcpLogger(McpSseService.name, this.options);

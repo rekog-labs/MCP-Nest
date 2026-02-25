@@ -1,6 +1,11 @@
 import { Injectable, Module, OnModuleInit } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { McpModule, McpTransportType, McpDynamicCapabilityRegistryService, Tool } from '../../src';
+import {
+  McpModule,
+  McpTransportType,
+  McpDynamicCapabilityRegistryService,
+  Tool,
+} from '../../src';
 import { z } from 'zod';
 
 /**

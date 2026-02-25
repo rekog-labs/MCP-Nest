@@ -1,12 +1,12 @@
 import { McpOptions } from '../interfaces';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildMcpCapabilities } from './capabilities-builder';
-import { McpRegistryService } from '../services/mcp-registry.service';
+import { McpRegistryDiscoveryService } from '../services/mcp-registry-discovery.service';
 import { Logger } from '@nestjs/common';
 
 export function createMcpServer(
   mcpModuleId: string,
-  registry: McpRegistryService,
+  registry: McpRegistryDiscoveryService,
   options: McpOptions,
   logger: Logger,
 ): McpServer {

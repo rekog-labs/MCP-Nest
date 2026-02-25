@@ -40,7 +40,7 @@ npx --node-options=--experimental-vm-modules jest --testNamePattern="auth"
 Located at `src/mcp/mcp.module.ts:18`. This is the main module for creating MCP servers.
 
 **Key Features**:
-- Decorator-based tool/resource/prompt discovery via `McpRegistryService`
+- Decorator-based tool/resource/prompt discovery via `McpRegistryDiscoveryService`
 - Multi-transport support (HTTP+SSE, Streamable HTTP, STDIO)
 - Dynamic controller generation for different transport types
 - Module instance isolation with unique `moduleId` per `forRoot()` call
@@ -152,7 +152,7 @@ const moduleId = `mcp-module-${instanceIdCounter++}`;
 This enables multiple MCP servers in one application with different capabilities.
 
 ### Request Scoping & Discovery
-- `McpRegistryService` discovers decorated methods at bootstrap using `DiscoveryService`
+- `McpRegistryDiscoveryService` discovers decorated methods at bootstrap using `DiscoveryService`
 - `McpExecutorService` (REQUEST-scoped) handles per-request tool execution
 - Registry maintains maps by `mcpModuleId` for isolation
 

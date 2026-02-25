@@ -129,7 +129,7 @@ return {
 ```
 
 ### Registry Service Pattern
-`McpRegistryService` discovers decorated methods at bootstrap using `DiscoveryService` and `MetadataScanner`. It maintains maps by `mcpModuleId` for isolation.
+`McpRegistryDiscoveryService` discovers decorated methods at bootstrap using `DiscoveryService` and `MetadataScanner`. It maintains maps by `mcpModuleId` for isolation.
 
 ### HTTP Adapter Abstraction
 `HttpAdapterFactory` provides framework-agnostic request/response handling for Express/Fastify compatibility.

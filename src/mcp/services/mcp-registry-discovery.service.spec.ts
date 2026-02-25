@@ -43,7 +43,9 @@ describe('McpRegistryDiscoveryService', () => {
       ],
     }).compile();
 
-    service = module.get<McpRegistryDiscoveryService>(McpRegistryDiscoveryService);
+    service = module.get<McpRegistryDiscoveryService>(
+      McpRegistryDiscoveryService,
+    );
 
     const mockResources = [
       mockResource('res0', '/posts/comments'),
@@ -178,7 +180,9 @@ describe('McpRegistryDiscoveryService - Multiple discovery roots', () => {
       imports: [ModuleA, ModuleB],
     }).compile();
 
-    service = module.get<McpRegistryDiscoveryService>(McpRegistryDiscoveryService);
+    service = module.get<McpRegistryDiscoveryService>(
+      McpRegistryDiscoveryService,
+    );
     service.onApplicationBootstrap();
   });
 
@@ -255,7 +259,9 @@ describe('McpRegistryDiscoveryService - Single discovery root with multiple MCP 
       imports: [AppModule],
     }).compile();
 
-    service = module.get<McpRegistryDiscoveryService>(McpRegistryDiscoveryService);
+    service = module.get<McpRegistryDiscoveryService>(
+      McpRegistryDiscoveryService,
+    );
     service.onApplicationBootstrap();
   });
 

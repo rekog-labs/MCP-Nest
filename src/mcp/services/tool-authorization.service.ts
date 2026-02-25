@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { DiscoveredCapability } from './mcp-registry.service';
+import { DiscoveredCapability } from './mcp-registry-discovery.service';
 import { ToolMetadata, SecurityScheme } from '../decorators/tool.decorator';
 import { JwtPayload } from '../../authz/services/jwt-token.service';
 

@@ -10,7 +10,7 @@ import {
 } from '../interfaces/http-adapter.interface';
 import type { McpOptions } from '../interfaces';
 import { McpExecutorService } from './mcp-executor.service';
-import { McpRegistryService } from './mcp-registry.service';
+import { McpRegistryDiscoveryService } from './mcp-registry-discovery.service';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 import { createMcpServer } from '../utils/mcp-server.factory';
 
@@ -28,7 +28,7 @@ export class McpStreamableHttpService implements OnModuleDestroy {
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     private readonly moduleRef: ModuleRef,
-    private readonly toolRegistry: McpRegistryService,
+    private readonly toolRegistry: McpRegistryDiscoveryService,
   ) {
     // Determine if we're in stateless mode
     this.isStatelessMode = !!options.streamableHttp?.statelessMode;

@@ -15,7 +15,7 @@ import {
   Type,
 } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef, Reflector } from '@nestjs/core';
-import { DiscoveredCapability, McpRegistryService } from '../mcp-registry.service';
+import { DiscoveredCapability, McpRegistryDiscoveryService } from '../mcp-registry-discovery.service';
 import { ToolGuardExecutionContext, ToolMetadata } from '../../decorators';
 import { McpHandlerBase } from './mcp-handler.base';
 import { ZodType } from 'zod';
@@ -36,7 +36,7 @@ export class McpToolsHandler extends McpHandlerBase {
 
   constructor(
     moduleRef: ModuleRef,
-    registry: McpRegistryService,
+    registry: McpRegistryDiscoveryService,
     reflector: Reflector,
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,

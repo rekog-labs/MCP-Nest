@@ -50,7 +50,7 @@ export type InjectionTokenWithName = InjectionToken & { name: string };
  * Singleton service that discovers and registers tools during application bootstrap
  */
 @Injectable()
-export class McpRegistryService implements OnApplicationBootstrap {
+export class McpRegistryDiscoveryService implements OnApplicationBootstrap {
   private readonly logger: Logger;
   private discoveredCapabilitiesByMcpModuleId: Map<
     string,
@@ -63,7 +63,7 @@ export class McpRegistryService implements OnApplicationBootstrap {
     private readonly modulesContainer: ModulesContainer,
     @Optional() @Inject('MCP_OPTIONS') private readonly options?: McpOptions,
   ) {
-    this.logger = createMcpLogger(McpRegistryService.name, this.options);
+    this.logger = createMcpLogger(McpRegistryDiscoveryService.name, this.options);
   }
 
   onApplicationBootstrap() {
