@@ -787,7 +787,7 @@ export class McpRegistryDiscoveryService implements OnApplicationBootstrap {
 
   /**
    * Register a tool programmatically (for dynamic tools).
-   * Use McpDynamicCapabilityRegistryService.registerTool() instead of calling this directly.
+   * Use McpDynamicRegistryService.registerTool() instead of calling this directly.
    *
    * @param mcpModuleId - The module ID to register the tool with
    * @param capability - The discovered capability object to register

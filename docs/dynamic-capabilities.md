@@ -1,6 +1,6 @@
 # Dynamic Capability Registration
 
-Dynamic capability registration allows you to programmatically register MCP tools, resources, and prompts at runtime using the `McpDynamicCapabilityRegistryService`. This is useful when you need to:
+Dynamic capability registration allows you to programmatically register MCP tools, resources, and prompts at runtime using the `McpDynamicRegistryService`. This is useful when you need to:
 
 - Load descriptions or parameters from a database
 - Build plugin systems with runtime capability registration
@@ -23,15 +23,15 @@ Dynamic capabilities work alongside decorator-based capabilities and support all
 
 ## Quick Start
 
-Create a service that injects `McpDynamicCapabilityRegistryService` and implements `OnModuleInit`:
+Create a service that injects `McpDynamicRegistryService` and implements `OnModuleInit`:
 
 ```typescript
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { McpDynamicCapabilityRegistryService } from '@rekog/mcp-nest';
+import { McpDynamicRegistryService } from '@rekog/mcp-nest';
 
 @Injectable()
 export class DynamicCapabilitiesService implements OnModuleInit {
-  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly registry: McpDynamicRegistryService) {}
 
   onModuleInit() {
     this.registry.registerTool({ /* ... */ });
@@ -41,7 +41,7 @@ export class DynamicCapabilitiesService implements OnModuleInit {
 }
 ```
 
-Add your service to the module's providers — `McpDynamicCapabilityRegistryService` is already provided by `McpModule.forRoot()`:
+Add your service to the module's providers — `McpDynamicRegistryService` is already provided by `McpModule.forRoot()`:
 
 ```typescript
 @Module({
@@ -81,7 +81,7 @@ A common pattern is loading tool configurations from a database at startup:
 @Injectable()
 export class DatabaseToolsService implements OnModuleInit {
   constructor(
-    private readonly registry: McpDynamicCapabilityRegistryService,
+    private readonly registry: McpDynamicRegistryService,
     private readonly toolConfigRepo: ToolConfigRepository,
     private readonly searchService: SearchService,
   ) {}
@@ -262,7 +262,7 @@ export class StaticTools {
 
 @Injectable()
 export class DynamicCapabilitiesService implements OnModuleInit {
-  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly registry: McpDynamicRegistryService) {}
 
   onModuleInit() {
     this.registry.registerTool({
@@ -298,10 +298,10 @@ bunx @modelcontextprotocol/inspector --cli "http://localhost:3032/mcp" --transpo
 
 ## API Reference
 
-### McpDynamicCapabilityRegistryService
+### McpDynamicRegistryService
 
 ```typescript
-class McpDynamicCapabilityRegistryService {
+class McpDynamicRegistryService {
   registerTool(definition: DynamicToolDefinition): void;
   removeTool(name: string): void;
 

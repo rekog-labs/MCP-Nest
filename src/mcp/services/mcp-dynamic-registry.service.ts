@@ -32,7 +32,7 @@ export const DYNAMIC_PROMPT_HANDLER_TOKEN = Symbol('DYNAMIC_PROMPT_HANDLER');
 /**
  * Global maps of dynamic capability handlers, scoped by moduleId.
  * Using module-level Maps ensures handlers persist across different
- * McpDynamicCapabilityRegistryService instances that may be created by the DI container.
+ * McpDynamicRegistryService instances that may be created by the DI container.
  */
 const globalHandlers = new Map<string, Map<string, DynamicToolHandler>>();
 const globalResourceHandlers = new Map<
@@ -55,7 +55,7 @@ const globalPromptHandlers = new Map<
  * @Injectable()
  * export class DynamicToolsService implements OnModuleInit {
  *   constructor(
- *     private readonly capabilityBuilder: McpDynamicCapabilityRegistryService,
+ *     private readonly capabilityBuilder: McpDynamicRegistryService,
  *     private readonly dbService: DatabaseService,
  *   ) {}
  *
@@ -76,7 +76,7 @@ const globalPromptHandlers = new Map<
  * ```
  */
 @Injectable()
-export class McpDynamicCapabilityRegistryService {
+export class McpDynamicRegistryService {
   private readonly logger: Logger;
 
   constructor(
@@ -84,7 +84,7 @@ export class McpDynamicCapabilityRegistryService {
     @Inject('MCP_MODULE_ID') private readonly mcpModuleId: string,
     @Inject('MCP_OPTIONS') private readonly options: McpOptions,
   ) {
-    this.logger = createMcpLogger(McpDynamicCapabilityRegistryService.name, this.options);
+    this.logger = createMcpLogger(McpDynamicRegistryService.name, this.options);
     [globalHandlers, globalResourceHandlers, globalPromptHandlers].forEach(
       (store) => {
         if (!store.has(mcpModuleId)) {

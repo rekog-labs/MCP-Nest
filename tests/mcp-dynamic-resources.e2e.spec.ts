@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Resource, McpDynamicCapabilityRegistryService } from '../src';
+import { Resource, McpDynamicRegistryService } from '../src';
 import { McpModule } from '../src/mcp/mcp.module';
 import { createStreamableClient } from './utils';
 
@@ -15,7 +15,7 @@ import { createStreamableClient } from './utils';
 
 @Injectable()
 class DynamicResourcesService implements OnModuleInit {
-  constructor(private readonly capabilityBuilder: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly capabilityBuilder: McpDynamicRegistryService) {}
 
   onModuleInit() {
     this.capabilityBuilder.registerResource({
@@ -80,7 +80,7 @@ class StaticResource {
 
 @Injectable()
 class Server1DynamicResources implements OnModuleInit {
-  constructor(private readonly capabilityBuilder: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly capabilityBuilder: McpDynamicRegistryService) {}
 
   onModuleInit() {
     this.capabilityBuilder.registerResource({
@@ -96,7 +96,7 @@ class Server1DynamicResources implements OnModuleInit {
 
 @Injectable()
 class Server2DynamicResources implements OnModuleInit {
-  constructor(private readonly capabilityBuilder: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly capabilityBuilder: McpDynamicRegistryService) {}
 
   onModuleInit() {
     this.capabilityBuilder.registerResource({
@@ -175,7 +175,7 @@ class MultiResourceServerAppModule {}
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic Resource Registration via McpDynamicCapabilityRegistryService', () => {
+describe('E2E: Dynamic Resource Registration via McpDynamicRegistryService', () => {
   jest.setTimeout(15000);
 
   describe('Basic Dynamic Resources', () => {
@@ -357,7 +357,7 @@ describe('E2E: Dynamic Resource Registration via McpDynamicCapabilityRegistrySer
   describe('Deregistration', () => {
     let app: INestApplication;
     let serverPort: number;
-    let capabilityBuilder: McpDynamicCapabilityRegistryService;
+    let capabilityBuilder: McpDynamicRegistryService;
 
     beforeAll(async () => {
       const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -367,7 +367,7 @@ describe('E2E: Dynamic Resource Registration via McpDynamicCapabilityRegistrySer
       app = moduleFixture.createNestApplication();
       await app.listen(0);
       serverPort = (app.getHttpServer().address() as import('net').AddressInfo).port;
-      capabilityBuilder = moduleFixture.get(McpDynamicCapabilityRegistryService, { strict: false });
+      capabilityBuilder = moduleFixture.get(McpDynamicRegistryService, { strict: false });
     });
 
     afterAll(async () => {

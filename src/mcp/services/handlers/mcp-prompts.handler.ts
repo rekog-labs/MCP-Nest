@@ -14,9 +14,9 @@ import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import type { McpOptions } from '../../interfaces/mcp-options.interface';
 import { PromptMetadata } from '../../decorators';
 import {
-  McpDynamicCapabilityRegistryService,
+  McpDynamicRegistryService,
   DYNAMIC_PROMPT_HANDLER_TOKEN,
-} from '../mcp-dynamic-capability-registry.service';
+} from '../mcp-dynamic-registry.service';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpPromptsHandler extends McpHandlerBase {
@@ -79,7 +79,7 @@ export class McpPromptsHandler extends McpHandlerBase {
           const context = this.createContext(mcpServer, request);
 
           if (promptInfo.providerClass === DYNAMIC_PROMPT_HANDLER_TOKEN) {
-            const handler = McpDynamicCapabilityRegistryService.getPromptHandlerByModuleId(
+            const handler = McpDynamicRegistryService.getPromptHandlerByModuleId(
               this.mcpModuleId,
               name,
             );

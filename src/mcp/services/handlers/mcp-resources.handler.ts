@@ -20,9 +20,9 @@ import { McpHandlerBase } from './mcp-handler.base';
 import type { Context, McpOptions } from '../../interfaces';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
 import {
-  McpDynamicCapabilityRegistryService,
+  McpDynamicRegistryService,
   DYNAMIC_RESOURCE_HANDLER_TOKEN,
-} from '../mcp-dynamic-capability-registry.service';
+} from '../mcp-dynamic-registry.service';
 
 @Injectable({ scope: Scope.REQUEST })
 export class McpResourcesHandler extends McpHandlerBase {
@@ -137,7 +137,7 @@ export class McpResourcesHandler extends McpHandlerBase {
     methodName: string,
   ) {
     if (providerClass === DYNAMIC_RESOURCE_HANDLER_TOKEN) {
-      const handler = McpDynamicCapabilityRegistryService.getResourceHandlerByModuleId(
+      const handler = McpDynamicRegistryService.getResourceHandlerByModuleId(
         this.mcpModuleId,
         methodName,
       );

@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import {
   McpModule,
   McpTransportType,
-  McpDynamicCapabilityRegistryService,
+  McpDynamicRegistryService,
   Tool,
 } from '../../src';
 import { z } from 'zod';
@@ -16,7 +16,7 @@ import { z } from 'zod';
  * 2. Server 1 (port 3031): Only has static decorator-based tools
  * 3. Server 2 (port 3032): Has both static tools AND dynamic tools registered at runtime
  *
- * Dynamic tools are registered using McpDynamicCapabilityRegistryService in the onModuleInit lifecycle hook,
+ * Dynamic tools are registered using McpDynamicRegistryService in the onModuleInit lifecycle hook,
  * allowing you to:
  * - Load tool descriptions from databases
  * - Create tools based on runtime configuration
@@ -60,11 +60,11 @@ class SimpleGreetingTool {
 
 @Injectable()
 class DynamicToolsService implements OnModuleInit {
-  constructor(private readonly registry: McpDynamicCapabilityRegistryService) {}
+  constructor(private readonly registry: McpDynamicRegistryService) {}
 
   /**
    * onModuleInit runs before the server starts accepting requests.
-   * This is where you register dynamic tools using McpDynamicCapabilityRegistryService.
+   * This is where you register dynamic tools using McpDynamicRegistryService.
    */
   async onModuleInit() {
     console.log('📝 Registering dynamic tools...');
