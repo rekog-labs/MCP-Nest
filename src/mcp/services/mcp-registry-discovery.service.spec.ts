@@ -5,13 +5,13 @@ import {
   ValueProvider,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { McpRegistryService } from './mcp-registry.service';
+import { McpRegistryDiscoveryService } from './mcp-registry-discovery.service';
 import { DiscoveryService, MetadataScanner } from '@nestjs/core';
 import { Tool } from '../decorators/tool.decorator';
 import { McpModule } from '../mcp.module';
 
-describe('McpRegistryService', () => {
-  let service: McpRegistryService;
+describe('McpRegistryDiscoveryService', () => {
+  let service: McpRegistryDiscoveryService;
   const mockMcpModuleId = 'test-mcp-module-id';
 
   const mockResource = (name: string, uri: string) => ({
@@ -31,7 +31,7 @@ describe('McpRegistryService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        McpRegistryService,
+        McpRegistryDiscoveryService,
         {
           provide: DiscoveryService,
           useValue: {
@@ -43,7 +43,7 @@ describe('McpRegistryService', () => {
       ],
     }).compile();
 
-    service = module.get<McpRegistryService>(McpRegistryService);
+    service = module.get<McpRegistryDiscoveryService>(McpRegistryDiscoveryService);
 
     const mockResources = [
       mockResource('res0', '/posts/comments'),
@@ -129,7 +129,7 @@ describe('McpRegistryService', () => {
  *               |                      |
  *             ToolsA                 ToolsB
  */
-describe('McpRegistryService - Multiple discovery roots', () => {
+describe('McpRegistryDiscoveryService - Multiple discovery roots', () => {
   const mcpModuleA = McpModule.forRoot({ name: 'server-a', version: '0.0.1' });
   const mcpModuleB = McpModule.forRoot({ name: 'server-b', version: '0.0.1' });
 
@@ -169,7 +169,7 @@ describe('McpRegistryService - Multiple discovery roots', () => {
   })
   class ModuleB {}
 
-  let service: McpRegistryService;
+  let service: McpRegistryDiscoveryService;
   const idModuleA = getMcpModuleId(mcpModuleA);
   const idModuleB = getMcpModuleId(mcpModuleB);
 
@@ -178,7 +178,7 @@ describe('McpRegistryService - Multiple discovery roots', () => {
       imports: [ModuleA, ModuleB],
     }).compile();
 
-    service = module.get<McpRegistryService>(McpRegistryService);
+    service = module.get<McpRegistryDiscoveryService>(McpRegistryDiscoveryService);
     service.onApplicationBootstrap();
   });
 
@@ -215,7 +215,7 @@ describe('McpRegistryService - Multiple discovery roots', () => {
  *          |
  *       Tools (forFeature to both)
  */
-describe('McpRegistryService - Single discovery root with multiple MCP servers', () => {
+describe('McpRegistryDiscoveryService - Single discovery root with multiple MCP servers', () => {
   const mcpModuleA = McpModule.forRoot({ name: 'server-a', version: '0.0.1' });
   const mcpModuleB = McpModule.forRoot({ name: 'server-b', version: '0.0.1' });
 
@@ -248,14 +248,14 @@ describe('McpRegistryService - Single discovery root with multiple MCP servers',
   })
   class AppModule {}
 
-  let service: McpRegistryService;
+  let service: McpRegistryDiscoveryService;
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
-    service = module.get<McpRegistryService>(McpRegistryService);
+    service = module.get<McpRegistryDiscoveryService>(McpRegistryDiscoveryService);
     service.onApplicationBootstrap();
   });
 
