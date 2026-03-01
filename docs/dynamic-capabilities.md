@@ -18,6 +18,8 @@ Dynamic capabilities work alongside decorator-based capabilities and support all
   - [Prompts](#prompts)
   - [Deregistration](#deregistration)
   - [Mixed Mode: Static + Dynamic](#mixed-mode-static--dynamic)
+  - [Registration from an External Module](#registration-from-an-external-module)
+    - [Multi-Server Isolation](#multi-server-isolation)
   - [Playground Example](#playground-example)
   - [API Reference](#api-reference)
 
@@ -279,6 +281,109 @@ export class DynamicCapabilitiesService implements OnModuleInit {
 })
 export class AppModule {}
 ```
+
+## Registration from an External Module
+
+In larger applications the service that registers dynamic capabilities will often live in a separate NestJS module from the one that hosts the MCP server. The recommended pattern is to wrap `McpModule.forRoot()` in a dedicated server module, re-export it, and then import that server module wherever `McpRegistryService` is needed.
+
+```
+AppModule
+├── ServerModule ──imports──► McpModule.forRoot()
+│        └── exports: [McpModule.forRoot result]
+└── ExternalModule ──imports──► ServerModule
+         └── providers: [ExternalCapabilitiesService]
+```
+
+**ServerModule** — owns the MCP server setup and re-exports `McpModule.forRoot` so its providers are available to importers:
+
+```typescript
+import { Module } from '@nestjs/common';
+import { McpModule } from '@rekog/mcp-nest';
+
+const mcpModule = McpModule.forRoot({ name: 'my-server', version: '1.0.0' });
+
+@Module({
+  imports: [mcpModule],
+  exports: [mcpModule],
+})
+export class ServerModule {}
+```
+
+**ExternalModule** — imports `ServerModule` to obtain `McpRegistryService` and registers capabilities in its own providers:
+
+```typescript
+import { Injectable, Module, OnModuleInit } from '@nestjs/common';
+import { McpRegistryService } from '@rekog/mcp-nest';
+import { ServerModule } from './server.module';
+
+@Injectable()
+export class ExternalCapabilitiesService implements OnModuleInit {
+  constructor(private readonly registry: McpRegistryService) {}
+
+  onModuleInit() {
+    this.registry.registerTool({
+      name: 'external-tool',
+      description: 'A tool registered from an external module',
+      handler: async () => ({
+        content: [{ type: 'text', text: 'result' }],
+      }),
+    });
+  }
+}
+
+@Module({
+  imports: [ServerModule],
+  providers: [ExternalCapabilitiesService],
+})
+export class ExternalModule {}
+```
+
+**AppModule** — imports both:
+
+```typescript
+@Module({
+  imports: [ServerModule, ExternalModule],
+})
+export class AppModule {}
+```
+
+Because NestJS shares singleton provider instances across the module graph, `ExternalCapabilitiesService` receives the exact same `McpRegistryService` instance that serves the HTTP endpoints. Capabilities registered there appear immediately in `tools/list`, `resources/list`, and `prompts/list` responses.
+
+### Multi-Server Isolation
+
+When running multiple MCP servers in one application, each `McpModule.forRoot()` call produces its own isolated `McpRegistryService` instance. External modules must import the server module for the server they intend to register capabilities with — importing the wrong server module registers capabilities to the wrong server.
+
+```typescript
+const mcpServerA = McpModule.forRoot({ name: 'server-a', version: '1.0.0', mcpEndpoint: '/server-a/mcp' });
+const mcpServerB = McpModule.forRoot({ name: 'server-b', version: '1.0.0', mcpEndpoint: '/server-b/mcp' });
+
+@Module({ imports: [mcpServerA], exports: [mcpServerA] })
+export class ServerAModule {}
+
+@Module({ imports: [mcpServerB], exports: [mcpServerB] })
+export class ServerBModule {}
+
+@Injectable()
+export class ServerAExternalTools implements OnModuleInit {
+  constructor(private readonly registry: McpRegistryService) {}
+
+  onModuleInit() {
+    this.registry.registerTool({
+      name: 'server-a-tool',
+      description: 'Only visible on server A',
+      handler: async () => ({ content: [{ type: 'text', text: 'server-a' }] }),
+    });
+  }
+}
+
+@Module({ imports: [ServerAModule], providers: [ServerAExternalTools] })
+export class ExternalModuleForA {}
+
+@Module({ imports: [ServerAModule, ServerBModule, ExternalModuleForA] })
+export class AppModule {}
+```
+
+`server-a-tool` will appear only in `/server-a/mcp` tool listings — `/server-b/mcp` remains unaffected.
 
 ## Playground Example
 
