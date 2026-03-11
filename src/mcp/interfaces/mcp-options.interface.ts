@@ -1,6 +1,8 @@
-import { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
+import { Icon, ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
 import { CanActivate, ModuleMetadata, Type } from '@nestjs/common';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
+export type { Icon };
 
 export enum McpTransportType {
   SSE = 'sse',
@@ -12,7 +14,15 @@ export interface McpOptions {
   // When and if, additional properties are introduced in ServerOptions or ServerInfo,
   // consider deprecating these fields in favor of using ServerOptions and ServerInfo directly.
   name: string;
+  /** Human-readable display name for the server (passed to MCP Implementation). */
+  title?: string;
   version: string;
+  /** Short description of what this MCP server does. */
+  description?: string;
+  /** URL of the website associated with this server. */
+  websiteUrl?: string;
+  /** Icons representing this server. Use `Icon` exported from `@rekog/mcp-nest`. */
+  icons?: Icon[];
   capabilities?: ServerCapabilities;
   instructions?: string;
 

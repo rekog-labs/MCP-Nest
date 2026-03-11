@@ -15,7 +15,14 @@ export function createMcpServer(
   logger.debug('Built MCP capabilities:', capabilities);
 
   const mcpServer = new McpServer(
-    { name: options.name, version: options.version },
+    {
+      name: options.name,
+      version: options.version,
+      ...(options.title && { title: options.title }),
+      ...(options.description && { description: options.description }),
+      ...(options.websiteUrl && { websiteUrl: options.websiteUrl }),
+      ...(options.icons && { icons: options.icons }),
+    },
     {
       capabilities,
       instructions: options.instructions || '',
