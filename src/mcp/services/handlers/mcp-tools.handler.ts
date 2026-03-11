@@ -73,7 +73,7 @@ export class McpToolsHandler extends McpHandlerBase {
         );
       }
       return {
-        structuredContent: result,
+        structuredContent: validation.data,
         content: this.buildDefaultContentBlock(result),
       };
     }
