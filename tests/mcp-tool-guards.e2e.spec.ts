@@ -80,6 +80,28 @@ class ResponseAccessGuard implements CanActivate {
 }
 
 /**
+ * Guard that checks entity ownership via request.body (tool arguments).
+ * Simulates a real-world entity-modify guard that reads the tool input
+ * to determine if the user owns the entity being modified.
+ */
+@Injectable()
+class OwnershipGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    const body = request?.body;
+    const user = request?.user;
+
+    // During tools/list, body may be undefined — allow listing
+    if (!body || !body.ownerId) {
+      return true;
+    }
+
+    // During tools/call, check that user owns the entity
+    return body.ownerId === user?.id;
+  }
+}
+
+/**
  * Mock transport-level guard that parses Authorization header and sets user on request.
  * Allows unauthenticated requests through for per-tool auth to handle.
  */
@@ -94,17 +116,17 @@ class MockTransportAuthGuard implements CanActivate {
     }
 
     if (authHeader.includes('admin-token')) {
-      request.user = { role: 'admin', name: 'Admin', asyncAllowed: true };
+      request.user = { id: 'admin-1', role: 'admin', name: 'Admin', asyncAllowed: true };
       return true;
     }
 
     if (authHeader.includes('user-token')) {
-      request.user = { role: 'user', name: 'Regular User' };
+      request.user = { id: 'user-1', role: 'user', name: 'Regular User' };
       return true;
     }
 
     if (authHeader.includes('async-token')) {
-      request.user = { role: 'viewer', name: 'Async User', asyncAllowed: true };
+      request.user = { id: 'async-1', role: 'viewer', name: 'Async User', asyncAllowed: true };
       return true;
     }
 
@@ -201,6 +223,19 @@ class GuardedTools {
   async badGuardTool() {
     return { content: [{ type: 'text', text: 'Should never execute' }] };
   }
+
+  @Tool({
+    name: 'ownership-tool',
+    description: 'Tool with an ownership guard that reads request.body',
+    parameters: z.object({
+      ownerId: z.string(),
+      title: z.string(),
+    }),
+  })
+  @ToolGuards([OwnershipGuard])
+  async ownershipTool({ ownerId, title }) {
+    return { content: [{ type: 'text', text: `Updated: ${title} (owner: ${ownerId})` }] };
+  }
 }
 
 describe('E2E: Tool Guards via @ToolGuards()', () => {
@@ -243,6 +278,7 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
           AsyncGuard,
           ReflectorGuard,
           ResponseAccessGuard,
+          OwnershipGuard,
         ],
       }).compile();
 
@@ -497,6 +533,52 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
         expect(
           (result.content as { type: string; text: string }[])[0].text,
         ).toBe('Echo: hello world');
+
+        await client.close();
+      });
+    });
+
+    describe('Guard access to tool arguments (request.body)', () => {
+      it('should list ownership-guarded tool (guard allows listing when no body)', async () => {
+        const client = await createClient(testPort, {
+          Authorization: 'Bearer user-token',
+        });
+
+        const tools = await client.listTools();
+        const toolNames = tools.tools.map((t) => t.name);
+        expect(toolNames).toContain('ownership-tool');
+
+        await client.close();
+      });
+
+      it('should allow execution when user owns the entity', async () => {
+        const client = await createClient(testPort, {
+          Authorization: 'Bearer user-token',
+        });
+
+        const result = await client.callTool({
+          name: 'ownership-tool',
+          arguments: { ownerId: 'user-1', title: 'My Recipe' },
+        });
+
+        expect(
+          (result.content as { type: string; text: string }[])[0].text,
+        ).toBe('Updated: My Recipe (owner: user-1)');
+
+        await client.close();
+      });
+
+      it('should deny execution when user does not own the entity', async () => {
+        const client = await createClient(testPort, {
+          Authorization: 'Bearer user-token',
+        });
+
+        await expect(
+          client.callTool({
+            name: 'ownership-tool',
+            arguments: { ownerId: 'someone-else', title: 'Not My Recipe' },
+          }),
+        ).rejects.toThrow();
 
         await client.close();
       });
