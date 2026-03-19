@@ -98,10 +98,16 @@ export class McpToolsHandler extends McpHandlerBase {
    * Only the fields documented in ToolGuardExecutionContext are available.
    * Invalid fields throw with a descriptive message rather than silently
    * returning garbage.
+   *
+   * The request object returned by `switchToHttp().getRequest()` is the raw
+   * framework request enriched with `body` and `params` from the adapted
+   * HttpRequest. During `tools/call`, `toolArguments` overrides `body` so
+   * guards can inspect the validated tool input.
    */
   private createToolGuardExecutionContext(
     httpRequest: HttpRequest,
     tool: DiscoveredCapability<ToolMetadata>,
+    toolArguments?: Record<string, unknown>,
   ): ToolGuardExecutionContext & ExecutionContext {
     const providerClass = tool.providerClass as Type;
     const methodHandler =
@@ -115,9 +121,20 @@ export class McpToolsHandler extends McpHandlerBase {
       );
     };
 
+    // Build the guard request from the raw request, enriched with parsed body and params.
+    // During tools/call, toolArguments is passed so guards can inspect the tool input as `body`.
+    const guardRequest = Object.assign(
+      Object.create(Object.getPrototypeOf(httpRequest.raw ?? {})),
+      httpRequest.raw ?? {},
+      {
+        body: toolArguments ?? httpRequest.body,
+        params: httpRequest.params ?? {},
+      },
+    );
+
     return {
       switchToHttp: () => ({
-        getRequest: <T = unknown>() => httpRequest.raw as T,
+        getRequest: <T = unknown>() => guardRequest as T,
         getResponse: () => unavailable('switchToHttp().getResponse()'),
         getNext: () => unavailable('switchToHttp().getNext()'),
       }),
@@ -138,6 +155,7 @@ export class McpToolsHandler extends McpHandlerBase {
   private async checkToolGuards(
     tool: DiscoveredCapability<ToolMetadata>,
     httpRequest: HttpRequest,
+    toolArguments?: Record<string, unknown>,
   ): Promise<boolean> {
     const guards = tool.metadata.guards;
     if (!guards || guards.length === 0) {
@@ -153,7 +171,7 @@ export class McpToolsHandler extends McpHandlerBase {
       return false;
     }
 
-    const context = this.createToolGuardExecutionContext(httpRequest, tool);
+    const context = this.createToolGuardExecutionContext(httpRequest, tool, toolArguments);
 
     for (const GuardClass of guards) {
       try {
@@ -310,7 +328,7 @@ export class McpToolsHandler extends McpHandlerBase {
         );
 
         // Validate @ToolGuards()
-        const guardsPassed = await this.checkToolGuards(toolInfo, httpRequest);
+        const guardsPassed = await this.checkToolGuards(toolInfo, httpRequest, request.params.arguments as Record<string, unknown>);
         if (!guardsPassed) {
           throw new McpError(
             ErrorCode.InvalidRequest,

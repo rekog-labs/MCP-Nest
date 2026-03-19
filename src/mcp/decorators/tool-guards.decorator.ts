@@ -13,7 +13,12 @@ export const MCP_GUARDS_METADATA_KEY = 'mcp:guards';
  * describes exactly what IS available.
  *
  * Available:
- * - `switchToHttp().getRequest()` - the real HTTP request object
+ * - `switchToHttp().getRequest()` - the HTTP request object, enriched with:
+ *   - `body` - during `tools/call`, contains the validated tool arguments;
+ *              during `tools/list`, contains the raw HTTP request body (if any)
+ *   - `params` - parsed route params from the HTTP adapter
+ *   - `user` - if set by a transport-level auth guard
+ *   - `headers` - original request headers
  * - `getClass()` - the tool's provider class (works with Reflector)
  * - `getHandler()` - the tool's method reference (works with Reflector)
  * - `getType()` - always returns `'http'`
