@@ -48,6 +48,7 @@ export class McpToolsHandler extends McpHandlerBase {
     super(moduleRef, registry, reflector, McpToolsHandler.name, options);
     this.moduleHasGuards =
       this.options.guards !== undefined && this.options.guards.length > 0;
+    throw new Error('McpToolsHandler.');
   }
 
   private buildDefaultContentBlock(result: any) {

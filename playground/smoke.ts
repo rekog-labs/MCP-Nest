@@ -7,16 +7,32 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 const URL_STR = 'http://localhost:3030/mcp';
 
-async function waitForServer(): Promise<void> {
-  for (let i = 0; i < 30; i++) {
-    try {
-      await fetch(URL_STR);
-      return;
-    } catch {
-      await new Promise((r) => setTimeout(r, 1000));
+async function waitForServer(proc: ChildProcess): Promise<void> {
+  let exited = false;
+  let exitInfo = '';
+  const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+    exited = true;
+    exitInfo = `code=${code} signal=${signal}`;
+  };
+  proc.once('exit', onExit);
+  try {
+    for (let i = 0; i < 30; i++) {
+      if (exited) {
+        throw new Error(
+          `Server process exited before becoming reachable (${exitInfo})`,
+        );
+      }
+      try {
+        await fetch(URL_STR);
+        return;
+      } catch {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
     }
+    throw new Error(`Server did not become reachable at ${URL_STR}`);
+  } finally {
+    proc.off('exit', onExit);
   }
-  throw new Error(`Server did not become reachable at ${URL_STR}`);
 }
 
 async function waitForPortRelease(): Promise<void> {
@@ -32,11 +48,21 @@ async function waitForPortRelease(): Promise<void> {
 }
 
 async function startServer(file: string): Promise<ChildProcess> {
-  const proc = spawn('npx', ['ts-node', file], {
+  // When TS_NODE_PROJECT is set (smoke:local), pass through tsconfig-paths so
+  // the spawned ts-node resolves "@rekog/mcp-nest" to live ../src/index.ts.
+  // In CI (smoke), TS_NODE_PROJECT is unset and resolution falls through to
+  // node_modules → the installed package.
+  const tsNodeArgs = ['ts-node'];
+  if (process.env.TS_NODE_PROJECT) {
+    tsNodeArgs.push('-r', 'tsconfig-paths/register');
+  }
+  tsNodeArgs.push(file);
+
+  const proc = spawn('npx', tsNodeArgs, {
     stdio: ['ignore', 'inherit', 'inherit'],
     detached: true,
   });
-  await waitForServer();
+  await waitForServer(proc);
   return proc;
 }
 
