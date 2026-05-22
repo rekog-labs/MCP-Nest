@@ -28,6 +28,8 @@ async function main(): Promise<void> {
   await callGreetingTools(client);
 
   await listPrompts(client);
+
+  await client.close();
 }
 
 async function listTools(client: Client): Promise<void> {

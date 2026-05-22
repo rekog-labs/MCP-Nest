@@ -12,7 +12,7 @@ export function createMcpServer(
 ): McpServer {
   const capabilities = buildMcpCapabilities(mcpModuleId, registry, options);
 
-  logger.debug('Built MCP capabilities:', capabilities);
+  logger.debug(`Built MCP capabilities: ${JSON.stringify(capabilities)}`);
 
   const mcpServer = new McpServer(
     {

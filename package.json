@@ -24,9 +24,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json --sourceMap --inlineSources",
     "prepare": "npm run build",
-    "start:playground": "ts-node-dev --respawn playground/servers/server-stateful.ts",
-    "start:fastify": "ts-node-dev --respawn playground/servers/server-fastify.ts",
-    "start:multi-server": "ts-node-dev --respawn playground/servers/multi-server-example/main.ts",
+    "start:playground": "TS_NODE_PROJECT=tsconfig.dev.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-stateful.ts",
+    "start:fastify": "TS_NODE_PROJECT=tsconfig.dev.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-fastify.ts",
+    "start:multi-server": "TS_NODE_PROJECT=tsconfig.dev.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/multi-server-example/main.ts",
     "test": "bun test src tests",
     "test:watch": "bun test src tests --watch",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
@@ -81,6 +81,7 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
     "ts-node-dev": "^2.0.0",
+    "tsconfig-paths": "^4.2.0",
     "typeorm": "^1.0.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1"
@@ -98,9 +99,8 @@
   },
   "overrides": {
     "qs": "^6.14.1",
-    "body-parser":"^2.2.1",
-    "jws":"^3.2.3",
+    "body-parser": "^2.2.1",
+    "jws": "^3.2.3",
     "hono": "^4.11.4"
-
   }
 }
