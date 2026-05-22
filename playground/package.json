@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "smoke": "tsx clients/stdio-client.ts"
+    "smoke": "node --require ts-node/register --test smoke.ts"
   },
   "dependencies": {
     "@rekog/mcp-nest": "file:..",
@@ -14,7 +14,8 @@
     "@nestjs/platform-fastify": "^11.1.14",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "tsx": "^4.19.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2",
     "zod": "^4.3.5"
   }
 }
