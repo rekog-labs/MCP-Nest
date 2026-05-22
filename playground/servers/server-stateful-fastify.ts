@@ -100,7 +100,7 @@ async function bootstrap() {
   console.log('To test with Fastify:');
   console.log('1. Install: npm install @nestjs/platform-fastify @fastify/cors');
   console.log('2. Restart the server');
-  throw new Error('McpToolsHandler.');
+
   await app.listen(port, '0.0.0.0');
   console.log(`MCP server is running on http://localhost:${port}`);
 }
