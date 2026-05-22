@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { McpModule } from '../../../src';
+import { McpModule } from '@rekog/mcp-nest';
 import { WeatherFeatureModule } from './modules/weather-feature.module';
 import { AnalyticsFeatureModule } from './modules/analytics-feature.module';
 import { NotificationFeatureModule } from './modules/notification-feature.module';

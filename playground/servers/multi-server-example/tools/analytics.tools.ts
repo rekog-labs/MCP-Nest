@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Tool } from '../../../../src';
+import { Tool } from '@rekog/mcp-nest';
 import { z } from 'zod';
 import { AnalyticsService } from '../services/analytics.service';
 

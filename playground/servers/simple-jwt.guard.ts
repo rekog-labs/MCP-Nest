@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
-import { McpOptions } from '../../src/mcp/interfaces/mcp-options.interface';
+import { McpOptions } from '@rekog/mcp-nest';
 
 @Injectable()
 export class SimpleJwtGuard implements CanActivate {

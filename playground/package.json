@@ -1,0 +1,20 @@
+{
+  "name": "playground",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "smoke": "tsx clients/stdio-client.ts"
+  },
+  "dependencies": {
+    "@rekog/mcp-nest": "file:..",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@nestjs/common": "^11.1.14",
+    "@nestjs/core": "^11.1.14",
+    "@nestjs/platform-express": "^11.1.14",
+    "@nestjs/platform-fastify": "^11.1.14",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "tsx": "^4.19.2",
+    "zod": "^4.3.5"
+  }
+}

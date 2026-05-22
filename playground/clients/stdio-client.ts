@@ -14,8 +14,8 @@ async function main(): Promise<void> {
   });
 
   const transport = new StdioClientTransport({
-    command: 'ts-node-dev',
-    args: ['--respawn', 'playground/servers/stdio.ts'],
+    command: 'npx',
+    args: ['tsx', './servers/stdio.ts'],
   });
 
   // Connect the client using the transport and initialize the server

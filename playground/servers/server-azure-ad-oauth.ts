@@ -7,9 +7,9 @@
 
 import { NestFactory } from '@nestjs/core';
 import { Module } from '@nestjs/common';
-import { McpModule } from '../../src/mcp/mcp.module';
-import { McpTransportType } from '../../src/mcp/interfaces';
-import { McpAuthModule, AzureADOAuthProvider } from '../../src/authz';
+import { McpModule } from '@rekog/mcp-nest';
+import { McpTransportType } from '@rekog/mcp-nest';
+import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest';
 import { GreetingTool } from '../resources/greeting.tool';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingPrompt } from '../resources/greeting.prompt';

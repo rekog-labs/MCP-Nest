@@ -1,7 +1,7 @@
 import type { Request } from 'express';
-import type { McpRequestWithUser } from '../../src';
+import type { McpRequestWithUser } from '@rekog/mcp-nest';
 import { Injectable } from '@nestjs/common';
-import { Context, PublicTool, ToolRoles, ToolScopes, Tool } from '../../src';
+import { Context, PublicTool, ToolRoles, ToolScopes, Tool } from '@rekog/mcp-nest';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 

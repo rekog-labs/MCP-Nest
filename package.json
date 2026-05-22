@@ -11,6 +11,9 @@
     "README.md",
     "LICENSE"
   ],
+  "workspaces": [
+    "playground"
+  ],
   "publishConfig": {
     "access": "public"
   },

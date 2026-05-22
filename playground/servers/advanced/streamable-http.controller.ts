@@ -9,7 +9,7 @@ import {
   Res,
 } from '@nestjs/common';
 
-import { McpStreamableHttpService } from '../../../src/mcp/services/mcp-streamable-http.service';
+import { McpStreamableHttpService } from '@rekog/mcp-nest';
 
 /**
  * Advanced Streamable HTTP Controller - Direct use of McpStreamableHttpService

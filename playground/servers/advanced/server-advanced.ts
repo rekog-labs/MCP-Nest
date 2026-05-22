@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { McpModule } from '../../../src/mcp/mcp.module';
+import { McpModule } from '@rekog/mcp-nest';
 import { GreetingPrompt } from '../../resources/greeting.prompt';
 import { GreetingResource } from '../../resources/greeting.resource';
 import { GreetingTool } from '../../resources/greeting.tool';
