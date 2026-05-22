@@ -24,9 +24,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json --sourceMap --inlineSources",
     "prepare": "npm run build",
-    "start:playground": "TS_NODE_PROJECT=tsconfig.dev.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-stateful.ts",
-    "start:fastify": "TS_NODE_PROJECT=tsconfig.dev.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-fastify.ts",
-    "start:multi-server": "TS_NODE_PROJECT=tsconfig.dev.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/multi-server-example/main.ts",
+    "start:playground": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-stateful.ts",
+    "start:fastify": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-fastify.ts",
+    "start:multi-server": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/multi-server-example/main.ts",
     "test": "bun test src tests",
     "test:watch": "bun test src tests --watch",
     "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
