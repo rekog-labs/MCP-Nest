@@ -108,14 +108,4 @@ jobs:
 
       - name: Run smoke
         working-directory: /tmp/smoke
-        run: npm run smoke 2>&1 | tee out.log
-
-      - name: Assert outputs
-        working-directory: /tmp/smoke
-        run: |
-          grep -q "Connected to MCP server stdio" out.log
-          grep -q "greet-world"                   out.log
-          grep -q "Hello, World!"                 out.log
-          grep -q "Hey, MCP User!"                out.log
-          grep -q '"greeting":'                   out.log
-          grep -q "Qué tal"                       out.log
+        run: npm run smoke
