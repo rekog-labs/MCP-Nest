@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@rekog/mcp-nest": ["src/index.ts"]
+    }
+  }
+}

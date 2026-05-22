@@ -5,7 +5,7 @@ import {
   McpTransportType,
   McpRegistryService,
   Tool,
-} from '../../src';
+} from '@rekog/mcp-nest';
 import { z } from 'zod';
 
 /**

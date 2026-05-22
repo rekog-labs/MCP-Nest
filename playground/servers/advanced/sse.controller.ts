@@ -10,7 +10,7 @@ import {
   VERSION_NEUTRAL,
 } from '@nestjs/common';
 
-import { McpSseService } from '../../../src/mcp/services/mcp-sse.service';
+import { McpSseService } from '@rekog/mcp-nest';
 
 /**
  * Advanced SSE Controller - Direct use of McpSseService

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { McpModule } from '../../../../src';
+import { McpModule } from '@rekog/mcp-nest';
 import { AnalyticsTools } from '../tools/analytics.tools';
 import { AnalyticsService } from '../services/analytics.service';
 

@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { McpModule, McpTransportType } from '../../src';
+import { McpModule, McpTransportType } from '@rekog/mcp-nest';
 import { GreetingTool } from '../resources/greeting.tool';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingPrompt } from '../resources/greeting.prompt';
@@ -18,10 +18,9 @@ import { GreetingPrompt } from '../resources/greeting.prompt';
 class AppModule {}
 
 async function bootstrap() {
-  const app = await NestFactory.createApplicationContext(AppModule, {
+  await NestFactory.createApplicationContext(AppModule, {
     logger: false,
   });
-  return app.close();
 }
 
 void bootstrap();

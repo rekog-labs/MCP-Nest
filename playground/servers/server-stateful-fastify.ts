@@ -4,8 +4,8 @@ import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { Injectable, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { z } from 'zod';
-import { Context, Tool } from '../../src';
-import { McpModule } from '../../src/mcp/mcp.module';
+import { Context, Tool } from '@rekog/mcp-nest';
+import { McpModule } from '@rekog/mcp-nest';
 
 @Injectable()
 class MockUserRepository {

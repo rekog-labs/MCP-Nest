@@ -59,3 +59,63 @@ jobs:
             echo "Publishing stable version with --tag latest"
             npm publish --provenance --access public --tag latest
           fi
+
+  smoke-test:
+    name: Smoke test published package
+    needs: publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Resolve published version
+        id: ver
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for npm propagation
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          for i in $(seq 1 30); do
+            if npm view "@rekog/mcp-nest@$V" version >/dev/null 2>&1; then
+              echo "Published version $V is available on npm"
+              exit 0
+            fi
+            echo "Waiting for @rekog/mcp-nest@$V to appear on npm (attempt $i/30)..."
+            sleep 5
+          done
+          echo "Timed out waiting for @rekog/mcp-nest@$V"
+          exit 1
+
+      - name: Stage playground against published artifact
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          cp -r playground /tmp/smoke
+          cd /tmp/smoke
+          # The single change: registry version instead of workspace file: reference
+          npm pkg set "dependencies.@rekog/mcp-nest=$V"
+          npm install --no-audit --no-fund
+
+      - name: Run smoke
+        working-directory: /tmp/smoke
+        run: npm run smoke 2>&1 | tee out.log
+
+      - name: Assert outputs
+        working-directory: /tmp/smoke
+        run: |
+          grep -q "Connected to MCP server stdio" out.log
+          grep -q "greet-world"                   out.log
+          grep -q "Hello, World!"                 out.log
+          grep -q "Hey, MCP User!"                out.log
+          grep -q '"greeting":'                   out.log
+          grep -q "Qué tal"                       out.log

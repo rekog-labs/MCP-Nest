@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { McpModule } from '../../../../src';
+import { McpModule } from '@rekog/mcp-nest';
 import { NotificationTools } from '../tools/notification.tools';
 import { NotificationService } from '../services/notification.service';
 
