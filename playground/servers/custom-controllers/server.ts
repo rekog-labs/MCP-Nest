@@ -4,18 +4,17 @@ import { McpModule } from '@rekog/mcp-nest';
 import { GreetingPrompt } from '../../resources/greeting.prompt';
 import { GreetingResource } from '../../resources/greeting.resource';
 import { GreetingTool } from '../../resources/greeting.tool';
-import { SseController } from './sse.controller';
 import { StreamableHttpController } from './streamable-http.controller';
 
 @Module({
   imports: [
     McpModule.forRoot({
-      name: 'advanced-mcp-server',
+      name: 'custom-controllers-server',
       version: '1.0.0',
       transport: [], // Disable all default transports
     }),
   ],
-  controllers: [SseController, StreamableHttpController],
+  controllers: [StreamableHttpController],
   providers: [GreetingTool, GreetingResource, GreetingPrompt],
 })
 class AppModule {}
@@ -25,10 +24,8 @@ async function bootstrap() {
   const port = process.env.PORT || 3030;
 
   await app.listen(port);
-  console.log(`Advanced MCP server is running on http://localhost:${port}`);
+  console.log(`MCP server is running on http://localhost:${port}`);
   console.log('Available endpoints:');
-  console.log('- GET /sse - SSE connection');
-  console.log('- POST /messages - SSE message handling');
   console.log('- POST /mcp - Streamable HTTP (main endpoint)');
   console.log('- GET /mcp - Streamable HTTP SSE stream');
   console.log('- DELETE /mcp - Streamable HTTP session termination');

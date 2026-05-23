@@ -290,7 +290,7 @@ You can configure any combination of these log levels:
 
 - `'log'` - General information
 - `'error'` - Error messages
-- `'warn'` - Warning messages  
+- `'warn'` - Warning messages
 - `'debug'` - Debug information
 - `'verbose'` - Detailed verbose output
 
@@ -393,20 +393,20 @@ curl -X POST http://localhost:3030/mcp \
   }'
 ```
 
-## Advanced Server Pattern
+## Custom Controllers
 
-For maximum control over your MCP endpoints, you can disable automatic controller generation and use the MCP services directly in custom controllers:
+For maximum control over your MCP endpoints, you can disable automatic controller generation and inject `McpStreamableHttpService` directly into your own controller:
 
 ```typescript
 @Module({
   imports: [
     McpModule.forRoot({
-      name: 'advanced-server',
+      name: 'custom-controllers-server',
       version: '1.0.0',
       transport: [], // Disable automatic controllers
     }),
   ],
-  controllers: [CustomSseController, CustomStreamableController],
+  controllers: [CustomStreamableController],
   providers: [GreetingTool],
 })
 class AppModule {}
@@ -437,7 +437,24 @@ This pattern allows you to:
 - Define custom endpoint paths and routing
 - Have fine-grained control over request/response handling
 
-**See:** [Advanced Server Pattern Guide](../playground/servers/advanced/README.md) for a full implementation.
+**See:** [Custom Controllers Guide](../playground/servers/custom-controllers/README.md) for a full implementation.
+
+### Async Configuration (`forRootAsync`)
+
+Use the Custom Controllers pattern above (your own controller injecting `McpStreamableHttpService`), then use `McpModule.forRootAsync(...)` to resolve options from injected providers (e.g. `ConfigService`):
+
+```typescript
+McpModule.forRootAsync({
+  imports: [ConfigModule],
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    name: config.get('MCP_NAME', 'async-mcp-server'),
+    version: config.get('MCP_VERSION', '0.0.1'),
+  }),
+})
+```
+
+Working example: `playground/servers/server-stateless-async.ts`.
 
 ## Example Locations
 
@@ -445,10 +462,11 @@ Complete examples can be found in:
 
 - `playground/servers/server-stateful.ts` - Stateful HTTP server
 - `playground/servers/server-stateless.ts` - Stateless HTTP server
+- `playground/servers/server-stateless-async.ts` - `forRootAsync` with a custom controller
 - `playground/servers/stdio.ts` - STDIO server
 - `playground/servers/server-stateful-fastify.ts` - Fastify server
 - `playground/servers/server-oauth.ts` - Server with OAuth
-- `playground/servers/advanced/` - Advanced pattern with custom controllers
+- `playground/servers/custom-controllers/` - Custom controllers with disabled auto-generated transports
 
 ## Related
 

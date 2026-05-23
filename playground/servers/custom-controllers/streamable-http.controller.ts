@@ -12,9 +12,8 @@ import {
 import { McpStreamableHttpService } from '@rekog/mcp-nest';
 
 /**
- * Advanced Streamable HTTP Controller - Direct use of McpStreamableHttpService
- * This controller demonstrates how to use McpStreamableHttpService directly
- * instead of relying on the factory pattern
+ * Custom Streamable HTTP Controller — direct use of McpStreamableHttpService
+ * instead of the auto-generated controller factory.
  */
 @Controller()
 export class StreamableHttpController {

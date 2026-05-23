@@ -47,7 +47,10 @@ async function waitForPortRelease(): Promise<void> {
   throw new Error('Port 3030 did not release in time');
 }
 
-async function startServer(file: string): Promise<ChildProcess> {
+async function startServer(
+  file: string,
+  env: NodeJS.ProcessEnv = {},
+): Promise<ChildProcess> {
   // When TS_NODE_PROJECT is set (smoke:local), pass through tsconfig-paths so
   // the spawned ts-node resolves "@rekog/mcp-nest" to live ../src/index.ts.
   // In CI (smoke), TS_NODE_PROJECT is unset and resolution falls through to
@@ -61,6 +64,7 @@ async function startServer(file: string): Promise<ChildProcess> {
   const proc = spawn('npx', tsNodeArgs, {
     stdio: ['ignore', 'inherit', 'inherit'],
     detached: true,
+    env: { ...process.env, ...env },
   });
   await waitForServer(proc);
   return proc;
@@ -96,7 +100,7 @@ function getText(content: unknown): string {
   return first.text as string;
 }
 
-test('server-stateless: greet-world returns expected greeting', async () => {
+void test('server-stateless: greet-world returns expected greeting', async () => {
   const proc = await startServer('./servers/server-stateless.ts');
   try {
     await withClient(async (client) => {
@@ -119,7 +123,43 @@ test('server-stateless: greet-world returns expected greeting', async () => {
   }
 });
 
-test('server-stateful-fastify: hello-world exercises DI through MockUserRepository', async () => {
+void test('server-stateless-async: forRootAsync resolves options through useFactory into the running server', async () => {
+  const expectedName = 'async-smoke-server';
+  const proc = await startServer('./servers/server-stateless-async.ts', {
+    MCP_NAME: expectedName,
+  });
+  try {
+    await withClient(async (client) => {
+      // Assert the async factory actually resolved MCP_NAME from env into the
+      // server's MCP Implementation. If forRootAsync's useFactory hadn't run,
+      // the server would report the hardcoded default instead.
+      const serverInfo = client.getServerVersion();
+      assert.equal(
+        serverInfo?.name,
+        expectedName,
+        `server name should reflect MCP_NAME override (got ${serverInfo?.name})`,
+      );
+
+      const tools = await client.listTools();
+      assert.ok(
+        tools.tools.some((t) => t.name === 'greet-world'),
+        'greet-world not present in tools/list',
+      );
+
+      const result = await client.callTool({
+        name: 'greet-world',
+        arguments: {},
+      });
+
+      assert.notEqual(result.isError, true, 'greet-world returned isError');
+      assert.equal(getText(result.content), '"Hello, World!"');
+    });
+  } finally {
+    await stopServer(proc);
+  }
+});
+
+void test('server-stateful-fastify: hello-world exercises DI through MockUserRepository', async () => {
   const proc = await startServer('./servers/server-stateful-fastify.ts');
   try {
     await withClient(async (client) => {

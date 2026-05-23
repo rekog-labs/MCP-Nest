@@ -13,7 +13,7 @@
 
 ### Advanced Usage
 
-- [Advanced Server Pattern](../playground/servers/advanced/README.md) — Direct service usage with custom controllers for maximum control over interceptors, guards, middleware, and endpoint configuration.
+- [Custom Controllers](../playground/servers/custom-controllers/README.md) — Define your own controller and inject `McpStreamableHttpService` directly, for full control over endpoint paths, guards, interceptors, and middleware.
 
 ### OAuth & Authorization
 
