@@ -1,8 +1,16 @@
 # Server Examples
 
-This guide shows different ways to set up MCP servers using mcp-nest with various transport types and configurations.
+This guide walks through different ways to set up MCP servers using mcp-nest with various transport types and configurations. Each pattern below links to its explanation in this document and to a runnable example in the playground:
 
-## HTTP Server (Stateful)
+- [Stateful MCP Server](#stateful-mcp-server) — [`server-stateful.ts`](../playground/servers/server-stateful.ts)
+- [Stateless MCP Server](#stateless-mcp-server) — [`server-stateless.ts`](../playground/servers/server-stateless.ts)
+- [Async Configuration](#async-configuration-forrootasync) — [`server-stateless-async.ts`](../playground/servers/server-stateless-async.ts)
+- [STDIO MCP Server](#stdio-server) — [`stdio.ts`](../playground/servers/stdio.ts)
+- [Fastify Adapter](#fastify-server) — [`server-stateful-fastify.ts`](../playground/servers/server-stateful-fastify.ts)
+- [OAuth Authentication](#server-with-authentication) — [`server-oauth.ts`](../playground/servers/server-oauth.ts)
+- [Custom Controllers](#custom-controllers) — [`custom-controllers/server.ts`](../playground/servers/custom-controllers/server.ts)
+
+## Stateful MCP Server
 
 The most common setup for web applications with session management:
 
@@ -60,7 +68,7 @@ npx @modelcontextprotocol/inspector@0.16.2
 
 Connect to: `http://localhost:3030/mcp`
 
-## HTTP Server (Stateless)
+## Stateless MCP Server
 
 Simpler setup without session management, good for REST-like usage:
 
@@ -454,19 +462,7 @@ McpModule.forRootAsync({
 })
 ```
 
-Working example: `playground/servers/server-stateless-async.ts`.
-
-## Example Locations
-
-Complete examples can be found in:
-
-- `playground/servers/server-stateful.ts` - Stateful HTTP server
-- `playground/servers/server-stateless.ts` - Stateless HTTP server
-- `playground/servers/server-stateless-async.ts` - `forRootAsync` with a custom controller
-- `playground/servers/stdio.ts` - STDIO server
-- `playground/servers/server-stateful-fastify.ts` - Fastify server
-- `playground/servers/server-oauth.ts` - Server with OAuth
-- `playground/servers/custom-controllers/` - Custom controllers with disabled auto-generated transports
+Working example: [`playground/servers/server-stateless-async.ts`](../playground/servers/server-stateless-async.ts).
 
 ## Related
 
