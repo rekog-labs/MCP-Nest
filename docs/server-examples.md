@@ -331,9 +331,10 @@ This pattern allows you to:
 
 ### Async Configuration (`forRootAsync`)
 
-Use the Custom Controllers pattern above (your own controller injecting `McpStreamableHttpService`), then use `McpModule.forRootAsync(...)` to resolve options from injected providers (e.g. `ConfigService`):
+Async configuration is possible only with [Custom Controllers](#custom-controllers), which is a hard requirement.
 
 ```typescript
+// reminder: forRootAsync disables controller auto wiring and you need to create custom controllers
 McpModule.forRootAsync({
   imports: [ConfigModule],
   inject: [ConfigService],
