@@ -1,13 +1,9 @@
-import { INestApplication, Injectable } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import request from 'supertest';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createStreamableClient } from './utils';
-import { Tool } from '../src/mcp/decorators/tool.decorator';
+import { INestApplication } from '@nestjs/common';
+import { McpController, Tool } from '../src';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod';
 
-@Injectable()
+@McpController()
 class Tools {
   @Tool({
     name: 'tool',
@@ -18,22 +14,14 @@ class Tools {
   }
 }
 
-const composeMutators = (
-  ...mutators: Array<(server: McpServer) => McpServer>
-) => {
-  return (server: McpServer) => {
-    return mutators.reduce((srv, mutator) => mutator(srv), server);
-  };
-};
-
 let fakeTelemetry = jest.fn();
 
 const telemetryMutator = (server: McpServer) => {
-  const originalConnect = server.connect;
+  const originalConnect = server.connect.bind(server);
 
   server.connect = async (transport) => {
     fakeTelemetry();
-    return originalConnect.call(server, transport);
+    return originalConnect(transport);
   };
 
   return server;
@@ -51,23 +39,14 @@ describe('MCP with mutated telemetry server', () => {
   });
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'mutated-mcp-server',
-          version: '0.0.1',
-          serverMutator: telemetryMutator,
-        }),
-      ],
-      providers: [Tools],
-      exports: [Tools],
-    }).compile();
-
-    app = moduleRef.createNestApplication();
-    await app.listen(0);
-
-    const server = app.getHttpServer();
-    port = (server.address() as import('net').AddressInfo).port;
+    const bootstrapped = await bootstrapMcpApp({
+      name: 'mutated-mcp-server',
+      version: '0.0.1',
+      controllers: [Tools],
+      serverMutator: telemetryMutator,
+    });
+    app = bootstrapped.app;
+    port = bootstrapped.port;
   });
 
   afterAll(async () => {

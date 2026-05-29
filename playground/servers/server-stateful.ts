@@ -1,30 +1,37 @@
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { randomUUID } from 'crypto';
-import { McpModule } from '@rekog/mcp-nest';
+import {
+  MCP_STRATEGY,
+  McpStrategy,
+  SseTransport,
+  StreamableHttpTransport,
+} from '@rekog/mcp-nest';
 import { GreetingPrompt } from '../resources/greeting.prompt';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingTool } from '../resources/greeting.tool';
 
-// Note: The stateful server exposes SSE and Streamable HTTP endpoints.
-@Module({
-  imports: [
-    McpModule.forRoot({
-      name: 'playground-mcp-server',
-      version: '0.0.1',
-      streamableHttp: {
-        enableJsonResponse: false,
-        sessionIdGenerator: () => randomUUID(),
-        statelessMode: false,
-      },
-    }),
+// Stateful server: session-aware streamable HTTP (POST/GET/DELETE /mcp) plus the
+// legacy HTTP+SSE transport (GET /sse, POST /messages).
+const strategy = new McpStrategy({
+  name: 'playground-mcp-server',
+  version: '0.0.1',
+  transports: [
+    new StreamableHttpTransport({ statelessMode: false }),
+    new SseTransport(),
   ],
-  providers: [GreetingResource, GreetingTool, GreetingPrompt],
+});
+
+@Module({
+  controllers: [GreetingResource, GreetingTool, GreetingPrompt],
+  providers: [{ provide: MCP_STRATEGY, useValue: strategy }],
 })
 class AppModule {}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  strategy.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy });
+  await app.startAllMicroservices();
   await app.listen(3030);
 
   console.log('MCP server started on port 3030');

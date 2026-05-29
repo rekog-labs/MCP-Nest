@@ -3,9 +3,18 @@
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { Injectable, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { FastifyAdapter } from '@nestjs/platform-fastify';
+import { Ctx, Payload } from '@nestjs/microservices';
 import { z } from 'zod';
-import { Context, Tool } from '@rekog/mcp-nest';
-import { McpModule } from '@rekog/mcp-nest';
+import {
+  MCP_STRATEGY,
+  McpContext,
+  McpController,
+  McpStrategy,
+  SseTransport,
+  StreamableHttpTransport,
+  Tool,
+} from '@rekog/mcp-nest';
 
 @Injectable()
 class MockUserRepository {
@@ -25,7 +34,7 @@ class MockUserRepository {
   }
 }
 
-@Injectable()
+@McpController()
 export class GreetingTool {
   constructor(private readonly userRepository: MockUserRepository) {}
 
@@ -36,7 +45,10 @@ export class GreetingTool {
       name: z.string().default('World'),
     }),
   })
-  async sayHello({ name }: { name: string }, context: Context) {
+  async sayHello(
+    @Payload() { name }: { name: string },
+    @Ctx() context: McpContext,
+  ) {
     const user = await this.userRepository.findByName(name);
     for (let i = 0; i < 5; i++) {
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -56,51 +68,34 @@ export class GreetingTool {
   }
 }
 
-@Module({
-  imports: [
-    McpModule.forRoot({
-      name: 'fastify-mcp-server',
-      version: '0.0.1',
-      streamableHttp: {
-        statelessMode: false,
-      },
-    }),
+const strategy = new McpStrategy({
+  name: 'fastify-mcp-server',
+  version: '0.0.1',
+  transports: [
+    new StreamableHttpTransport({ statelessMode: false }),
+    new SseTransport(),
   ],
-  providers: [GreetingTool, MockUserRepository],
+});
+
+@Module({
+  controllers: [GreetingTool],
+  providers: [
+    MockUserRepository,
+    { provide: MCP_STRATEGY, useValue: strategy },
+  ],
 })
 export class AppModule {}
 
 async function bootstrap() {
-  let app;
-  let framework = 'Express (default)';
-
-  try {
-    // Try to use Fastify if available
-    const fastifyPlatform = await import('@nestjs/platform-fastify');
-    const adapter = new fastifyPlatform.FastifyAdapter();
-    app = await NestFactory.create(AppModule, adapter);
-    framework = 'Fastify';
-  } catch (error) {
-    // Fallback to Express if Fastify is not available
-    console.warn(
-      'Fastify not available, falling back to Express. Install @nestjs/platform-fastify to use Fastify.',
-    );
-    app = await NestFactory.create(AppModule);
-    app.enableCors({
-      origin: true,
-      credentials: true,
-    });
-  }
+  const app = await NestFactory.create(AppModule, new FastifyAdapter());
+  strategy.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy });
 
   const port = 3030;
-  console.log(`🚀 Starting MCP server on port ${port}`);
-  console.log(`📡 MCP endpoint available at: http://localhost:${port}/mcp`);
-  console.log(`🔧 Framework: ${framework}`);
-  console.log('');
-  console.log('To test with Fastify:');
-  console.log('1. Install: npm install @nestjs/platform-fastify @fastify/cors');
-  console.log('2. Restart the server');
+  console.log(`Starting MCP server (Fastify) on port ${port}`);
+  console.log(`MCP endpoint available at: http://localhost:${port}/mcp`);
 
+  await app.startAllMicroservices();
   await app.listen(port, '0.0.0.0');
   console.log(`MCP server is running on http://localhost:${port}`);
 }

@@ -1,8 +1,17 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { AppModule, adminStrategy, publicStrategy } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Both strategies share the one HTTP adapter; each mounts its own transports
+  // on its own distinct endpoints.
+  const httpAdapter = app.getHttpAdapter();
+  publicStrategy.setHttpAdapter(httpAdapter);
+  adminStrategy.setHttpAdapter(httpAdapter);
+  app.connectMicroservice({ strategy: publicStrategy });
+  app.connectMicroservice({ strategy: adminStrategy });
+  await app.startAllMicroservices();
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
@@ -19,15 +28,6 @@ async function bootstrap() {
   );
   console.log(`   MCP Endpoint:        http://localhost:${port}/public/mcp`);
   console.log('');
-  console.log('   Available Tools:');
-  console.log('   • get-weather           - Get current weather for a city');
-  console.log('   • list-cities           - List all cities with weather data');
-  console.log('   • send-notification     - Send a notification (SHARED)');
-  console.log('   • get-notifications     - Get user notifications (SHARED)');
-  console.log(
-    '   • mark-notification-read - Mark notification as read (SHARED)',
-  );
-  console.log('');
   console.log('═══════════════════════════════════════════════════════════');
   console.log('🔐 ADMIN SERVER (admin-server)');
   console.log('═══════════════════════════════════════════════════════════');
@@ -37,14 +37,14 @@ async function bootstrap() {
   );
   console.log(`   MCP Endpoint:        http://localhost:${port}/admin/mcp`);
   console.log('');
-  console.log('   Available Tools:');
-  console.log('   • get-metrics           - Get system metrics');
-  console.log('   • track-request         - Track a request manually');
-  console.log('   • send-notification     - Send a notification (SHARED)');
-  console.log('   • get-notifications     - Get user notifications (SHARED)');
-  console.log(
-    '   • mark-notification-read - Mark notification as read (SHARED)',
-  );
+  console.log('   Available Tools (shared across both servers):');
+  console.log('   • get-weather            - Get current weather for a city');
+  console.log('   • list-cities            - List all cities with weather data');
+  console.log('   • get-metrics            - Get system metrics');
+  console.log('   • track-request          - Track a request manually');
+  console.log('   • send-notification      - Send a notification');
+  console.log('   • get-notifications      - Get user notifications');
+  console.log('   • mark-notification-read - Mark notification as read');
   console.log('');
   console.log('═══════════════════════════════════════════════════════════');
   console.log('');
@@ -64,4 +64,4 @@ async function bootstrap() {
   console.log('');
 }
 
-bootstrap();
+void bootstrap();

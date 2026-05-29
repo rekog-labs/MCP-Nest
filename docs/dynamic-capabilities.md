@@ -1,13 +1,15 @@
 # Dynamic Capability Registration
 
-Dynamic capability registration allows you to programmatically register MCP tools, resources, and prompts at runtime using the `McpRegistryService`. This is useful when you need to:
+Dynamic capability registration allows you to programmatically register MCP tools, resources, and prompts at runtime directly on the `McpStrategy` instance. This is useful when you need to:
 
 - Load descriptions or parameters from a database
 - Build plugin systems with runtime capability registration
 - Create capabilities based on runtime configuration
 - Generate capabilities from external API schemas
 
-Dynamic capabilities work alongside decorator-based capabilities and support all the same features. Registering with an already-used name overwrites the previous entry (a warning is logged).
+Dynamic capabilities work alongside decorator-based capabilities. Registering with an already-used name overwrites the previous entry.
+
+> **Note:** Dynamically registered handlers are invoked **directly** by the strategy — they do **not** pass through the NestJS RPC pipeline, so guards, pipes, interceptors, and exception filters do not apply to them. Use `@McpController` classes when you need the pipeline; use dynamic registration for runtime-defined capabilities.
 
 **Contents:**
   - [Quick Start](#quick-start)
@@ -25,32 +27,58 @@ Dynamic capabilities work alongside decorator-based capabilities and support all
 
 ## Quick Start
 
-Create a service that injects `McpRegistryService` and implements `OnModuleInit`:
+Inject the strategy via the `MCP_STRATEGY` token and register capabilities in a lifecycle hook such as `OnModuleInit` or `OnApplicationBootstrap`:
 
 ```typescript
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { McpRegistryService } from '@rekog/mcp-nest';
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { MCP_STRATEGY, McpStrategy } from '@rekog/mcp-nest';
 
 @Injectable()
 export class DynamicCapabilitiesService implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerTool({ /* ... */ });
-    this.registry.registerResource({ /* ... */ });
-    this.registry.registerPrompt({ /* ... */ });
+    this.strategy.registerTool({ /* ... */ });
+    this.strategy.registerResource({ /* ... */ });
+    this.strategy.registerPrompt({ /* ... */ });
   }
 }
 ```
 
-Add your service to the module's providers — `McpRegistryService` is already provided by `McpModule.forRoot()`:
+Wire the strategy under the `MCP_STRATEGY` token in the module that owns the
+strategy, and add your service to the same module's providers:
 
 ```typescript
+import { Module } from '@nestjs/common';
+import {
+  MCP_STRATEGY,
+  McpStrategy,
+  StreamableHttpTransport,
+} from '@rekog/mcp-nest';
+
+export const mcp = new McpStrategy({
+  name: 'my-server',
+  version: '1.0.0',
+  transports: [new StreamableHttpTransport({ statelessMode: false })],
+});
+
 @Module({
-  imports: [McpModule.forRoot({ name: 'my-server', version: '1.0.0' })],
-  providers: [DynamicCapabilitiesService],
+  providers: [
+    { provide: MCP_STRATEGY, useValue: mcp },
+    DynamicCapabilitiesService,
+  ],
 })
 export class AppModule {}
+```
+
+Remember to wire the strategy into your bootstrap:
+
+```typescript
+const app = await NestFactory.create(AppModule);
+mcp.setHttpAdapter(app.getHttpAdapter());
+app.connectMicroservice({ strategy: mcp });
+await app.startAllMicroservices();
+await app.listen(3000);
 ```
 
 ## Tools
@@ -60,7 +88,7 @@ export class AppModule {}
 ```typescript
 import { z } from 'zod';
 
-this.registry.registerTool({
+this.strategy.registerTool({
   name: 'search-knowledge',
   description: 'Search the knowledge base',
   parameters: z.object({
@@ -83,7 +111,7 @@ A common pattern is loading tool configurations from a database at startup:
 @Injectable()
 export class DatabaseToolsService implements OnModuleInit {
   constructor(
-    private readonly registry: McpRegistryService,
+    @Inject(MCP_STRATEGY) private readonly strategy: McpStrategy,
     private readonly toolConfigRepo: ToolConfigRepository,
     private readonly searchService: SearchService,
   ) {}
@@ -92,7 +120,7 @@ export class DatabaseToolsService implements OnModuleInit {
     const collections = await this.toolConfigRepo.findAllCollections();
     const collectionNames = collections.map(c => c.name).join(', ');
 
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'search-collection',
       description: `Search across collections. Available: ${collectionNames}`,
       parameters: z.object({
@@ -115,11 +143,14 @@ export class DatabaseToolsService implements OnModuleInit {
 
 ### Tool with Authorization
 
-Dynamic tools support the same authorization options as decorator-based tools:
+Dynamic tools support the same authorization metadata as decorator-based tools.
+The handler receives the raw HTTP request as its third argument, where the
+authentication middleware sets `request.user` (see
+[Per-Tool Authorization](per-tool-authorization.md)):
 
 ```typescript
 // Public tool (no authentication required)
-this.registry.registerTool({
+this.strategy.registerTool({
   name: 'public-search',
   description: 'Public search endpoint',
   isPublic: true,
@@ -129,13 +160,13 @@ this.registry.registerTool({
 });
 
 // Tool requiring specific scopes and roles
-this.registry.registerTool({
+this.strategy.registerTool({
   name: 'admin-operation',
   description: 'Administrative operation',
   requiredScopes: ['admin', 'write'],
   requiredRoles: ['admin'],
   handler: async (args, context, request) => {
-    const user = request.user;
+    const user = request?.user;
     return { content: [{ type: 'text', text: `Admin action by ${user.name}` }] };
   },
 });
@@ -146,7 +177,7 @@ this.registry.registerTool({
 Resources represent data that the LLM can read. Each resource is identified by a URI.
 
 ```typescript
-this.registry.registerResource({
+this.strategy.registerResource({
   uri: 'mcp://app-config',
   name: 'app-config',
   description: 'Application configuration',
@@ -165,7 +196,7 @@ this.registry.registerResource({
 });
 ```
 
-The handler receives the request params, context, and raw HTTP request — matching the decorator-based resource signature:
+The handler receives the request params, the `McpContext`, and the raw HTTP request — matching the decorator-based resource signature:
 
 ```typescript
 handler: async (params, context, request) => {
@@ -183,7 +214,7 @@ Prompts are reusable message templates. They can define Zod schemas for their ar
 ```typescript
 import { z } from 'zod';
 
-this.registry.registerPrompt({
+this.strategy.registerPrompt({
   name: 'summarize',
   description: 'Summarize the provided text',
   parameters: z.object({
@@ -210,7 +241,7 @@ this.registry.registerPrompt({
 Prompts without parameters omit the `parameters` field:
 
 ```typescript
-this.registry.registerPrompt({
+this.strategy.registerPrompt({
   name: 'greeting',
   description: 'A simple greeting prompt',
   handler: async () => ({
@@ -225,9 +256,9 @@ this.registry.registerPrompt({
 Capabilities can be removed at any time, including while the server is running. The next `list` request will reflect the change immediately.
 
 ```typescript
-this.registry.removeTool('search-knowledge');
-this.registry.removeResource('mcp://app-config');
-this.registry.removePrompt('summarize');
+this.strategy.removeTool('search-knowledge');
+this.strategy.removeResource('mcp://app-config');
+this.strategy.removePrompt('summarize');
 ```
 
 Attempting to call, read, or get a removed capability returns a `MethodNotFound` MCP error.
@@ -235,10 +266,10 @@ Attempting to call, read, or get a removed capability returns a `MethodNotFound`
 Re-registering after removal works as expected — the capability reappears in listings and the new handler is used:
 
 ```typescript
-this.registry.removeTool('my-tool');
+this.strategy.removeTool('my-tool');
 
 // Later...
-this.registry.registerTool({
+this.strategy.registerTool({
   name: 'my-tool',
   description: 'Updated version',
   handler: async () => ({ content: [{ type: 'text', text: 'new result' }] }),
@@ -247,27 +278,32 @@ this.registry.registerTool({
 
 ## Mixed Mode: Static + Dynamic
 
-Dynamic capabilities work seamlessly alongside decorator-based ones:
+Dynamic capabilities work seamlessly alongside decorator-based ones. Static
+tools live on `@McpController` classes (listed in a module's `controllers`),
+while dynamic tools are registered on the strategy:
 
 ```typescript
-@Injectable()
+import { McpController, Tool } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
+
+@McpController()
 export class StaticTools {
   @Tool({
     name: 'static-tool',
     description: 'A statically defined tool',
     parameters: z.object({ input: z.string() }),
   })
-  staticTool({ input }: { input: string }) {
+  staticTool(@Payload() { input }: { input: string }) {
     return { content: [{ type: 'text', text: `Static: ${input}` }] };
   }
 }
 
 @Injectable()
 export class DynamicCapabilitiesService implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'dynamic-tool',
       description: 'A dynamically registered tool',
       handler: async () => ({ content: [{ type: 'text', text: 'Dynamic result' }] }),
@@ -276,52 +312,69 @@ export class DynamicCapabilitiesService implements OnModuleInit {
 }
 
 @Module({
-  imports: [McpModule.forRoot({ name: 'server', version: '1.0.0' })],
-  providers: [StaticTools, DynamicCapabilitiesService],
+  controllers: [StaticTools],
+  providers: [
+    { provide: MCP_STRATEGY, useValue: mcp },
+    DynamicCapabilitiesService,
+  ],
 })
 export class AppModule {}
 ```
 
 ## Registration from an External Module
 
-In larger applications the service that registers dynamic capabilities will often live in a separate NestJS module from the one that hosts the MCP server. The recommended pattern is to wrap `McpModule.forRoot()` in a dedicated server module, re-export it, and then import that server module wherever `McpRegistryService` is needed.
+In larger applications the service that registers dynamic capabilities will
+often live in a separate NestJS module from the one that hosts the MCP server.
+Because the strategy is a plain object wired under the `MCP_STRATEGY` token,
+expose it from a shared module and import that module wherever you need to
+register capabilities.
 
 ```
 AppModule
-├── ServerModule ──imports──► McpModule.forRoot()
-│        └── exports: [McpModule.forRoot result]
+├── ServerModule ──provides──► { provide: MCP_STRATEGY, useValue: mcp }
+│        └── exports: [MCP_STRATEGY]
 └── ExternalModule ──imports──► ServerModule
          └── providers: [ExternalCapabilitiesService]
 ```
 
-**ServerModule** — owns the MCP server setup and re-exports `McpModule.forRoot` so its providers are available to importers:
+**ServerModule** — owns the strategy instance and exports the `MCP_STRATEGY`
+token so importers can inject it:
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { McpModule } from '@rekog/mcp-nest';
+import {
+  MCP_STRATEGY,
+  McpStrategy,
+  StreamableHttpTransport,
+} from '@rekog/mcp-nest';
 
-const mcpModule = McpModule.forRoot({ name: 'my-server', version: '1.0.0' });
+export const mcp = new McpStrategy({
+  name: 'my-server',
+  version: '1.0.0',
+  transports: [new StreamableHttpTransport({ statelessMode: false })],
+});
 
 @Module({
-  imports: [mcpModule],
-  exports: [mcpModule],
+  providers: [{ provide: MCP_STRATEGY, useValue: mcp }],
+  exports: [MCP_STRATEGY],
 })
 export class ServerModule {}
 ```
 
-**ExternalModule** — imports `ServerModule` to obtain `McpRegistryService` and registers capabilities in its own providers:
+**ExternalModule** — imports `ServerModule` to inject the strategy and registers
+capabilities in its own providers:
 
 ```typescript
-import { Injectable, Module, OnModuleInit } from '@nestjs/common';
-import { McpRegistryService } from '@rekog/mcp-nest';
+import { Inject, Injectable, Module, OnModuleInit } from '@nestjs/common';
+import { MCP_STRATEGY, McpStrategy } from '@rekog/mcp-nest';
 import { ServerModule } from './server.module';
 
 @Injectable()
 export class ExternalCapabilitiesService implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'external-tool',
       description: 'A tool registered from an external module',
       handler: async () => ({
@@ -347,43 +400,48 @@ export class ExternalModule {}
 export class AppModule {}
 ```
 
-Because NestJS shares singleton provider instances across the module graph, `ExternalCapabilitiesService` receives the exact same `McpRegistryService` instance that serves the HTTP endpoints. Capabilities registered there appear immediately in `tools/list`, `resources/list`, and `prompts/list` responses.
+Because NestJS shares the singleton bound to `MCP_STRATEGY` across the module
+graph, `ExternalCapabilitiesService` receives the exact same `McpStrategy`
+instance that serves the HTTP endpoints. Capabilities registered there appear
+immediately in `tools/list`, `resources/list`, and `prompts/list` responses.
 
 ### Multi-Server Isolation
 
-When running multiple MCP servers in one application, each `McpModule.forRoot()` call produces its own isolated `McpRegistryService` instance. External modules must import the server module for the server they intend to register capabilities with — importing the wrong server module registers capabilities to the wrong server.
+When running multiple MCP servers in one application, construct one
+`McpStrategy` per server (each with its own transports/endpoints) and connect
+each as a separate microservice. Each strategy owns its own dynamic registry, so
+a tool registered on `mcpServerA` is only visible on server A. Wire each
+strategy under a distinct token (or distinct module) and inject the right one.
 
 ```typescript
-const mcpServerA = McpModule.forRoot({ name: 'server-a', version: '1.0.0', mcpEndpoint: '/server-a/mcp' });
-const mcpServerB = McpModule.forRoot({ name: 'server-b', version: '1.0.0', mcpEndpoint: '/server-b/mcp' });
-
-@Module({ imports: [mcpServerA], exports: [mcpServerA] })
-export class ServerAModule {}
-
-@Module({ imports: [mcpServerB], exports: [mcpServerB] })
-export class ServerBModule {}
+const mcpServerA = new McpStrategy({
+  name: 'server-a',
+  version: '1.0.0',
+  transports: [new StreamableHttpTransport({ endpoint: '/server-a/mcp' })],
+});
+const mcpServerB = new McpStrategy({
+  name: 'server-b',
+  version: '1.0.0',
+  transports: [new StreamableHttpTransport({ endpoint: '/server-b/mcp' })],
+});
 
 @Injectable()
 export class ServerAExternalTools implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'server-a-tool',
       description: 'Only visible on server A',
       handler: async () => ({ content: [{ type: 'text', text: 'server-a' }] }),
     });
   }
 }
-
-@Module({ imports: [ServerAModule], providers: [ServerAExternalTools] })
-export class ExternalModuleForA {}
-
-@Module({ imports: [ServerAModule, ServerBModule, ExternalModuleForA] })
-export class AppModule {}
 ```
 
-`server-a-tool` will appear only in `/server-a/mcp` tool listings — `/server-b/mcp` remains unaffected.
+Connect both with `app.connectMicroservice({ strategy: mcpServerA })` and
+`app.connectMicroservice({ strategy: mcpServerB })`. `server-a-tool` will appear
+only in `/server-a/mcp` tool listings — `/server-b/mcp` remains unaffected.
 
 ## Playground Example
 
@@ -403,10 +461,10 @@ bunx @modelcontextprotocol/inspector --cli "http://localhost:3032/mcp" --transpo
 
 ## API Reference
 
-### McpRegistryService
+### McpStrategy (registration methods)
 
 ```typescript
-class McpRegistryService {
+class McpStrategy {
   registerTool(definition: DynamicToolDefinition): void;
   removeTool(name: string): void;
 
@@ -436,7 +494,7 @@ interface DynamicToolDefinition {
 
 type DynamicToolHandler = (
   args: Record<string, unknown>,
-  context: Context,
+  context: McpContext,
   request: any,
 ) => Promise<any> | any;
 
@@ -451,7 +509,7 @@ interface DynamicResourceDefinition {
 
 type DynamicResourceHandler = (
   params: Record<string, unknown>,
-  context: Context,
+  context: McpContext,
   request: any,
 ) => Promise<any> | any;
 
@@ -464,7 +522,7 @@ interface DynamicPromptDefinition {
 
 type DynamicPromptHandler = (
   args: Record<string, string> | undefined,
-  context: Context,
+  context: McpContext,
   request: any,
 ) => Promise<any> | any;
 

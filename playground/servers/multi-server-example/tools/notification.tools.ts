@@ -1,13 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { Tool } from '@rekog/mcp-nest';
+/* eslint-disable @typescript-eslint/require-await */
+import { McpController, Tool } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 import { NotificationService } from '../services/notification.service';
 
 /**
- * Notification tools - manages user notifications
- * This is the SHARED tool that will be registered to BOTH servers
+ * Notification tools - manages user notifications.
+ * Shared utility tools exposed on every MCP server in this app.
  */
-@Injectable()
+@McpController()
 export class NotificationTools {
   constructor(private readonly notificationService: NotificationService) {}
 
@@ -19,13 +20,10 @@ export class NotificationTools {
       message: z.string().describe('The notification message'),
     }),
   })
-  async sendNotification({
-    userId,
-    message,
-  }: {
-    userId: string;
-    message: string;
-  }) {
+  async sendNotification(
+    @Payload()
+    { userId, message }: { userId: string; message: string },
+  ) {
     const notification = this.notificationService.sendNotification(
       userId,
       message,
@@ -48,7 +46,7 @@ export class NotificationTools {
       userId: z.string().describe('The ID of the user'),
     }),
   })
-  async getNotifications({ userId }: { userId: string }) {
+  async getNotifications(@Payload() { userId }: { userId: string }) {
     const notifications = this.notificationService.getNotifications(userId);
     const unreadCount = this.notificationService.getUnreadCount(userId);
 
@@ -80,7 +78,9 @@ export class NotificationTools {
       notificationId: z.string().describe('The ID of the notification'),
     }),
   })
-  async markNotificationRead({ notificationId }: { notificationId: string }) {
+  async markNotificationRead(
+    @Payload() { notificationId }: { notificationId: string },
+  ) {
     const success = this.notificationService.markAsRead(notificationId);
 
     return {

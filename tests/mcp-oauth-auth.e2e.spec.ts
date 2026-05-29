@@ -3,11 +3,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { randomBytes, createHash } from 'crypto';
 import { z } from 'zod';
-import { Tool, McpModule } from '../src';
-import type { Context } from '../src';
+import { Ctx, Payload } from '@nestjs/microservices';
+import {
+  McpContext,
+  McpController,
+  McpStrategy,
+  SseTransport,
+  StreamableHttpTransport,
+  Tool,
+} from '../src';
 import jwt from 'jsonwebtoken';
 import { McpAuthModule } from '../src/authz/mcp-oauth.module';
-import { McpAuthJwtGuard } from '../src/authz/guards/jwt-auth.guard';
+import { JwtTokenService } from '../src/authz/services/jwt-token.service';
 import {
   OAuthProviderConfig,
   OAuthUserProfile,
@@ -154,7 +161,7 @@ class MockOAuthStore implements IOAuthStore {
 }
 
 // Test tool for protected endpoints
-@Injectable()
+@McpController()
 export class TestProtectedTool {
   @Tool({
     name: 'protected-hello',
@@ -163,12 +170,16 @@ export class TestProtectedTool {
       message: z.string().default('Hello'),
     }),
   })
-  async protectedHello({ message }, context: Context, request: any) {
+  async protectedHello(
+    @Payload() { message }: { message: string },
+    @Ctx() context: McpContext,
+  ) {
+    const user = context.getRawRequest<{ user?: any }>()?.user;
     return {
       content: [
         {
           type: 'text',
-          text: `${message} from authenticated user: ${request.user?.sub}`,
+          text: `${message} from authenticated user: ${user?.sub}`,
         },
       ],
     };
@@ -203,6 +214,21 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
   beforeAll(async () => {
     mockStore = new MockOAuthStore();
 
+    // The OAuth 2.1 module still provides its normal Nest controllers
+    // (register/authorize/token/well-known). The MCP transport is now protected
+    // by Express middleware that validates the Bearer JWT (reusing the authz
+    // JwtTokenService) and sets `req.user`, replacing the old
+    // `guards: [McpAuthJwtGuard]`. Missing/invalid tokens get a 401, which the
+    // MCP client surfaces as a connection error.
+    const strategy = new McpStrategy({
+      name: 'test-oauth-mcp-server',
+      version: '0.0.1',
+      transports: [
+        new StreamableHttpTransport({ statelessMode: false }),
+        new SseTransport(),
+      ],
+    });
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         McpAuthModule.forRoot({
@@ -218,16 +244,51 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
             store: mockStore,
           },
         }),
-        McpModule.forRoot({
-          name: 'test-oauth-mcp-server',
-          version: '0.0.1',
-          guards: [McpAuthJwtGuard],
-        }),
       ],
-      providers: [TestProtectedTool],
+      controllers: [TestProtectedTool],
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    strategy.setHttpAdapter(app.getHttpAdapter());
+    app.connectMicroservice({ strategy });
+
+    const jwtTokenService = app.get(JwtTokenService);
+    // Only gate the MCP transport routes; the OAuth controller endpoints
+    // (/auth/*, /.well-known/*) must stay open so the handshake can run.
+    const mcpRoutePrefixes = ['/mcp', '/sse', '/messages'];
+    app.use((req: any, res: any, next: () => void) => {
+      const path: string = req.path ?? req.url ?? '';
+      const isMcpRoute = mcpRoutePrefixes.some(
+        (prefix) => path === prefix || path.startsWith(`${prefix}?`) || path.startsWith(`${prefix}/`),
+      );
+      if (!isMcpRoute) {
+        return next();
+      }
+
+      const authHeader: string | undefined = req.headers?.authorization;
+      const token =
+        authHeader && authHeader.startsWith('Bearer ')
+          ? authHeader.slice('Bearer '.length)
+          : undefined;
+
+      if (!token) {
+        res.statusCode = 401;
+        res.end('Unauthorized');
+        return;
+      }
+
+      const payload = jwtTokenService.validateToken(token);
+      if (!payload) {
+        res.statusCode = 401;
+        res.end('Unauthorized');
+        return;
+      }
+
+      req.user = payload;
+      next();
+    });
+
+    await app.startAllMicroservices();
     await app.listen(0);
 
     const server = app.getHttpServer();

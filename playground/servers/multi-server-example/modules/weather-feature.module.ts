@@ -1,21 +1,17 @@
 import { Module } from '@nestjs/common';
-import { McpModule } from '@rekog/mcp-nest';
 import { WeatherTools } from '../tools/weather.tools';
 import { WeatherService } from '../services/weather.service';
 
 /**
  * Weather Feature Module
- * Registers weather tools to the "public-server"
+ *
+ * The capability class is a `@McpController` (declared in `controllers`); its
+ * dependency is a normal provider. There is no `McpModule.forFeature` anymore —
+ * controllers are bound to the connected `McpStrategy` automatically.
  */
 @Module({
-  imports: [
-    // Register WeatherTools to the "public-server"
-    McpModule.forFeature([WeatherTools], 'public-server'),
-  ],
-  providers: [
-    WeatherTools,
-    WeatherService, // WeatherTools depends on WeatherService
-  ],
-  exports: [WeatherTools, WeatherService],
+  controllers: [WeatherTools],
+  providers: [WeatherService],
+  exports: [WeatherService],
 })
 export class WeatherFeatureModule {}

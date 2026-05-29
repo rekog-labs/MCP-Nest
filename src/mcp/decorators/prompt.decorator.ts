@@ -1,6 +1,7 @@
-import { SetMetadata } from '@nestjs/common';
+import { applyDecorators, SetMetadata } from '@nestjs/common';
 import { MCP_PROMPT_METADATA_KEY } from './constants';
 import { ZodObject, ZodType } from 'zod';
+import { mcpMessagePattern } from './mcp-message-pattern';
 
 export type PromptArgsRawShape = {
   [k: string]: ZodType;
@@ -19,5 +20,8 @@ export interface PromptOptions {
 }
 
 export const Prompt = (options: PromptOptions) => {
-  return SetMetadata(MCP_PROMPT_METADATA_KEY, options);
+  return applyDecorators(
+    SetMetadata(MCP_PROMPT_METADATA_KEY, options),
+    mcpMessagePattern('prompt', options.name),
+  );
 };

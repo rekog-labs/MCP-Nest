@@ -4,24 +4,34 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import * as dotenv from 'dotenv';
 import 'reflect-metadata';
-import { McpModule } from '@rekog/mcp-nest';
+import {
+  McpStrategy,
+  SseTransport,
+  StreamableHttpTransport,
+} from '@rekog/mcp-nest';
 import { GreetingPrompt } from '../resources/greeting.prompt';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingTool } from '../resources/greeting.tool';
-import { SimpleJwtGuard } from './simple-jwt.guard';
+import { createSimpleJwtMiddleware } from './simple-jwt.guard';
 
 dotenv.config();
 
-@Module({
-  imports: [
-    McpModule.forRoot({
-      name: 'playground-mcp-server-simple',
-      version: '0.0.1',
-      allowUnauthenticatedAccess: true,
-      guards: [SimpleJwtGuard],
-    }),
+const allowUnauthenticatedAccess = true;
+
+const strategy = new McpStrategy({
+  name: 'playground-mcp-server-simple',
+  version: '0.0.1',
+  transports: [
+    new StreamableHttpTransport({ statelessMode: false }),
+    new SseTransport(),
   ],
-  providers: [GreetingResource, GreetingTool, GreetingPrompt, SimpleJwtGuard],
+  // Per-tool authorization reads `req.user` set by the JWT middleware below.
+  allowUnauthenticatedAccess,
+});
+
+@Module({
+  controllers: [GreetingResource, GreetingTool, GreetingPrompt],
+  providers: [],
 })
 class AppModule {}
 
@@ -35,6 +45,14 @@ async function bootstrap() {
     origin: true,
     credentials: true,
   });
+
+  strategy.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy });
+
+  // Authenticate MCP requests via Bearer JWT (replaces the old module guard).
+  app.use(createSimpleJwtMiddleware({ allowUnauthenticatedAccess }));
+
+  await app.startAllMicroservices();
   await app.listen(3030);
   console.log('Simplified MCP JWT Server running on http://localhost:3030');
 }

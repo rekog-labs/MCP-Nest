@@ -53,33 +53,56 @@ Copy these values from your app registration:
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { McpModule, McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest';
+import {
+  McpStrategy,
+  SseTransport,
+  McpAuthModule,
+  AzureADOAuthProvider,
+} from '@rekog/mcp-nest';
+import { MyTools } from './my-tools'; // your @McpController() classes
+
+// MCP runs as a microservice strategy — there is no McpModule.
+export const mcp = new McpStrategy({
+  name: 'My MCP Server with Azure AD',
+  version: '1.0.0',
+  transports: [new SseTransport()],
+});
 
 @Module({
   imports: [
-    McpModule.forRoot({
-      name: 'My MCP Server with Azure AD',
-      version: '1.0.0',
-      transport: 'sse',
-    }),
     McpAuthModule.forRoot({
       // Azure AD Provider Configuration
       provider: AzureADOAuthProvider,
-      
+
       // Required OAuth Configuration
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      
+
       // Required JWT Configuration
       jwtSecret: process.env.JWT_SECRET!,
-      
+
       // Server Configuration
       serverUrl: process.env.SERVER_URL || 'http://localhost:3000',
       apiPrefix: 'auth',
     }),
   ],
+  controllers: [MyTools],
 })
 export class AppModule {}
+```
+
+Wire the strategy into your bootstrap and protect the MCP routes with
+middleware that validates the Bearer JWT (see the
+[Azure AD OAuth Provider](azure-ad-oauth-provider.md) guide for the full
+`main.ts` example):
+
+```typescript
+const app = await NestFactory.create(AppModule);
+mcp.setHttpAdapter(app.getHttpAdapter());
+app.connectMicroservice({ strategy: mcp });
+// app.use(...) to validate the token and set req.user on /mcp, /sse, /messages
+await app.startAllMicroservices();
+await app.listen(3000);
 ```
 
 ### Environment Variables

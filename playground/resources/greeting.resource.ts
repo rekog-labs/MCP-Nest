@@ -1,7 +1,7 @@
-import { Injectable, Scope } from '@nestjs/common';
-import { Resource, ResourceTemplate } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
+import { McpController, Resource, ResourceTemplate } from '@rekog/mcp-nest';
 
-@Injectable({ scope: Scope.REQUEST })
+@McpController()
 export class GreetingResource {
   constructor() {}
 
@@ -11,7 +11,7 @@ export class GreetingResource {
     mimeType: 'application/json',
     uri: 'mcp://languages/informal-greetings',
   })
-  getLanguagesInformalGreetings({ uri }) {
+  getLanguagesInformalGreetings(@Payload() { uri }: { uri: string }) {
     const languages = {
       en: 'Hey',
       es: 'Qué tal',
@@ -41,7 +41,10 @@ export class GreetingResource {
     mimeType: 'application/json',
     uriTemplate: 'mcp://users/{name}',
   })
-  getUserLanguage({ uri, name }) {
+  getUserLanguage(
+    @Payload()
+    { uri, name }: { uri: string; name: string },
+  ) {
     const users = {
       alice: 'en',
       carlos: 'es',

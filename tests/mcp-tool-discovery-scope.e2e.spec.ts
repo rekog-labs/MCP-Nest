@@ -1,22 +1,27 @@
-import { INestApplication, Injectable, Module } from '@nestjs/common';
+import { INestApplication, Injectable } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Tool } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createStreamableClient } from './utils';
+import { McpController, Tool } from '../src';
+import {
+  createStreamableClient,
+  McpStrategy,
+  StreamableHttpTransport,
+} from './utils';
 
 /**
  * Test Suite: Tool Discovery Scope
  *
- * Validates that tools are discovered only from the root module that imports McpModule.forRoot(),
- * and not from imported dependencies, unless explicitly imported as providers.
+ * Validates that tools are discovered only from the module that imports
+ * McpModule.forRoot() and declares `@McpController` classes in its `controllers`
+ * array — not from arbitrary imported dependencies.
  *
- * Also validates that when tools have dependencies, those dependencies must be properly
- * declared through module imports, otherwise the application fails to initialize.
+ * ADAPTATION NOTE (microservices migration):
+ * The legacy version hosted three MCP servers in a single app, distinguished by
+ * per-server HTTP endpoints. Under the microservice transport-strategy model an
+ * app hosts exactly one `McpStrategy`, so each former server is now its own
+ * hybrid app. The intent — discovery is scoped to the owning module's
+ * controllers, shared-module providers are NOT auto-exposed, and explicitly
+ * re-declared controllers ARE exposed — is preserved 1:1.
  */
-
-// ============================================================================
-// Test Setup: Create test tools and modules
-// ============================================================================
 
 @Injectable()
 class SharedUtilityService {
@@ -25,7 +30,7 @@ class SharedUtilityService {
   }
 }
 
-@Injectable()
+@McpController()
 class SharedUtilityTools {
   constructor(private readonly sharedService: SharedUtilityService) {}
 
@@ -47,7 +52,7 @@ class SharedUtilityTools {
   }
 }
 
-@Injectable()
+@McpController()
 class PrimaryServerTools {
   @Tool({
     name: 'primary-tool',
@@ -58,7 +63,7 @@ class PrimaryServerTools {
   }
 }
 
-@Injectable()
+@McpController()
 class SecondaryServerTools {
   @Tool({
     name: 'secondary-tool',
@@ -69,7 +74,7 @@ class SecondaryServerTools {
   }
 }
 
-@Injectable()
+@McpController()
 class ExplicitlyImportedTools {
   @Tool({
     name: 'explicitly-imported-tool',
@@ -82,318 +87,224 @@ class ExplicitlyImportedTools {
   }
 }
 
-// ============================================================================
-// Shared Module - provides shared utilities and their dependencies
-// ============================================================================
-@Module({
-  providers: [SharedUtilityService, SharedUtilityTools],
-  exports: [SharedUtilityService, SharedUtilityTools],
-})
-class SharedModule {}
+async function bootstrapServer(config: {
+  name: string;
+  controllers: any[];
+  providers?: any[];
+}): Promise<{ app: INestApplication; port: number }> {
+  const strategy = new McpStrategy({
+    name: config.name,
+    version: '0.0.1',
+    transports: [new StreamableHttpTransport({ statelessMode: false })],
+  });
 
-// ============================================================================
-// Dependency validation: Tools without their dependencies should fail
-// ============================================================================
-const mcpModuleNoDeps = McpModule.forRoot({
-  name: 'no-deps-server',
-  mcpEndpoint: '/nodeps/mcp',
-  sseEndpoint: '/nodeps/sse',
-  messagesEndpoint: '/nodeps/messages',
-  version: '0.0.1',
-});
+  const moduleFixture: TestingModule = await Test.createTestingModule({
+    controllers: config.controllers,
+    providers: config.providers ?? [],
+  }).compile();
 
-@Module({
-  imports: [mcpModuleNoDeps],
-  providers: [SharedUtilityTools], // Importing the tool but NOT the module, thus dependencies are missing
-})
-class NoDepsMcpModule {}
-
-// ============================================================================
-// Test Scenario 1: Primary server imports shared module but shouldn't expose its tools
-// ============================================================================
-const mcpModulePrimary = McpModule.forRoot({
-  name: 'primary-server',
-  mcpEndpoint: '/primary/mcp',
-  sseEndpoint: '/primary/sse',
-  messagesEndpoint: '/primary/messages',
-  version: '0.0.1',
-});
-
-@Module({
-  imports: [mcpModulePrimary, SharedModule],
-  providers: [PrimaryServerTools],
-})
-class PrimaryMcpModule {}
-
-// ============================================================================
-// Test Scenario 2: Secondary server imports shared module but shouldn't expose its tools
-// ============================================================================
-const mcpModuleSecondary = McpModule.forRoot({
-  name: 'secondary-server',
-  mcpEndpoint: '/secondary/mcp',
-  sseEndpoint: '/secondary/sse',
-  messagesEndpoint: '/secondary/messages',
-  version: '0.0.1',
-});
-
-@Module({
-  imports: [mcpModuleSecondary, SharedModule],
-  providers: [SecondaryServerTools],
-})
-class SecondaryMcpModule {}
-
-// ============================================================================
-// Test Scenario 3: Server that explicitly imports tools as providers
-// ============================================================================
-const mcpModuleExplicitImport = McpModule.forRoot({
-  name: 'explicit-import-server',
-  mcpEndpoint: '/explicit/mcp',
-  sseEndpoint: '/explicit/sse',
-  messagesEndpoint: '/explicit/messages',
-  version: '0.0.1',
-});
-
-@Module({
-  imports: [mcpModuleExplicitImport, SharedModule],
-  providers: [ExplicitlyImportedTools, SharedUtilityTools], // Explicitly importing SharedUtilityTools
-})
-class ExplicitImportMcpModule {}
+  const app = moduleFixture.createNestApplication();
+  strategy.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy });
+  await app.startAllMicroservices();
+  await app.listen(0);
+  const port = (app.getHttpServer().address() as { port: number }).port;
+  return { app, port };
+}
 
 describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
-  let app: INestApplication;
-  let statelessApp: INestApplication;
-  let statefulServerPort: number;
-  let statelessServerPort: number;
+  let primaryApp: INestApplication;
+  let secondaryApp: INestApplication;
+  let explicitApp: INestApplication;
+  let primaryPort: number;
+  let secondaryPort: number;
+  let explicitPort: number;
 
   jest.setTimeout(15000);
 
   beforeAll(async () => {
-    // Create stateful server
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [PrimaryMcpModule, SecondaryMcpModule, ExplicitImportMcpModule],
-    }).compile();
+    // Primary server: declares only PrimaryServerTools. The shared tools live in
+    // a separate concern and must NOT leak in.
+    const primary = await bootstrapServer({
+      name: 'primary-server',
+      controllers: [PrimaryServerTools],
+    });
+    primaryApp = primary.app;
+    primaryPort = primary.port;
 
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
+    // Secondary server: declares only SecondaryServerTools.
+    const secondary = await bootstrapServer({
+      name: 'secondary-server',
+      controllers: [SecondaryServerTools],
+    });
+    secondaryApp = secondary.app;
+    secondaryPort = secondary.port;
 
-    const server = app.getHttpServer();
-    if (!server.address()) {
-      throw new Error('Server address not found after listen');
-    }
-    statefulServerPort = (server.address() as import('net').AddressInfo).port;
-
-    // Create stateless server
-    const statelessModuleFixture: TestingModule =
-      await Test.createTestingModule({
-        imports: [
-          PrimaryMcpModule,
-          SecondaryMcpModule,
-          ExplicitImportMcpModule,
-        ],
-      }).compile();
-
-    statelessApp = statelessModuleFixture.createNestApplication();
-    await statelessApp.listen(0);
-
-    const statelessServer = statelessApp.getHttpServer();
-    if (!statelessServer.address()) {
-      throw new Error('Stateless server address not found after listen');
-    }
-    statelessServerPort = (
-      statelessServer.address() as import('net').AddressInfo
-    ).port;
+    // Explicit-import server: explicitly declares the shared controllers (and
+    // provides their dependency) alongside its own tool, so all are exposed.
+    const explicit = await bootstrapServer({
+      name: 'explicit-import-server',
+      controllers: [ExplicitlyImportedTools, SharedUtilityTools],
+      providers: [SharedUtilityService],
+    });
+    explicitApp = explicit.app;
+    explicitPort = explicit.port;
   });
 
   afterAll(async () => {
-    await app.close();
-    await statelessApp.close();
+    await primaryApp.close();
+    await secondaryApp.close();
+    await explicitApp.close();
   });
 
-  const runClientTests = (stateless: boolean) => {
-    describe(`${stateless ? 'stateless' : 'stateful'} client`, () => {
-      let port: number;
+  describe('Primary Server - Should NOT expose shared module tools', () => {
+    it('should list only the primary tool', async () => {
+      const client = await createStreamableClient(primaryPort);
+      try {
+        const tools = await client.listTools();
 
-      beforeAll(() => {
-        port = stateless ? statelessServerPort : statefulServerPort;
-      });
+        expect(tools.tools.length).toBe(1);
+        expect(
+          tools.tools.find((t) => t.name === 'primary-tool'),
+        ).toBeDefined();
 
-      describe('Primary Server - Should NOT expose shared module tools', () => {
-        it('should list only the primary tool', async () => {
-          const client = await createStreamableClient(port, {
-            endpoint: '/primary/mcp',
-          });
-          try {
-            const tools = await client.listTools();
-
-            // Should have exactly 1 tool (primary-tool)
-            expect(tools.tools.length).toBe(1);
-            expect(
-              tools.tools.find((t) => t.name === 'primary-tool'),
-            ).toBeDefined();
-
-            // Should NOT have shared module tools
-            expect(
-              tools.tools.find((t) => t.name === 'shared-utility-tool'),
-            ).toBeUndefined();
-            expect(
-              tools.tools.find((t) => t.name === 'shared-health-check'),
-            ).toBeUndefined();
-          } finally {
-            await client.close();
-          }
-        });
-
-        it('should call the primary tool successfully', async () => {
-          const client = await createStreamableClient(port, {
-            endpoint: '/primary/mcp',
-          });
-          try {
-            const result: any = await client.callTool({
-              name: 'primary-tool',
-              arguments: {},
-            });
-
-            expect(result.content[0].text).toBe('Primary tool result');
-          } finally {
-            await client.close();
-          }
-        });
-
-        it('should fail when calling a shared module tool', async () => {
-          const client = await createStreamableClient(port, {
-            endpoint: '/primary/mcp',
-          });
-          try {
-            await expect(
-              client.callTool({
-                name: 'shared-utility-tool',
-                arguments: {},
-              }),
-            ).rejects.toThrow();
-          } finally {
-            await client.close();
-          }
-        });
-      });
-
-      describe('Secondary Server - Should NOT expose shared module tools', () => {
-        it('should list only the secondary tool', async () => {
-          const client = await createStreamableClient(port, {
-            endpoint: '/secondary/mcp',
-          });
-          try {
-            const tools = await client.listTools();
-
-            // Should have exactly 1 tool (secondary-tool)
-            expect(tools.tools.length).toBe(1);
-            expect(
-              tools.tools.find((t) => t.name === 'secondary-tool'),
-            ).toBeDefined();
-
-            // Should NOT have shared module tools
-            expect(
-              tools.tools.find((t) => t.name === 'shared-utility-tool'),
-            ).toBeUndefined();
-            expect(
-              tools.tools.find((t) => t.name === 'shared-health-check'),
-            ).toBeUndefined();
-          } finally {
-            await client.close();
-          }
-        });
-
-        it('should call the secondary tool successfully', async () => {
-          const client = await createStreamableClient(port, {
-            endpoint: '/secondary/mcp',
-          });
-          try {
-            const result: any = await client.callTool({
-              name: 'secondary-tool',
-              arguments: {},
-            });
-
-            expect(result.content[0].text).toBe('Secondary tool result');
-          } finally {
-            await client.close();
-          }
-        });
-      });
-
-      describe('Explicit Import Server - SHOULD expose explicitly imported tools', () => {
-        it('should list both explicitly imported and its own tools', async () => {
-          const client = await createStreamableClient(port, {
-            endpoint: '/explicit/mcp',
-          });
-          try {
-            const tools = await client.listTools();
-
-            // Should have 3 tools (2 from shared + 1 from explicit)
-            expect(tools.tools.length).toBe(3);
-
-            expect(
-              tools.tools.find((t) => t.name === 'explicitly-imported-tool'),
-            ).toBeDefined();
-            expect(
-              tools.tools.find((t) => t.name === 'shared-utility-tool'),
-            ).toBeDefined();
-            expect(
-              tools.tools.find((t) => t.name === 'shared-health-check'),
-            ).toBeDefined();
-          } finally {
-            await client.close();
-          }
-        });
-
-        it('should call the explicitly imported tool successfully', async () => {
-          const client = await createStreamableClient(port, {
-            endpoint: '/explicit/mcp',
-          });
-          try {
-            const result: any = await client.callTool({
-              name: 'explicitly-imported-tool',
-              arguments: {},
-            });
-
-            expect(result.content[0].text).toBe(
-              'Explicitly imported tool result',
-            );
-          } finally {
-            await client.close();
-          }
-        });
-
-        it('should call a shared utility tool successfully', async () => {
-          const client = await createStreamableClient(port, {
-            endpoint: '/explicit/mcp',
-          });
-          try {
-            const result: any = await client.callTool({
-              name: 'shared-utility-tool',
-              arguments: {},
-            });
-
-            expect(result.content[0].text).toBe('Shared utility service value');
-          } finally {
-            await client.close();
-          }
-        });
-      });
+        expect(
+          tools.tools.find((t) => t.name === 'shared-utility-tool'),
+        ).toBeUndefined();
+        expect(
+          tools.tools.find((t) => t.name === 'shared-health-check'),
+        ).toBeUndefined();
+      } finally {
+        await client.close();
+      }
     });
-  };
+
+    it('should call the primary tool successfully', async () => {
+      const client = await createStreamableClient(primaryPort);
+      try {
+        const result: any = await client.callTool({
+          name: 'primary-tool',
+          arguments: {},
+        });
+
+        expect(result.content[0].text).toBe('Primary tool result');
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should fail when calling a shared module tool', async () => {
+      const client = await createStreamableClient(primaryPort);
+      try {
+        await expect(
+          client.callTool({
+            name: 'shared-utility-tool',
+            arguments: {},
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await client.close();
+      }
+    });
+  });
+
+  describe('Secondary Server - Should NOT expose shared module tools', () => {
+    it('should list only the secondary tool', async () => {
+      const client = await createStreamableClient(secondaryPort);
+      try {
+        const tools = await client.listTools();
+
+        expect(tools.tools.length).toBe(1);
+        expect(
+          tools.tools.find((t) => t.name === 'secondary-tool'),
+        ).toBeDefined();
+
+        expect(
+          tools.tools.find((t) => t.name === 'shared-utility-tool'),
+        ).toBeUndefined();
+        expect(
+          tools.tools.find((t) => t.name === 'shared-health-check'),
+        ).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should call the secondary tool successfully', async () => {
+      const client = await createStreamableClient(secondaryPort);
+      try {
+        const result: any = await client.callTool({
+          name: 'secondary-tool',
+          arguments: {},
+        });
+
+        expect(result.content[0].text).toBe('Secondary tool result');
+      } finally {
+        await client.close();
+      }
+    });
+  });
+
+  describe('Explicit Import Server - SHOULD expose explicitly imported tools', () => {
+    it('should list both explicitly imported and its own tools', async () => {
+      const client = await createStreamableClient(explicitPort);
+      try {
+        const tools = await client.listTools();
+
+        // Should have 3 tools (2 from shared + 1 from explicit)
+        expect(tools.tools.length).toBe(3);
+
+        expect(
+          tools.tools.find((t) => t.name === 'explicitly-imported-tool'),
+        ).toBeDefined();
+        expect(
+          tools.tools.find((t) => t.name === 'shared-utility-tool'),
+        ).toBeDefined();
+        expect(
+          tools.tools.find((t) => t.name === 'shared-health-check'),
+        ).toBeDefined();
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should call the explicitly imported tool successfully', async () => {
+      const client = await createStreamableClient(explicitPort);
+      try {
+        const result: any = await client.callTool({
+          name: 'explicitly-imported-tool',
+          arguments: {},
+        });
+
+        expect(result.content[0].text).toBe('Explicitly imported tool result');
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('should call a shared utility tool successfully', async () => {
+      const client = await createStreamableClient(explicitPort);
+      try {
+        const result: any = await client.callTool({
+          name: 'shared-utility-tool',
+          arguments: {},
+        });
+
+        expect(result.content[0].text).toBe('Shared utility service value');
+      } finally {
+        await client.close();
+      }
+    });
+  });
 
   describe('Dependency Validation - Tools without their dependencies should fail', () => {
-    it('should fail to create module when tool dependencies are missing', async () => {
+    it('should fail to create the app when a controller dependency is missing', async () => {
       await expect(
         Test.createTestingModule({
-          imports: [NoDepsMcpModule],
+          // SharedUtilityTools needs SharedUtilityService, which is NOT provided.
+          controllers: [SharedUtilityTools],
         }).compile(),
       ).rejects.toThrow();
     });
   });
-
-  // Run tests using the [Stateful] Streamable HTTP MCP client
-  runClientTests(false);
-
-  // Run tests using the [Stateless] Streamable HTTP MCP client
-  runClientTests(true);
 });

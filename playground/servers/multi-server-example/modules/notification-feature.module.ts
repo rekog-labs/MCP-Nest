@@ -1,22 +1,16 @@
 import { Module } from '@nestjs/common';
-import { McpModule } from '@rekog/mcp-nest';
 import { NotificationTools } from '../tools/notification.tools';
 import { NotificationService } from '../services/notification.service';
 
 /**
- * Notification Feature Module - SHARED across both servers
- * Registers notification tools to BOTH "public-server" and "admin-server"
+ * Notification Feature Module - shared utility tools.
+ *
+ * The capability class is a `@McpController` (declared in `controllers`); its
+ * dependency is a normal provider.
  */
 @Module({
-  imports: [
-    // Register NotificationTools to BOTH servers
-    McpModule.forFeature([NotificationTools], 'public-server'),
-    McpModule.forFeature([NotificationTools], 'admin-server'),
-  ],
-  providers: [
-    NotificationTools,
-    NotificationService, // NotificationTools depends on NotificationService
-  ],
-  exports: [NotificationTools, NotificationService],
+  controllers: [NotificationTools],
+  providers: [NotificationService],
+  exports: [NotificationService],
 })
 export class NotificationFeatureModule {}

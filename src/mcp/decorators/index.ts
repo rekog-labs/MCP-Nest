@@ -7,3 +7,5 @@ export * from './public.decorator';
 export * from './tool-scopes.decorator';
 export * from './tool-roles.decorator';
 export * from './tool-guards.decorator';
+export * from './mcp-controller.decorator';
+export * from './mcp-message-pattern';

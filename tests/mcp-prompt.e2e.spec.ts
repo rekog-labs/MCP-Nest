@@ -1,12 +1,10 @@
 import { INestApplication } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { Injectable } from '@nestjs/common';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createSseClient } from './utils';
-import { Prompt } from '../src/mcp/decorators/prompt.decorator';
+import { Payload } from '@nestjs/microservices';
+import { McpController, Prompt } from '../src';
+import { bootstrapMcpApp, createSseClient } from './utils';
 import { z } from 'zod';
 
-@Injectable()
+@McpController()
 export class GreetingPrompt {
   @Prompt({
     name: 'hello-world',
@@ -15,7 +13,7 @@ export class GreetingPrompt {
       name: z.string().describe('The name of the person to greet'),
     }),
   })
-  async sayHello({ name }) {
+  async sayHello(@Payload() { name }: { name: string }) {
     return {
       description: 'A simple greeting prompt',
       messages: [
@@ -36,22 +34,12 @@ describe('E2E: MCP Prompt Server', () => {
   let testPort: number;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'test-mcp-server',
-          version: '0.0.1',
-          guards: [],
-        }),
-      ],
-      providers: [GreetingPrompt],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
-
-    const server = app.getHttpServer();
-    testPort = server.address().port;
+    const bootstrap = await bootstrapMcpApp({
+      name: 'test-mcp-server',
+      controllers: [GreetingPrompt],
+    });
+    app = bootstrap.app;
+    testPort = bootstrap.port;
   });
 
   afterAll(async () => {

@@ -1,26 +1,38 @@
 /**
  * Example: OAuth Server with Azure AD Provider
  *
- * This example demonstrates how to set up an OAuth server using Azure AD
- * as the identity provider with TypeORM for persistent storage.
+ * This example demonstrates how to set up an MCP server (a NestJS microservice
+ * transport strategy) protected by the OAuth 2.1 module using Azure AD as the
+ * identity provider with TypeORM for persistent storage.
  */
 
 import { NestFactory } from '@nestjs/core';
 import { Module } from '@nestjs/common';
-import { McpModule } from '@rekog/mcp-nest';
-import { McpTransportType } from '@rekog/mcp-nest';
-import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest';
+import * as jwt from 'jsonwebtoken';
+import {
+  AzureADOAuthProvider,
+  McpAuthModule,
+  McpStrategy,
+  SseTransport,
+} from '@rekog/mcp-nest';
 import { GreetingTool } from '../resources/greeting.tool';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingPrompt } from '../resources/greeting.prompt';
 
+const JWT_SECRET =
+  process.env.JWT_SECRET || 'super-secret-jwt-key-min-32-characters';
+
+// The MCP server is a microservice transport strategy. McpAuthModule (the OAuth
+// 2.1 module, NOT McpModule) still provides the register/authorize/token/
+// well-known controllers and is kept in `imports`.
+const strategy = new McpStrategy({
+  name: 'OAuth Azure AD Server',
+  version: '1.0.0',
+  transports: [new SseTransport()],
+});
+
 @Module({
   imports: [
-    McpModule.forRoot({
-      transport: McpTransportType.SSE,
-      name: 'OAuth Azure AD Server',
-      version: '1.0.0',
-    }),
     McpAuthModule.forRoot({
       // Azure AD Provider Configuration
       provider: AzureADOAuthProvider,
@@ -31,8 +43,7 @@ import { GreetingPrompt } from '../resources/greeting.prompt';
         process.env.AZURE_AD_CLIENT_SECRET || 'your-azure-app-client-secret',
 
       // Required JWT Configuration
-      jwtSecret:
-        process.env.JWT_SECRET || 'super-secret-jwt-key-min-32-characters',
+      jwtSecret: JWT_SECRET,
 
       // Server Configuration
       serverUrl: process.env.SERVER_URL || 'http://localhost:3000',
@@ -67,9 +78,48 @@ import { GreetingPrompt } from '../resources/greeting.prompt';
       authCodeExpiresIn: 5 * 60 * 1000, // 5 minutes
     }),
   ],
-  providers: [GreetingTool, GreetingResource, GreetingPrompt],
+  // Capability classes are controllers now.
+  controllers: [GreetingTool, GreetingResource, GreetingPrompt],
 })
 export class AzureADServerModule {}
+
+// Gate only the MCP transport routes (SSE), leaving /auth/* and /.well-known/*
+// open so the OAuth handshake can run.
+const MCP_ROUTE_PREFIXES = ['/sse', '/messages'];
+
+function mcpAuthMiddleware(req: any, res: any, next: () => void) {
+  const path: string = req.path ?? req.url ?? '';
+  const isMcpRoute = MCP_ROUTE_PREFIXES.some(
+    (prefix) =>
+      path === prefix ||
+      path.startsWith(`${prefix}?`) ||
+      path.startsWith(`${prefix}/`),
+  );
+  if (!isMcpRoute) {
+    return next();
+  }
+
+  const authHeader: string | undefined = req.headers?.authorization;
+  const token =
+    authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length)
+      : undefined;
+
+  if (!token) {
+    res.statusCode = 401;
+    res.end('Unauthorized');
+    return;
+  }
+
+  try {
+    // Validate the access token minted by McpAuthModule (same jwtSecret).
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    res.statusCode = 401;
+    res.end('Unauthorized');
+  }
+}
 
 async function bootstrap() {
   // Create the NestJS application
@@ -83,13 +133,19 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
+  const strategyAdapter = app.getHttpAdapter();
+  strategy.setHttpAdapter(strategyAdapter);
+  app.connectMicroservice({ strategy });
+  app.use(mcpAuthMiddleware);
+  await app.startAllMicroservices();
+
   // Start the server
   const port = process.env.PORT || 3000;
   await app.listen(port);
 
   console.log('\n🚀 Azure AD OAuth Server started!');
   console.log(`Server: http://localhost:${port}`);
-  console.log(`MCP Endpoint: http://localhost:${port}/mcp`);
+  console.log(`MCP (SSE) Endpoint: http://localhost:${port}/sse`);
   console.log('\n📋 OAuth Endpoints:');
   console.log(`  Authorization: http://localhost:${port}/auth/authorize`);
   console.log(`  Token: http://localhost:${port}/auth/token`);

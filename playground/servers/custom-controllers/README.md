@@ -1,62 +1,55 @@
-# Custom Controllers
+# Custom Endpoints
 
-This pattern demonstrates how to bypass the automatic controller factories and use `McpStreamableHttpService` directly in a custom controller for full control over your MCP server endpoints.
+> **Migrated:** This example used to disable the auto-generated transports and
+> hand-write a controller around `McpStreamableHttpService`. That whole mechanism
+> is gone. Transports now mount their own routes on the Nest HTTP adapter, so
+> customizing an endpoint is just a transport option.
 
-## When to Use This Pattern
+## When You Need This
 
-Use this approach when you need:
-- **Custom middleware**: Apply specific interceptors, guards, or pipes to MCP endpoints
-- **Custom routing**: Define non-standard endpoint paths or add additional route parameters
-- **Enhanced security**: Apply authentication/authorization at the controller level
-- **Multiple configurations**: Use the same service with different endpoint configurations
-- **Fine-grained control**: Full control over request/response handling beyond what the factories provide
-- **Async configuration**: Combine with `McpModule.forRootAsync()` — see [Async Configuration](../../../docs/server-examples.md#async-configuration-forrootasync)
+Use a custom transport configuration when you need:
+
+- **Custom routing**: Serve MCP on a non-default path (e.g. `/api/mcp`).
+- **Multiple servers in one app**: Mount several `McpStrategy` instances on distinct endpoints (see [`../multi-server-example`](../multi-server-example)).
+- **Stateful vs stateless**: Toggle session management or JSON responses per transport.
+
+For request-level concerns:
+
+- **Authentication**: Add Express middleware via `app.use(...)` that validates the token and sets `req.user` (see [`../server-oauth.ts`](../server-oauth.ts) / [`../server-simple-jwt.ts`](../server-simple-jwt.ts)). The bespoke `ToolAuthorizationService` reads `req.user`.
+- **Guards / pipes / interceptors / filters**: Because every tool is a real NestJS RPC handler, apply standard `@UseGuards()`, `@UsePipes()`, etc. directly on the `@McpController` class or method — they run inside the RPC pipeline.
 
 ## How to Implement
 
-### Step 1: Disable Auto-Generated Controllers
-
-Configure `McpModule.forRoot()` with an empty transport array to disable automatic controller generation:
+### Step 1: Configure the transport endpoint
 
 ```typescript
-McpModule.forRoot({
+import { McpStrategy, StreamableHttpTransport } from '@rekog/mcp-nest';
+
+const strategy = new McpStrategy({
   name: 'my-server',
   version: '1.0.0',
-  transport: [], // Disable controller generation
-})
+  transports: [
+    new StreamableHttpTransport({ endpoint: '/mcp' }), // any custom path
+  ],
+});
 ```
 
-### Step 2: Create a Custom Controller
+`StreamableHttpTransport` accepts `endpoint`, `statelessMode`, `enableJsonResponse`,
+and `sessionIdGenerator`. `SseTransport` accepts `sseEndpoint` / `messagesEndpoint`.
 
-Define your controller and inject `McpStreamableHttpService`:
+### Step 2: Declare your capabilities as controllers and connect the strategy
 
 ```typescript
-@Controller()
-export class StreamableHttpController {
-  constructor(
-    private readonly mcpStreamableHttpService: McpStreamableHttpService,
-  ) {}
+@Module({
+  controllers: [GreetingTool, GreetingResource, GreetingPrompt],
+})
+class AppModule {}
 
-  @Post('/mcp')
-  @UseGuards(MyCustomGuard) // Apply custom guards
-  async handlePostRequest(
-    @Req() req: any,
-    @Res() res: any,
-    @Body() body: unknown,
-  ): Promise<void> {
-    await this.mcpStreamableHttpService.handlePostRequest(req, res, body);
-  }
-
-  @Get('/mcp')
-  async handleGetRequest(@Req() req: any, @Res() res: any): Promise<void> {
-    await this.mcpStreamableHttpService.handleGetRequest(req, res);
-  }
-
-  @Delete('/mcp')
-  async handleDeleteRequest(@Req() req: any, @Res() res: any): Promise<void> {
-    await this.mcpStreamableHttpService.handleDeleteRequest(req, res);
-  }
-}
+const app = await NestFactory.create(AppModule);
+strategy.setHttpAdapter(app.getHttpAdapter());
+app.connectMicroservice({ strategy });
+await app.startAllMicroservices(); // BEFORE listen()
+await app.listen(3030);
 ```
 
 ## Running the Example
@@ -67,28 +60,13 @@ npx ts-node-dev --respawn playground/servers/custom-controllers/server.ts
 
 ## Testing with MCP Inspector
 
-The server exposes the standard Streamable HTTP endpoint that can be tested with [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
+The server exposes the Streamable HTTP endpoint:
 
 - **Streamable HTTP Transport**: `http://localhost:3030/mcp`
 
-Use MCP Inspector to connect and test tool calls, resource requests, and prompt interactions.
+Use [MCP Inspector](https://github.com/modelcontextprotocol/inspector) to connect
+and test tool calls, resource requests, and prompt interactions.
 
 ## Example Files
 
-- `server.ts` - Complete server setup with disabled transports and manual controller registration
-- `streamable-http.controller.ts` - Custom Streamable HTTP controller implementation
-
-## Key Implementation Details
-
-### Controller Delegation Pattern
-
-The controller acts as a thin HTTP wrapper that delegates to the service:
-
-```typescript
-@Post('/mcp')
-async handlePostRequest(@Req() req, @Res() res, @Body() body) {
-  await this.mcpStreamableHttpService.handlePostRequest(req, res, body);
-}
-```
-
-This maintains separation of concerns while giving you full control over the HTTP layer.
+- `server.ts` - Strategy server mounting Streamable HTTP on a custom `/mcp` endpoint.

@@ -6,7 +6,7 @@ export type DynamicPromptHandler = (
   args: Record<string, string> | undefined,
   context: Context,
   request: any,
-) => Promise<any> | any;
+) => any;
 
 export interface DynamicPromptDefinition {
   /** Unique name for the prompt */

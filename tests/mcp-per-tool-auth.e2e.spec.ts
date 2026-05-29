@@ -1,65 +1,79 @@
-import { INestApplication, Injectable } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { CanActivate, INestApplication } from '@nestjs/common';
 import { z } from 'zod';
-import { Tool, PublicTool, ToolScopes, ToolRoles } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { CanActivate, ExecutionContext } from '@nestjs/common';
-import { createSseClient } from './utils';
+import { Ctx, Payload } from '@nestjs/microservices';
+import {
+  McpContext,
+  McpController,
+  Tool,
+  PublicTool,
+  ToolScopes,
+  ToolRoles,
+} from '../src';
+import { bootstrapMcpApp, createSseClient } from './utils';
 
-// Mock authentication guard that sets user with scopes and roles
-// This guard allows unauthenticated requests through, but enriches
-// the request with user data if a valid token is present
-class MockAuthGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers.authorization;
-
-    if (!authHeader) {
-      // Allow request through without user context
-      // Per-tool authorization will decide if this is OK
-      return true;
-    }
-
-    // Parse token to set different user contexts
-    if (authHeader.includes('admin-token')) {
-      request.user = {
-        sub: 'admin123',
-        name: 'Admin User',
-        scope: 'admin write read', // Space-delimited as per OAuth 2.0 spec
-        scopes: ['admin', 'write', 'read'], // Also as array for convenience
-        roles: ['admin', 'user'],
-      };
-      return true;
-    }
-
-    if (authHeader.includes('basic-token')) {
-      request.user = {
-        sub: 'user123',
-        name: 'Basic User',
-        scope: 'read',
-        scopes: ['read'],
-        roles: ['user'],
-      };
-      return true;
-    }
-
-    if (authHeader.includes('premium-token')) {
-      request.user = {
-        sub: 'premium123',
-        name: 'Premium User',
-        scope: 'read premium',
-        scopes: ['read', 'premium'],
-        roles: ['user'],
-      };
-      return true;
-    }
-
-    // Unknown token - reject
-    return false;
+/**
+ * Authentication is now Express middleware (replacing the old transport-level
+ * guard). It allows unauthenticated requests through (calling `next()` without
+ * a user) and enriches `req.user` when a recognised token is present. Per-tool
+ * authorization (@PublicTool/@ToolScopes/@ToolRoles + freemium
+ * allowUnauthenticatedAccess) is still enforced by the ToolAuthorizationService
+ * reading the user off the raw request. A dummy `guards` class is passed so the
+ * strategy treats the module as "having guards" (moduleHasGuards = true), which
+ * the freemium logic depends on.
+ */
+class FreemiumGate implements CanActivate {
+  canActivate(): boolean {
+    return true;
   }
 }
 
-@Injectable()
+const authMiddleware = (req: any, _res: any, next: () => void) => {
+  const authHeader = req.headers?.authorization;
+
+  if (!authHeader) {
+    // Allow request through without user context.
+    // Per-tool authorization will decide if this is OK.
+    return next();
+  }
+
+  if (authHeader.includes('admin-token')) {
+    req.user = {
+      sub: 'admin123',
+      name: 'Admin User',
+      scope: 'admin write read', // Space-delimited as per OAuth 2.0 spec
+      scopes: ['admin', 'write', 'read'], // Also as array for convenience
+      roles: ['admin', 'user'],
+    };
+    return next();
+  }
+
+  if (authHeader.includes('basic-token')) {
+    req.user = {
+      sub: 'user123',
+      name: 'Basic User',
+      scope: 'read',
+      scopes: ['read'],
+      roles: ['user'],
+    };
+    return next();
+  }
+
+  if (authHeader.includes('premium-token')) {
+    req.user = {
+      sub: 'premium123',
+      name: 'Premium User',
+      scope: 'read premium',
+      scopes: ['read', 'premium'],
+      roles: ['user'],
+    };
+    return next();
+  }
+
+  // Unknown token — allow through with no user; per-tool auth will gate it.
+  next();
+};
+
+@McpController()
 export class PerToolAuthTools {
   // Public tool - accessible to everyone
   @Tool({
@@ -83,12 +97,13 @@ export class PerToolAuthTools {
     name: 'user-profile',
     description: 'Get user profile',
   })
-  async getUserProfile(args, context, request: any) {
+  async getUserProfile(@Payload() _args: unknown, @Ctx() ctx: McpContext) {
+    const user = ctx.getRawRequest<{ user?: any }>()?.user;
     return {
       content: [
         {
           type: 'text',
-          text: `Profile for ${request.user.name}`,
+          text: `Profile for ${user.name}`,
         },
       ],
     };
@@ -135,8 +150,9 @@ export class PerToolAuthTools {
   })
   @PublicTool()
   @ToolScopes(['premium'])
-  async smartSearch(args, context, request: any) {
-    if (request.user?.scopes?.includes('premium')) {
+  async smartSearch(@Payload() _args: unknown, @Ctx() ctx: McpContext) {
+    const user = ctx.getRawRequest<{ user?: any }>()?.user;
+    if (user?.scopes?.includes('premium')) {
       return {
         content: [
           {
@@ -179,23 +195,17 @@ describe('E2E: Per-Tool Authorization', () => {
   let testPort: number;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'test-per-tool-auth-server',
-          version: '0.0.1',
-          guards: [MockAuthGuard],
-          allowUnauthenticatedAccess: true, // Enable freemium mode for testing @PublicTool() tools
-        }),
-      ],
-      providers: [PerToolAuthTools, MockAuthGuard],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
-
-    const server = app.getHttpServer();
-    testPort = server.address().port;
+    const bootstrapped = await bootstrapMcpApp({
+      name: 'test-per-tool-auth-server',
+      controllers: [PerToolAuthTools],
+      guards: [FreemiumGate],
+      allowUnauthenticatedAccess: true, // Enable freemium mode for testing @PublicTool() tools
+      configure: (nestApp) => {
+        nestApp.use(authMiddleware);
+      },
+    });
+    app = bootstrapped.app;
+    testPort = bootstrapped.port;
   });
 
   afterAll(async () => {

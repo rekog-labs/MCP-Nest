@@ -1,11 +1,9 @@
 import { INestApplication } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { Injectable } from '@nestjs/common';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createSseClient } from './utils';
-import { ResourceTemplate } from '../src';
+import { Payload } from '@nestjs/microservices';
+import { McpController, ResourceTemplate } from '../src';
+import { bootstrapMcpApp, createSseClient } from './utils';
 
-@Injectable()
+@McpController()
 export class QueryParamResource {
   @ResourceTemplate({
     name: 'pizza-carousel',
@@ -13,13 +11,16 @@ export class QueryParamResource {
     mimeType: 'application/json',
     uriTemplate: 'ui://widget/pizza-carousel{?pizzaTopping}',
   })
-  async getPizzaCarousel({
-    uri,
-    pizzaTopping,
-  }: {
-    uri: string;
-    pizzaTopping?: string;
-  }) {
+  async getPizzaCarousel(
+    @Payload()
+    {
+      uri,
+      pizzaTopping,
+    }: {
+      uri: string;
+      pizzaTopping?: string;
+    },
+  ) {
     return {
       contents: [
         {
@@ -40,15 +41,18 @@ export class QueryParamResource {
     mimeType: 'application/json',
     uriTemplate: 'ui://widget/pizza-list{?topping,size}',
   })
-  async getPizzaListMulti({
-    uri,
-    topping,
-    size,
-  }: {
-    uri: string;
-    topping?: string;
-    size?: string;
-  }) {
+  async getPizzaListMulti(
+    @Payload()
+    {
+      uri,
+      topping,
+      size,
+    }: {
+      uri: string;
+      topping?: string;
+      size?: string;
+    },
+  ) {
     return {
       contents: [
         {
@@ -72,15 +76,18 @@ export class QueryParamResource {
     mimeType: 'application/json',
     uriTemplate: 'ui://widget/pizza/{category}{?topping}',
   })
-  async getPizzaMixed({
-    uri,
-    category,
-    topping,
-  }: {
-    uri: string;
-    category: string;
-    topping?: string;
-  }) {
+  async getPizzaMixed(
+    @Payload()
+    {
+      uri,
+      category,
+      topping,
+    }: {
+      uri: string;
+      category: string;
+      topping?: string;
+    },
+  ) {
     return {
       contents: [
         {
@@ -102,21 +109,13 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
   let testPort: number;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'query-param-server',
-          version: '1.0.0',
-        }),
-      ],
-      providers: [QueryParamResource],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
-
-    const server = app.getHttpServer();
-    testPort = server.address().port;
+    const bootstrap = await bootstrapMcpApp({
+      name: 'query-param-server',
+      version: '1.0.0',
+      controllers: [QueryParamResource],
+    });
+    app = bootstrap.app;
+    testPort = bootstrap.port;
   });
 
   afterAll(async () => {

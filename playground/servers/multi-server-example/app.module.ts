@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
-import { McpModule } from '@rekog/mcp-nest';
+import {
+  McpStrategy,
+  SseTransport,
+  StreamableHttpTransport,
+} from '@rekog/mcp-nest';
 import { WeatherFeatureModule } from './modules/weather-feature.module';
 import { AnalyticsFeatureModule } from './modules/analytics-feature.module';
 import { NotificationFeatureModule } from './modules/notification-feature.module';
@@ -7,52 +11,60 @@ import { NotificationFeatureModule } from './modules/notification-feature.module
 /**
  * Multi-Server Example Application
  *
- * This example demonstrates:
- * 1. Two MCP servers running in the same NestJS application
- * 2. Tools organized into feature modules with their dependencies
- * 3. A shared tool (notifications) registered to both servers
+ * This example demonstrates two isolated MCP servers running in a single NestJS
+ * application, each as its own `McpStrategy` mounted on distinct HTTP endpoints:
  *
- * Server Structure:
- * - Public Server (port 3000):
- *   - Weather tools (get-weather, list-cities)
- *   - Notification tools (send-notification, get-notifications, mark-notification-read)
- *   Endpoints: /public/mcp, /public/sse
+ * - Public Server: /public/mcp, /public/sse
+ * - Admin Server:  /admin/mcp,  /admin/sse
  *
- * - Admin Server (port 3000):
- *   - Analytics tools (get-metrics, track-request)
- *   - Notification tools (send-notification, get-notifications, mark-notification-read)
- *   Endpoints: /admin/mcp, /admin/sse
+ * ## What changed vs. the old McpModule version
+ *
+ * `McpModule.forRoot` / `McpModule.forFeature` are gone. Each server is now a
+ * `McpStrategy` connected via `app.connectMicroservice` (see `main.ts`). Tool
+ * classes are `@McpController`s declared in a module's `controllers`; their
+ * dependencies stay as `providers`.
+ *
+ * IMPORTANT — tool visibility: every `@McpController` in the application binds to
+ * EVERY connected strategy (all strategies share the same microservice transport
+ * id), so both servers expose the SAME tool set. The old per-server registration
+ * (`forFeature(tools, 'public-server')`) that gave each server a distinct tool
+ * list is no longer available through controllers. If you need genuinely
+ * different tool sets per server, register them dynamically on the specific
+ * strategy instance instead — `strategy.registerTool({ ... })` (see
+ * `../servers-with-dynamic-tools.ts`). This example keeps the "multiple isolated
+ * servers on distinct endpoints" intent; the endpoints are isolated even though
+ * the advertised tools are shared.
  */
-
-// Create the Public MCP Server
-const publicServer = McpModule.forRoot({
+export const publicStrategy = new McpStrategy({
   name: 'public-server',
   version: '1.0.0',
-  mcpEndpoint: '/public/mcp',
-  sseEndpoint: '/public/sse',
-  messagesEndpoint: '/public/messages',
+  transports: [
+    new StreamableHttpTransport({ endpoint: '/public/mcp' }),
+    new SseTransport({
+      sseEndpoint: '/public/sse',
+      messagesEndpoint: '/public/messages',
+    }),
+  ],
 });
 
-// Create the Admin MCP Server
-const adminServer = McpModule.forRoot({
+export const adminStrategy = new McpStrategy({
   name: 'admin-server',
   version: '1.0.0',
-  mcpEndpoint: '/admin/mcp',
-  sseEndpoint: '/admin/sse',
-  messagesEndpoint: '/admin/messages',
+  transports: [
+    new StreamableHttpTransport({ endpoint: '/admin/mcp' }),
+    new SseTransport({
+      sseEndpoint: '/admin/sse',
+      messagesEndpoint: '/admin/messages',
+    }),
+  ],
 });
 
 @Module({
   imports: [
-    // Import both MCP servers
-    publicServer,
-    adminServer,
-
-    // Import feature modules
-    // Each feature module uses McpModule.forFeature() to register its tools
-    WeatherFeatureModule, // Registers to public-server
-    AnalyticsFeatureModule, // Registers to admin-server
-    NotificationFeatureModule, // Registers to BOTH servers (shared)
+    // Feature modules contribute their @McpController capability classes.
+    WeatherFeatureModule,
+    AnalyticsFeatureModule,
+    NotificationFeatureModule,
   ],
 })
 export class AppModule {}

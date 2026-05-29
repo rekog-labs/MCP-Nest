@@ -1,8 +1,8 @@
-import { Injectable, Scope } from '@nestjs/common';
-import { Prompt } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
+import { McpController, Prompt } from '@rekog/mcp-nest';
 import { z } from 'zod';
 
-@Injectable({ scope: Scope.REQUEST })
+@McpController()
 export class GreetingPrompt {
   constructor() {}
 
@@ -15,7 +15,9 @@ export class GreetingPrompt {
       language: z.string().describe('The language to use for the greeting'),
     }),
   })
-  getGreetingInstructions({ name, language }) {
+  getGreetingInstructions(
+    @Payload() { name, language }: { name: string; language: string },
+  ) {
     const result = {
       description: 'Greet users in their native languages!',
       messages: [

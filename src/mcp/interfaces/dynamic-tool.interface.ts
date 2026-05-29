@@ -10,7 +10,7 @@ export type DynamicToolHandler = (
   args: Record<string, unknown>,
   context: Context,
   request: any,
-) => Promise<any> | any;
+) => any;
 
 /**
  * Definition for a dynamically registered tool.

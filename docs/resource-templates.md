@@ -5,10 +5,10 @@ Resource Templates are dynamic resources that can accept parameters in their URI
 ## Basic Resource Template
 
 ```typescript
-import { Injectable, Scope } from '@nestjs/common';
-import { ResourceTemplate } from '@rekog/mcp-nest';
+import { McpController, ResourceTemplate } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 
-@Injectable({ scope: Scope.REQUEST })
+@McpController()
 export class GreetingResource {
   @ResourceTemplate({
     name: 'user-language',
@@ -16,7 +16,7 @@ export class GreetingResource {
     mimeType: 'application/json',
     uriTemplate: 'mcp://users/{name}',
   })
-  getUserLanguage({ uri, name }) {
+  getUserLanguage(@Payload() { uri, name }: { uri: string; name: string }) {
     const users = {
       alice: 'en',
       carlos: 'es',
@@ -72,13 +72,16 @@ uriTemplate: 'mcp://files/{path*}'
 // Extracts: { path: 'docs/readme.md' }
 ```
 
+Register the class in a module's `controllers` array (not `providers`) so NestJS scans it when the strategy is connected. See [Server Examples](server-examples.md) for the full bootstrap.
+
 ## Method Signature
 
-Resource template methods receive:
+Resource template methods receive, in the `@Payload()`:
 
 - `uri`: The actual URI that was requested
 - Individual parameters extracted from the URI pattern
-- Additional context if needed
+
+Add `@Ctx() ctx: McpContext` if you need the execution context (e.g. `ctx.getRawRequest()` for the raw HTTP request).
 
 ## Real-World Examples
 
@@ -91,7 +94,7 @@ Resource template methods receive:
   mimeType: 'text/plain',
   uriTemplate: 'mcp://files/{path*}',
 })
-getFileContent({ uri, path }) {
+getFileContent(@Payload() { uri, path }: { uri: string; path: string }) {
   // Validate path for security
   if (path.includes('..') || path.startsWith('/')) {
     return {
@@ -125,7 +128,7 @@ getFileContent({ uri, path }) {
   mimeType: 'application/json',
   uriTemplate: 'mcp://profiles/{userId}',
 })
-async getUserProfile({ uri, userId }) {
+async getUserProfile(@Payload() { uri, userId }: { uri: string; userId: string }) {
   // In real app, query database
   const profile = await this.userService.findById(userId);
 
@@ -158,7 +161,7 @@ async getUserProfile({ uri, userId }) {
   mimeType: 'application/json',
   uriTemplate: 'mcp://api/{service}/{endpoint}',
 })
-async getApiData({ uri, service, endpoint }) {
+async getApiData(@Payload() { uri, service, endpoint }: { uri: string; service: string; endpoint: string }) {
   const allowedServices = ['github', 'weather', 'news'];
 
   if (!allowedServices.includes(service)) {
@@ -195,7 +198,7 @@ Always handle invalid parameters gracefully:
   mimeType: 'application/json',
   uriTemplate: 'mcp://db/{table}/{id}',
 })
-async getRecord({ uri, table, id }) {
+async getRecord(@Payload() { uri, table, id }: { uri: string; table: string; id: string }) {
   try {
     // Validate table name
     const allowedTables = ['users', 'posts', 'comments'];
