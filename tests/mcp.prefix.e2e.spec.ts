@@ -88,10 +88,10 @@ describe('MCP under a prefixed endpoint (e2e)', () => {
     }
   });
 
-  it('should not be reachable at the default (unprefixed) endpoint', async () => {
+  it('should return 404 at the default (unprefixed) endpoint', async () => {
     await expect(
       createStreamableClient(port, { endpoint: '/mcp' }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/404/);
   });
 });
 
@@ -136,9 +136,9 @@ describe('MCP under a deeply-nested endpoint (e2e)', () => {
     }
   });
 
-  it('should not be reachable at a shallower path', async () => {
+  it('should return 404 at a shallower path', async () => {
     await expect(
       createStreamableClient(port, { endpoint: '/api/mcp' }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/404/);
   });
 });
