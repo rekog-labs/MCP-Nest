@@ -2,7 +2,9 @@
 
 ## Overview
 
-This example demonstrates a production-ready pattern for organizing MCP tools using `McpModule.forFeature()`.
+This example runs two MCP servers in one NestJS app, each as a separate
+`McpStrategy` mounted on its own HTTP endpoints. There is no `McpModule`: every
+server is a NestJS microservices custom transport strategy.
 
 ## Server Architecture
 
@@ -10,22 +12,23 @@ This example demonstrates a production-ready pattern for organizing MCP tools us
 ┌─────────────────────────────────────────────────────────────────┐
 │                        NestJS Application                        │
 │                                                                  │
-│  ┌────────────────────────┐    ┌─────────────────────────────┐ │
-│  │   Public MCP Server    │    │    Admin MCP Server         │ │
-│  │  (public-server)       │    │   (admin-server)            │ │
-│  ├────────────────────────┤    ├─────────────────────────────┤ │
-│  │ Endpoints:             │    │ Endpoints:                  │ │
-│  │ • /public/sse          │    │ • /admin/sse                │ │
-│  │ • /public/messages     │    │ • /admin/messages           │ │
-│  │ • /public/mcp          │    │ • /admin/mcp                │ │
-│  └────────────────────────┘    └─────────────────────────────┘ │
-│           │                                   │                  │
+│  ┌────────────────────────┐    ┌─────────────────────────────┐  │
+│  │   publicStrategy       │    │    adminStrategy            │  │
+│  │  (McpStrategy)         │    │   (McpStrategy)             │  │
+│  ├────────────────────────┤    ├─────────────────────────────┤  │
+│  │ Transports:            │    │ Transports:                 │  │
+│  │ • StreamableHttp       │    │ • StreamableHttp            │  │
+│  │     /public/mcp        │    │     /admin/mcp              │  │
+│  │ • Sse                  │    │ • Sse                       │  │
+│  │     /public/sse        │    │     /admin/sse              │  │
+│  │     /public/messages   │    │     /admin/messages         │  │
+│  └────────────────────────┘    └─────────────────────────────┘  │
+│           │  connectMicroservice              │                  │
 │           └────────────┬──────────────────────┘                 │
 │                        │                                         │
 │              ┌─────────▼─────────┐                              │
-│              │   Feature Modules │                              │
+│              │   Feature Modules │ (@McpController + providers)  │
 │              └─────────┬─────────┘                              │
-│                        │                                         │
 └────────────────────────┼─────────────────────────────────────────┘
                          │
         ┌────────────────┼────────────────┐
@@ -34,214 +37,107 @@ This example demonstrates a production-ready pattern for organizing MCP tools us
 ┌───────────────┐ ┌──────────────┐ ┌─────────────────┐
 │ Weather       │ │ Analytics    │ │ Notification    │
 │ Feature       │ │ Feature      │ │ Feature         │
-│ Module        │ │ Module       │ │ Module (SHARED) │
+│ Module        │ │ Module       │ │ Module          │
 └───────────────┘ └──────────────┘ └─────────────────┘
 ```
 
-## Tool Distribution
+## Tool Visibility (changed from the McpModule version)
 
-### Public Server (`public-server`)
-- **Weather Tools** (via WeatherFeatureModule)
-  - `get-weather` - Get weather for a city
-  - `list-cities` - List available cities
+NestJS binds a `@MessagePattern`/MCP handler to a strategy when the handler's
+transport id matches the strategy's `transportId`. All `McpStrategy` instances
+share the same MCP transport id, so **every `@McpController` in the app binds to
+every connected strategy**. Both servers therefore expose the SAME tool set:
 
-- **Notification Tools** (via NotificationFeatureModule) - SHARED
-  - `send-notification` - Send a notification
-  - `get-notifications` - Get user notifications
-  - `mark-notification-read` - Mark notification as read
+```
+publicStrategy → get-weather, list-cities, get-metrics, track-request,
+                 send-notification, get-notifications, mark-notification-read
+adminStrategy  → (identical set)
+```
 
-**Total: 5 tools**
+The old `forFeature(tools, 'server-name')` mechanism that isolated tools per
+server is gone. For genuinely distinct per-server tool sets, register tools
+dynamically on the specific strategy instance instead (see
+`../servers-with-dynamic-tools.ts`):
 
-### Admin Server (`admin-server`)
-- **Analytics Tools** (via AnalyticsFeatureModule)
-  - `get-metrics` - Get system metrics
-  - `track-request` - Track a request manually
+```typescript
+publicStrategy.registerTool({ name: 'get-weather', /* ... */, handler });
+adminStrategy.registerTool({ name: 'get-metrics', /* ... */, handler });
+```
 
-- **Notification Tools** (via NotificationFeatureModule) - SHARED
-  - `send-notification` - Send a notification
-  - `get-notifications` - Get user notifications
-  - `mark-notification-read` - Mark notification as read
-
-**Total: 5 tools**
+The endpoints remain fully isolated; only the advertised capability list is now
+shared between strategies bound in the same app.
 
 ## Feature Module Pattern
 
-Each feature module follows this structure:
+Each feature module declares its capability class as a controller and its
+dependency as a provider:
 
 ```typescript
 @Module({
-  imports: [
-    // Register tools to specific server(s)
-    McpModule.forFeature([ToolClass], 'server-name'),
-  ],
-  providers: [
-    ToolClass,        // The tool provider
-    ServiceClass,     // Dependencies
-  ],
-  exports: [ToolClass, ServiceClass],
-})
-export class FeatureModule {}
-```
-
-### Example: Weather Feature Module
-
-```typescript
-@Module({
-  imports: [
-    McpModule.forFeature([WeatherTools], 'public-server'),
-  ],
-  providers: [
-    WeatherTools,      // Contains @Tool() decorated methods
-    WeatherService,    // Business logic dependency
-  ],
-  exports: [WeatherTools, WeatherService],
+  controllers: [WeatherTools], // @McpController
+  providers: [WeatherService], // plain provider dependency
+  exports: [WeatherService],
 })
 export class WeatherFeatureModule {}
 ```
 
-## Shared Tool Pattern
-
-The `NotificationTools` is registered to BOTH servers:
+The capability class:
 
 ```typescript
-@Module({
-  imports: [
-    McpModule.forFeature([NotificationTools], 'public-server'),
-    McpModule.forFeature([NotificationTools], 'admin-server'),
-  ],
-  providers: [NotificationTools, NotificationService],
-  exports: [NotificationTools, NotificationService],
-})
-export class NotificationFeatureModule {}
+@McpController()
+export class WeatherTools {
+  constructor(private readonly weatherService: WeatherService) {}
+
+  @Tool({ name: 'get-weather', /* ... */ })
+  async getWeather(@Payload() { city }: { city: string }) {
+    /* ... */
+  }
+}
 ```
 
-This means:
-- Same tool instance and service
-- Shared state (notifications are visible from both servers)
-- DRY principle - no code duplication
-
-## Dependency Injection Flow
+## Bootstrap Flow
 
 ```
-AppModule
-    │
-    ├─> McpModule.forRoot({ name: 'public-server', ... })
-    │       └─> Creates public-server MCP instance
-    │
-    ├─> McpModule.forRoot({ name: 'admin-server', ... })
-    │       └─> Creates admin-server MCP instance
-    │
-    ├─> WeatherFeatureModule
-    │       ├─> Imports: McpModule.forFeature([WeatherTools], 'public-server')
-    │       │       └─> Registers WeatherTools to public-server
-    │       └─> Provides: WeatherTools, WeatherService
-    │
-    ├─> AnalyticsFeatureModule
-    │       ├─> Imports: McpModule.forFeature([AnalyticsTools], 'admin-server')
-    │       │       └─> Registers AnalyticsTools to admin-server
-    │       └─> Provides: AnalyticsTools, AnalyticsService
-    │
-    └─> NotificationFeatureModule (SHARED)
-            ├─> Imports:
-            │   ├─> McpModule.forFeature([NotificationTools], 'public-server')
-            │   │       └─> Registers NotificationTools to public-server
-            │   └─> McpModule.forFeature([NotificationTools], 'admin-server')
-            │           └─> Registers NotificationTools to admin-server
-            └─> Provides: NotificationTools, NotificationService
+main.ts
+  app = NestFactory.create(AppModule)        // imports the 3 feature modules
+  publicStrategy.setHttpAdapter(adapter)
+  adminStrategy.setHttpAdapter(adapter)
+  app.connectMicroservice({ strategy: publicStrategy })
+  app.connectMicroservice({ strategy: adminStrategy })
+  await app.startAllMicroservices()          // binds @McpControllers to BOTH strategies
+  await app.listen(port)                      // transports mount their routes
 ```
 
-## Discovery Process
+## Request Pipeline
 
-At bootstrap, `McpRegistryDiscoveryService`:
+Because tools are real NestJS RPC handlers, a tool call flows through the full
+pipeline:
 
-1. **Builds server name map**: `'public-server' → mcp-module-0`, `'admin-server' → mcp-module-1`
-
-2. **Collects feature registrations**:
-   - WeatherTools → public-server
-   - AnalyticsTools → admin-server
-   - NotificationTools → public-server
-   - NotificationTools → admin-server
-
-3. **Discovers tools from providers**:
-   - Finds provider instance
-   - Scans methods for `@Tool()`, `@Resource()`, `@Prompt()` decorators
-   - Registers each tool to its target server (by module ID)
-
-4. **Result**: Each server has its own isolated tool registry
-
-## Data Flow Example
-
-### Weather Request
 ```
-Client → GET /public/sse
-      → Client connects and requests tools.list
-      → McpSseService (public-server)
-      → McpToolsHandler (module: mcp-module-0)
-      → Returns: [get-weather, list-cities, send-notification, ...]
-
-Client → POST /public/messages (callTool: get-weather)
-      → McpSseService (public-server)
-      → McpToolsHandler finds "get-weather" in mcp-module-0
-      → McpExecutorService resolves WeatherTools instance
-      → Calls WeatherTools.getWeather()
-      → WeatherTools calls WeatherService.getWeather()
-      → Returns weather data
+Client → POST /public/mcp (callTool: get-weather)
+      → StreamableHttpTransport (publicStrategy)
+      → McpStrategy routes to the get-weather handler
+      → NestJS RPC pipeline (guards/pipes/interceptors/filters)
+      → WeatherTools.getWeather() → WeatherService.getWeather()
+      → result
 ```
-
-### Analytics Request
-```
-Client → GET /admin/sse
-      → Client connects and requests tools.list
-      → McpSseService (admin-server)
-      → McpToolsHandler (module: mcp-module-1)
-      → Returns: [get-metrics, track-request, send-notification, ...]
-
-Client → POST /admin/messages (callTool: get-metrics)
-      → McpSseService (admin-server)
-      → McpToolsHandler finds "get-metrics" in mcp-module-1
-      → McpExecutorService resolves AnalyticsTools instance
-      → Calls AnalyticsTools.getMetrics()
-      → AnalyticsTools calls AnalyticsService.getMetrics()
-      → Returns metrics data
-```
-
-## Benefits
-
-### 1. Modularity
-Each domain is self-contained with its dependencies
-
-### 2. Scalability
-Easy to add new servers or feature modules
-
-### 3. Code Reuse
-Shared tools registered to multiple servers without duplication
-
-### 4. Type Safety
-Full TypeScript support with dependency injection
-
-### 5. Testability
-Each module can be tested independently
-
-### 6. Clear Ownership
-Easy to see which tools belong to which server
 
 ## Testing
 
 Run the server:
+
 ```bash
-npm run start:multi-server
+npm run start:multi-server-example
 ```
 
-Test tool registration:
+Test the endpoints:
+
 ```bash
 npx ts-node playground/servers/multi-server-example/test-tools.ts
 ```
 
-Expected output:
+Both `/public/*` and `/admin/*` advertise the same shared tool set.
 ```
-✓ Public Server has 5 tools (2 weather + 3 notification)
-✓ Admin Server has 5 tools (2 analytics + 3 notification)
-✓ Public Server does NOT have analytics tools
-✓ Admin Server does NOT have weather tools
-✓ Both servers HAVE notification tools (shared)
+✓ Public Server reachable, advertises the shared tool set
+✓ Admin Server reachable, advertises the shared tool set
 ```

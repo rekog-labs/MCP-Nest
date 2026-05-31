@@ -1,15 +1,15 @@
 import {
-  INestApplication,
-  Injectable,
+  ArgumentsHost,
   Catch,
-  ExceptionFilter,
+  INestApplication,
+  RpcExceptionFilter,
   UseFilters,
 } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Payload } from '@nestjs/microservices';
+import { Observable, of } from 'rxjs';
 import { z } from 'zod';
-import { Tool, Resource, Prompt } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createSseClient } from './utils';
+import { McpController, Prompt, Resource, Tool } from '../src';
+import { bootstrapMcpApp, createSseClient } from './utils';
 
 class CustomError extends Error {
   constructor(
@@ -21,21 +21,103 @@ class CustomError extends Error {
   }
 }
 
+// Native RPC exception filters return an rxjs observable whose value becomes the
+// handler's response. For tools, that value is the tool result object; for
+// resources it must be a `{ contents: [...] }` payload and for prompts a
+// `{ messages: [...] }` payload, so each capability type gets its own filter
+// shaping the recovery response accordingly.
+
+// --- Tool filters --------------------------------------------------------
 @Catch(CustomError)
-class CustomErrorFilter implements ExceptionFilter {
-  catch(exception: CustomError) {
-    return `[CustomError] ${exception.code}: ${exception.message}`;
+class CustomErrorFilter implements RpcExceptionFilter<CustomError> {
+  catch(exception: CustomError, _host: ArgumentsHost): Observable<any> {
+    return of({
+      content: [
+        {
+          type: 'text',
+          text: `[CustomError] ${exception.code}: ${exception.message}`,
+        },
+      ],
+      isError: true,
+    });
   }
 }
 
 @Catch()
-class CatchAllFilter implements ExceptionFilter {
-  catch(exception: Error) {
-    return `[CatchAll] ${exception.message}`;
+class CatchAllFilter implements RpcExceptionFilter {
+  catch(exception: unknown, _host: ArgumentsHost): Observable<any> {
+    const message = exception instanceof Error ? exception.message : 'unknown';
+    return of({
+      content: [{ type: 'text', text: `[CatchAll] ${message}` }],
+      isError: true,
+    });
   }
 }
 
-@Injectable()
+// --- Resource filters ----------------------------------------------------
+@Catch(CustomError)
+class CustomErrorResourceFilter implements RpcExceptionFilter<CustomError> {
+  catch(exception: CustomError, host: ArgumentsHost): Observable<any> {
+    const { uri } = host.switchToRpc().getData<{ uri?: string }>() ?? {};
+    return of({
+      contents: [
+        {
+          uri: uri ?? '',
+          mimeType: 'text/plain',
+          text: `[CustomError] ${exception.code}: ${exception.message}`,
+        },
+      ],
+    });
+  }
+}
+
+@Catch()
+class CatchAllResourceFilter implements RpcExceptionFilter {
+  catch(exception: unknown, host: ArgumentsHost): Observable<any> {
+    const { uri } = host.switchToRpc().getData<{ uri?: string }>() ?? {};
+    const message = exception instanceof Error ? exception.message : 'unknown';
+    return of({
+      contents: [
+        { uri: uri ?? '', mimeType: 'text/plain', text: `[CatchAll] ${message}` },
+      ],
+    });
+  }
+}
+
+// --- Prompt filters ------------------------------------------------------
+@Catch(CustomError)
+class CustomErrorPromptFilter implements RpcExceptionFilter<CustomError> {
+  catch(exception: CustomError, _host: ArgumentsHost): Observable<any> {
+    return of({
+      messages: [
+        {
+          role: 'assistant',
+          content: {
+            type: 'text',
+            text: `[CustomError] ${exception.code}: ${exception.message}`,
+          },
+        },
+      ],
+    });
+  }
+}
+
+@Catch()
+class CatchAllPromptFilter implements RpcExceptionFilter {
+  catch(exception: unknown, _host: ArgumentsHost): Observable<any> {
+    const message = exception instanceof Error ? exception.message : 'unknown';
+    return of({
+      messages: [
+        {
+          role: 'assistant',
+          content: { type: 'text', text: `[CatchAll] ${message}` },
+        },
+      ],
+    });
+  }
+}
+
+@McpController()
 @UseFilters(CatchAllFilter)
 class TestTools {
   @Tool({
@@ -67,8 +149,8 @@ class TestTools {
   }
 }
 
-@Injectable()
-@UseFilters(CatchAllFilter)
+@McpController()
+@UseFilters(CatchAllResourceFilter)
 class TestResources {
   @Resource({
     name: 'method-filter-resource',
@@ -76,7 +158,7 @@ class TestResources {
     uri: 'mcp://method-filter-resource',
     mimeType: 'text/plain',
   })
-  @UseFilters(CustomErrorFilter)
+  @UseFilters(CustomErrorResourceFilter)
   async methodFilterResource() {
     throw new CustomError('Method error', 'ERR_001');
   }
@@ -97,19 +179,19 @@ class TestResources {
     uri: 'mcp://success-resource',
     mimeType: 'text/plain',
   })
-  async successResource({ uri }: { uri: string }) {
+  async successResource(@Payload() { uri }: { uri: string }) {
     return { contents: [{ uri, mimeType: 'text/plain', text: 'OK' }] };
   }
 }
 
-@Injectable()
-@UseFilters(CatchAllFilter)
+@McpController()
+@UseFilters(CatchAllPromptFilter)
 class TestPrompts {
   @Prompt({
     name: 'method-filter-prompt',
     description: 'Method-level filter overrides class-level',
   })
-  @UseFilters(CustomErrorFilter)
+  @UseFilters(CustomErrorPromptFilter)
   async methodFilterPrompt() {
     throw new CustomError('Method error', 'ERR_001');
   }
@@ -128,7 +210,9 @@ class TestPrompts {
   })
   async successPrompt() {
     return {
-      messages: [{ role: 'assistant', content: { type: 'text', text: 'OK' } }],
+      messages: [
+        { role: 'assistant', content: { type: 'text', text: 'OK' } },
+      ],
     };
   }
 }
@@ -138,19 +222,12 @@ describe('E2E: MCP UseFilters', () => {
   let port: number;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'test-filters-server',
-          version: '0.0.1',
-        }),
-      ],
-      providers: [TestTools, TestResources, TestPrompts],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
-    port = (app.getHttpServer().address() as import('net').AddressInfo).port;
+    const bootstrap = await bootstrapMcpApp({
+      name: 'test-filters-server',
+      controllers: [TestTools, TestResources, TestPrompts],
+    });
+    app = bootstrap.app;
+    port = bootstrap.port;
   });
 
   afterAll(async () => {
@@ -214,16 +291,13 @@ describe('E2E: MCP UseFilters', () => {
     describe('Method Level', () => {
       it('should use method-level filter over class-level filter', async () => {
         const client = await createSseClient(port);
-
         try {
-          await expect(
-            client.readResource({ uri: 'mcp://method-filter-resource' }),
-          ).rejects.toMatchObject({
-            code: -32603,
-            message: expect.stringContaining(
-              '[CustomError] ERR_001: Method error',
-            ),
+          const result = await client.readResource({
+            uri: 'mcp://method-filter-resource',
           });
+          expect((result.contents[0] as { text: string }).text).toBe(
+            '[CustomError] ERR_001: Method error',
+          );
         } finally {
           await client.close();
         }
@@ -234,12 +308,12 @@ describe('E2E: MCP UseFilters', () => {
       it('should catch any error with catch-all filter', async () => {
         const client = await createSseClient(port);
         try {
-          await expect(
-            client.readResource({ uri: 'mcp://class-filter-resource' }),
-          ).rejects.toMatchObject({
-            code: -32603,
-            message: expect.stringContaining('[CatchAll] Generic error'),
+          const result = await client.readResource({
+            uri: 'mcp://class-filter-resource',
           });
+          expect((result.contents[0] as { text: string }).text).toBe(
+            '[CatchAll] Generic error',
+          );
         } finally {
           await client.close();
         }
@@ -265,14 +339,12 @@ describe('E2E: MCP UseFilters', () => {
       it('should use method-level filter over class-level filter', async () => {
         const client = await createSseClient(port);
         try {
-          await expect(
-            client.getPrompt({ name: 'method-filter-prompt' }),
-          ).rejects.toMatchObject({
-            code: -32603,
-            message: expect.stringContaining(
-              '[CustomError] ERR_001: Method error',
-            ),
+          const result = await client.getPrompt({
+            name: 'method-filter-prompt',
           });
+          expect((result.messages[0].content as { text: string }).text).toBe(
+            '[CustomError] ERR_001: Method error',
+          );
         } finally {
           await client.close();
         }
@@ -283,12 +355,12 @@ describe('E2E: MCP UseFilters', () => {
       it('should catch any error with catch-all filter', async () => {
         const client = await createSseClient(port);
         try {
-          await expect(
-            client.getPrompt({ name: 'class-filter-prompt' }),
-          ).rejects.toMatchObject({
-            code: -32603,
-            message: expect.stringContaining('[CatchAll] Generic error'),
+          const result = await client.getPrompt({
+            name: 'class-filter-prompt',
           });
+          expect((result.messages[0].content as { text: string }).text).toBe(
+            '[CatchAll] Generic error',
+          );
         } finally {
           await client.close();
         }

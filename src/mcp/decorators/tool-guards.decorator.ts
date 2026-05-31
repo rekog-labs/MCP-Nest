@@ -34,7 +34,7 @@ export interface ToolGuardExecutionContext {
     getRequest<T = unknown>(): T;
   };
   getClass<T = unknown>(): Type<T>;
-  getHandler(): Function;
+  getHandler(): (...args: any[]) => any;
   getType<TContext extends string = string>(): TContext;
 }
 

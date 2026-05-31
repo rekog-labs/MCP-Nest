@@ -123,16 +123,16 @@ void test('server-stateless: greet-world returns expected greeting', async () =>
   }
 });
 
-void test('server-stateless-async: forRootAsync resolves options through useFactory into the running server', async () => {
+void test('server-stateless-async: async config resolves MCP_NAME into the running server', async () => {
   const expectedName = 'async-smoke-server';
   const proc = await startServer('./servers/server-stateless-async.ts', {
     MCP_NAME: expectedName,
   });
   try {
     await withClient(async (client) => {
-      // Assert the async factory actually resolved MCP_NAME from env into the
-      // server's MCP Implementation. If forRootAsync's useFactory hadn't run,
-      // the server would report the hardcoded default instead.
+      // Assert the awaited async config actually resolved MCP_NAME from env into
+      // the server's MCP Implementation. If the async config load hadn't run, the
+      // server would report the hardcoded default instead.
       const serverInfo = client.getServerVersion();
       assert.equal(
         serverInfo?.name,

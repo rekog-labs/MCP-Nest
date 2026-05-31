@@ -1,9 +1,11 @@
 export * from './decorators';
 export * from './interfaces';
-export * from './mcp.module';
-export * from './services/mcp-registry-discovery.service';
-export * from './services/mcp-executor.service';
-export * from './services/mcp-sse.service';
-export * from './services/mcp-streamable-http.service';
-export * from './services/mcp-dynamic-registry.service';
-export * from './constants/feature-registration.constants';
+export * from './services/tool-authorization.service';
+
+// Microservice transport strategy API
+export * from './transport/mcp-transport.constants';
+export * from './transport/mcp-context';
+export * from './transport/mcp-server-options.interface';
+export * from './transport/mcp-transport.interface';
+export * from './transport/mcp.strategy';
+export * from './transport/transports';

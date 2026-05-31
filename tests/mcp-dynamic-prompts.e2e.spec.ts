@@ -1,25 +1,20 @@
-import {
-  INestApplication,
-  Injectable,
-  Module,
-  OnModuleInit,
-} from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { Prompt, McpRegistryService } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createStreamableClient } from './utils';
+import { INestApplication, Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { Payload } from '@nestjs/microservices';
+import { MCP_STRATEGY, McpController, McpStrategy, Prompt } from '../src';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { z } from 'zod';
 
 // ============================================================================
-// Test Setup: Dynamic prompt registration service
+// Test Setup: Dynamic prompt registration service (injects the strategy via
+// the MCP_STRATEGY token, mirroring the old OnModuleInit pattern).
 // ============================================================================
 
 @Injectable()
 class DynamicPromptsService implements OnModuleInit {
-  constructor(private readonly capabilityBuilder: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.capabilityBuilder.registerPrompt({
+    this.strategy.registerPrompt({
       name: 'summarize',
       description: 'Summarize the provided text',
       parameters: z.object({
@@ -45,7 +40,7 @@ class DynamicPromptsService implements OnModuleInit {
       },
     });
 
-    this.capabilityBuilder.registerPrompt({
+    this.strategy.registerPrompt({
       name: 'translate',
       description: 'Translate text to another language',
       handler: async () => {
@@ -67,7 +62,7 @@ class DynamicPromptsService implements OnModuleInit {
 // Test Setup: Decorator-based prompt (for mixed mode testing)
 // ============================================================================
 
-@Injectable()
+@McpController()
 class StaticPrompt {
   @Prompt({
     name: 'static-prompt',
@@ -76,7 +71,7 @@ class StaticPrompt {
       topic: z.string().describe('The topic to write about'),
     }),
   })
-  getStaticPrompt({ topic }: { topic: string }) {
+  getStaticPrompt(@Payload() { topic }: { topic: string }) {
     return {
       description: 'A statically defined prompt using decorators',
       messages: [
@@ -90,126 +85,22 @@ class StaticPrompt {
 }
 
 // ============================================================================
-// Test Setup: Multi-server isolation
-// ============================================================================
-
-@Injectable()
-class Server1DynamicPrompts implements OnModuleInit {
-  constructor(private readonly capabilityBuilder: McpRegistryService) {}
-
-  onModuleInit() {
-    this.capabilityBuilder.registerPrompt({
-      name: 'server1-prompt',
-      description: 'Prompt for server 1',
-      handler: async () => ({
-        description: 'Prompt for server 1',
-        messages: [
-          { role: 'user', content: { type: 'text', text: 'server 1 prompt' } },
-        ],
-      }),
-    });
-  }
-}
-
-@Injectable()
-class Server2DynamicPrompts implements OnModuleInit {
-  constructor(private readonly capabilityBuilder: McpRegistryService) {}
-
-  onModuleInit() {
-    this.capabilityBuilder.registerPrompt({
-      name: 'server2-prompt',
-      description: 'Prompt for server 2',
-      handler: async () => ({
-        description: 'Prompt for server 2',
-        messages: [
-          { role: 'user', content: { type: 'text', text: 'server 2 prompt' } },
-        ],
-      }),
-    });
-  }
-}
-
-// ============================================================================
-// Modules
-// ============================================================================
-
-const deregServerModule = McpModule.forRoot({
-  name: 'dereg-prompt-server',
-  version: '1.0.0',
-  mcpEndpoint: '/dereg/mcp',
-});
-
-@Module({
-  imports: [deregServerModule],
-  providers: [DynamicPromptsService],
-})
-class DeregistrationPromptsAppModule {}
-
-const basicServerModule = McpModule.forRoot({
-  name: 'basic-prompt-server',
-  version: '1.0.0',
-  mcpEndpoint: '/basic/mcp',
-});
-
-@Module({
-  imports: [basicServerModule],
-  providers: [DynamicPromptsService],
-})
-class BasicDynamicPromptsAppModule {}
-
-const mixedServerModule = McpModule.forRoot({
-  name: 'mixed-prompt-server',
-  version: '1.0.0',
-  mcpEndpoint: '/mixed/mcp',
-});
-
-@Module({
-  imports: [mixedServerModule],
-  providers: [DynamicPromptsService, StaticPrompt],
-})
-class MixedPromptsAppModule {}
-
-const multiServer1Module = McpModule.forRoot({
-  name: 'multi-prompt-server-1',
-  version: '1.0.0',
-  mcpEndpoint: '/multi1/mcp',
-});
-
-const multiServer2Module = McpModule.forRoot({
-  name: 'multi-prompt-server-2',
-  version: '1.0.0',
-  mcpEndpoint: '/multi2/mcp',
-});
-
-@Module({ imports: [multiServer1Module], providers: [Server1DynamicPrompts] })
-class MultiPromptServer1Module {}
-
-@Module({ imports: [multiServer2Module], providers: [Server2DynamicPrompts] })
-class MultiPromptServer2Module {}
-
-@Module({ imports: [MultiPromptServer1Module, MultiPromptServer2Module] })
-class MultiPromptServerAppModule {}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
-  jest.setTimeout(15000);
-
+describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
   describe('Basic Dynamic Prompts', () => {
     let app: INestApplication;
     let serverPort: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [BasicDynamicPromptsAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo)
-        .port;
+      const { app: a, port } = await bootstrapMcpApp({
+        name: 'basic-prompt-server',
+        controllers: [],
+        providers: [DynamicPromptsService],
+      });
+      app = a;
+      serverPort = port;
     });
 
     afterAll(async () => {
@@ -217,9 +108,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should list dynamically registered prompts', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listPrompts();
 
@@ -235,9 +124,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should include argument metadata for prompts with parameters', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listPrompts();
         const summarize = result.prompts.find((p) => p.name === 'summarize');
@@ -261,9 +148,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should execute a dynamically registered prompt with arguments', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result: any = await client.getPrompt({
           name: 'summarize',
@@ -278,9 +163,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should execute a dynamic prompt without parameters', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result: any = await client.getPrompt({
           name: 'translate',
@@ -301,14 +184,13 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     let serverPort: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [MixedPromptsAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo)
-        .port;
+      const { app: a, port } = await bootstrapMcpApp({
+        name: 'mixed-prompt-server',
+        controllers: [StaticPrompt],
+        providers: [DynamicPromptsService],
+      });
+      app = a;
+      serverPort = port;
     });
 
     afterAll(async () => {
@@ -316,9 +198,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should list both decorator and dynamic prompts', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/mixed/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listPrompts();
 
@@ -338,9 +218,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should execute decorator-based prompt alongside dynamic prompts', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/mixed/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result: any = await client.getPrompt({
           name: 'static-prompt',
@@ -355,28 +233,54 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
   });
 
   describe('Multi-Server Isolation', () => {
-    let app: INestApplication;
-    let serverPort: number;
+    let app1: INestApplication;
+    let app2: INestApplication;
+    let port1: number;
+    let port2: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [MultiPromptServerAppModule],
-      }).compile();
+      const server1 = await bootstrapMcpApp({
+        name: 'multi-prompt-server-1',
+        controllers: [],
+      });
+      app1 = server1.app;
+      port1 = server1.port;
+      server1.strategy.registerPrompt({
+        name: 'server1-prompt',
+        description: 'Prompt for server 1',
+        handler: async () => ({
+          description: 'Prompt for server 1',
+          messages: [
+            { role: 'user', content: { type: 'text', text: 'server 1 prompt' } },
+          ],
+        }),
+      });
 
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo)
-        .port;
+      const server2 = await bootstrapMcpApp({
+        name: 'multi-prompt-server-2',
+        controllers: [],
+      });
+      app2 = server2.app;
+      port2 = server2.port;
+      server2.strategy.registerPrompt({
+        name: 'server2-prompt',
+        description: 'Prompt for server 2',
+        handler: async () => ({
+          description: 'Prompt for server 2',
+          messages: [
+            { role: 'user', content: { type: 'text', text: 'server 2 prompt' } },
+          ],
+        }),
+      });
     });
 
     afterAll(async () => {
-      await app.close();
+      await app1.close();
+      await app2.close();
     });
 
     it('should register dynamic prompts to correct server (server 1)', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/multi1/mcp',
-      });
+      const client = await createStreamableClient(port1);
       try {
         const result = await client.listPrompts();
 
@@ -392,9 +296,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should register dynamic prompts to correct server (server 2)', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/multi2/mcp',
-      });
+      const client = await createStreamableClient(port2);
       try {
         const result = await client.listPrompts();
 
@@ -410,12 +312,8 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should execute prompts on their respective servers', async () => {
-      const client1 = await createStreamableClient(serverPort, {
-        endpoint: '/multi1/mcp',
-      });
-      const client2 = await createStreamableClient(serverPort, {
-        endpoint: '/multi2/mcp',
-      });
+      const client1 = await createStreamableClient(port1);
+      const client2 = await createStreamableClient(port2);
       try {
         const result1: any = await client1.getPrompt({
           name: 'server1-prompt',
@@ -438,20 +336,17 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
   describe('Deregistration', () => {
     let app: INestApplication;
     let serverPort: number;
-    let capabilityBuilder: McpRegistryService;
+    let strategy: McpStrategy;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [DeregistrationPromptsAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo)
-        .port;
-      capabilityBuilder = moduleFixture.get(McpRegistryService, {
-        strict: false,
+      const result = await bootstrapMcpApp({
+        name: 'dereg-prompt-server',
+        controllers: [],
+        providers: [DynamicPromptsService],
       });
+      app = result.app;
+      serverPort = result.port;
+      strategy = result.strategy;
     });
 
     afterAll(async () => {
@@ -459,7 +354,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should remove a prompt from the listing', async () => {
-      capabilityBuilder.registerPrompt({
+      strategy.registerPrompt({
         name: 'temp-prompt',
         description: 'Temporary prompt',
         handler: async () => ({
@@ -468,16 +363,14 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         let result = await client.listPrompts();
         expect(
           result.prompts.find((p) => p.name === 'temp-prompt'),
         ).toBeDefined();
 
-        capabilityBuilder.removePrompt('temp-prompt');
+        strategy.removePrompt('temp-prompt');
 
         result = await client.listPrompts();
         expect(
@@ -489,9 +382,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should return an error when getting a removed prompt', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         await expect(
           client.getPrompt({ name: 'temp-prompt', arguments: {} }),
@@ -502,7 +393,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should not affect other prompts when one is removed', async () => {
-      capabilityBuilder.registerPrompt({
+      strategy.registerPrompt({
         name: 'prompt-to-keep',
         description: 'Should remain',
         handler: async () => ({
@@ -510,7 +401,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
           messages: [{ role: 'user', content: { type: 'text', text: 'kept' } }],
         }),
       });
-      capabilityBuilder.registerPrompt({
+      strategy.registerPrompt({
         name: 'prompt-to-remove',
         description: 'Should be removed',
         handler: async () => ({
@@ -519,11 +410,9 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
         }),
       });
 
-      capabilityBuilder.removePrompt('prompt-to-remove');
+      strategy.removePrompt('prompt-to-remove');
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listPrompts();
         expect(
@@ -538,7 +427,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should reflect a newly registered prompt on a running server', async () => {
-      capabilityBuilder.registerPrompt({
+      strategy.registerPrompt({
         name: 'hot-registered-prompt',
         description: 'Registered after server started',
         handler: async () => ({
@@ -547,9 +436,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listPrompts();
         expect(
@@ -561,7 +448,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should re-register a prompt after removal', async () => {
-      capabilityBuilder.registerPrompt({
+      strategy.registerPrompt({
         name: 'reregistered-prompt',
         description: 'Original',
         handler: async () => ({
@@ -571,8 +458,8 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
           ],
         }),
       });
-      capabilityBuilder.removePrompt('reregistered-prompt');
-      capabilityBuilder.registerPrompt({
+      strategy.removePrompt('reregistered-prompt');
+      strategy.registerPrompt({
         name: 'reregistered-prompt',
         description: 'Replacement',
         handler: async () => ({
@@ -583,9 +470,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listPrompts();
         const matches = result.prompts.filter(
@@ -605,7 +490,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
     });
 
     it('should overwrite a prompt when registered with the same name', async () => {
-      capabilityBuilder.registerPrompt({
+      strategy.registerPrompt({
         name: 'duplicate-prompt',
         description: 'First version',
         handler: async () => ({
@@ -615,7 +500,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
           ],
         }),
       });
-      capabilityBuilder.registerPrompt({
+      strategy.registerPrompt({
         name: 'duplicate-prompt',
         description: 'Second version',
         handler: async () => ({
@@ -626,9 +511,7 @@ describe('E2E: Dynamic Prompt Registration via McpRegistryService', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listPrompts();
         const matches = result.prompts.filter(

@@ -102,7 +102,10 @@ async function callGreetTool(client: Client): Promise<void> {
         },
       },
     );
-    console.log('Greeting result:', greetResult.content[0].text);
+    console.log(
+      'Greeting result:',
+      (greetResult.content[0] as { text?: string }).text,
+    );
   } catch (error) {
     console.log(`Error calling greet tool: ${error}`);
   }

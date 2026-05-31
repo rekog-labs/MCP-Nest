@@ -1,7 +1,13 @@
-import type { Request } from 'express';
 import type { McpRequestWithUser } from '@rekog/mcp-nest';
-import { Injectable } from '@nestjs/common';
-import { Context, PublicTool, ToolRoles, ToolScopes, Tool } from '@rekog/mcp-nest';
+import {
+  McpContext,
+  McpController,
+  PublicTool,
+  ToolRoles,
+  ToolScopes,
+  Tool,
+} from '@rekog/mcp-nest';
+import { Ctx, Payload } from '@nestjs/microservices';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
@@ -29,7 +35,7 @@ const languageNames = {
   zh: 'Chinese',
 };
 
-@Injectable()
+@McpController()
 export class GreetingTool {
   constructor() {}
 
@@ -45,10 +51,11 @@ export class GreetingTool {
       openWorldHint: false,
     },
   })
-  async greetLoggedInUser(args, context: Context, request: McpRequestWithUser) {
-    // Try to extract user name from request (commonly request.user or request.session.user)
+  async greetLoggedInUser(@Ctx() ctx: McpContext) {
+    const request = ctx.getRawRequest<McpRequestWithUser>();
+    // Try to extract user name from request (commonly request.user)
     let name;
-    if (request.user && typeof request.user === 'object') {
+    if (request?.user && typeof request.user === 'object') {
       name =
         request.user.displayName || request.user.username || request.user.name;
     }
@@ -115,7 +122,10 @@ export class GreetingTool {
       openWorldHint: false,
     },
   })
-  async sayHello({ name, language }, context: Context, request: Request) {
+  async sayHello(
+    @Payload() { name, language }: { name: string; language: string },
+    @Ctx() context: McpContext,
+  ) {
     const greetingWord = informalGreetings[language] || informalGreetings['en'];
     const greeting = `${greetingWord}, ${name}!`;
 
@@ -146,11 +156,14 @@ export class GreetingTool {
       openWorldHint: false,
     },
   })
-  async sayHelloElicitation({ name }, context: Context, request: Request) {
+  async sayHelloElicitation(
+    @Payload() { name }: { name: string },
+    @Ctx() context: McpContext,
+  ) {
     try {
       const res = context.mcpServer.server.getClientCapabilities();
       if (!res?.elicitation) {
-        const result = {
+        return {
           content: [
             {
               type: 'text',
@@ -158,7 +171,6 @@ export class GreetingTool {
             },
           ],
         };
-        return result;
       }
 
       const response = await context.mcpServer.server.elicitInput({
@@ -183,26 +195,17 @@ export class GreetingTool {
         }
         case 'decline':
         case 'cancel':
-          selectedLanguage = 'en';
-          break;
         default:
           selectedLanguage = 'en';
       }
 
       const greetingWord =
         informalGreetings[selectedLanguage] || informalGreetings['en'];
-      const greeting = `${greetingWord}, ${name}!`;
-
-      const result = {
-        content: [{ type: 'text', text: greeting }],
-      };
-
-      return result;
+      return { content: [{ type: 'text', text: `${greetingWord}, ${name}!` }] };
     } catch (error) {
-      const result = {
+      return {
         content: [{ type: 'text', text: `Error: ${error.message}` }],
       };
-      return result;
     }
   }
 
@@ -229,14 +232,9 @@ export class GreetingTool {
     },
   })
   async sayHelloStructured(
-    { name, language },
-    context: Context,
-    request: Request,
+    @Payload() { name, language }: { name: string; language: string },
   ) {
     if (!name || !language) {
-      console.log(
-        '[greeting.tool.ts] Exiting sayHelloStructured (missing args)',
-      );
       return {
         content: [
           {
@@ -257,7 +255,7 @@ export class GreetingTool {
       languageName,
     };
 
-    const result = {
+    return {
       structuredContent,
       content: [
         {
@@ -266,8 +264,6 @@ export class GreetingTool {
         },
       ],
     };
-
-    return result;
   }
 
   @Tool({
@@ -278,7 +274,7 @@ export class GreetingTool {
       age: z.number().min(1).max(100),
     }),
   })
-  async execute({ name, age }) {
+  async execute(@Payload() { name, age }: { name: string; age: number }) {
     return {
       content: [
         {
@@ -306,8 +302,12 @@ export class GreetingTool {
   })
   @ToolScopes(['admin', 'write'])
   @ToolRoles(['admin'])
-  async adminGreet({ message }, context: Context, request: McpRequestWithUser) {
-    const userName = request.user?.name || request.user?.username || 'Admin';
+  async adminGreet(
+    @Payload() { message }: { message: string },
+    @Ctx() ctx: McpContext,
+  ) {
+    const request = ctx.getRawRequest<McpRequestWithUser>();
+    const userName = request?.user?.name || request?.user?.username || 'Admin';
     return {
       content: [
         {
@@ -336,12 +336,12 @@ export class GreetingTool {
   })
   @ToolRoles(['premium'])
   async premiumGreet(
-    { name, level },
-    context: Context,
-    request: McpRequestWithUser,
+    @Payload() { name, level }: { name: string; level: 'gold' | 'platinum' },
+    @Ctx() ctx: McpContext,
   ) {
+    const request = ctx.getRawRequest<McpRequestWithUser>();
     const userName =
-      request.user?.name || request.user?.username || 'Premium User';
+      request?.user?.name || request?.user?.username || 'Premium User';
     const premiumEmojis = { gold: '🏆', platinum: '💎' };
     return {
       content: [
@@ -373,12 +373,16 @@ export class GreetingTool {
   @ToolScopes(['admin', 'write', 'delete'])
   @ToolRoles(['super-admin'])
   async superAdminGreet(
-    { target, action },
-    context: Context,
-    request: McpRequestWithUser,
+    @Payload()
+    { target, action }: {
+      target: string;
+      action: 'approve' | 'deny' | 'escalate';
+    },
+    @Ctx() ctx: McpContext,
   ) {
+    const request = ctx.getRawRequest<McpRequestWithUser>();
     const userName =
-      request.user?.name || request.user?.username || 'Super Admin';
+      request?.user?.name || request?.user?.username || 'Super Admin';
     const actionMessages = {
       approve: '✅ Approved',
       deny: '❌ Denied',

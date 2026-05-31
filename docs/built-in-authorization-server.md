@@ -34,7 +34,11 @@ The code of the deployed project is in this GitHub repository: [rekog-labs/mcp-n
 
 ## Setting up a new project
 
-Complete working example from the playground:
+The `McpAuthModule` still provides the OAuth 2.1 controllers exactly as before.
+What changed: MCP itself now runs as a `McpStrategy` microservice (no
+`McpModule`), and the MCP transport routes are protected with Express middleware
+that validates the Bearer JWT (reusing the module's `JwtTokenService`) and sets
+`req.user`, replacing the old `guards: [McpAuthJwtGuard]` option.
 
 ```typescript
 import { Module } from '@nestjs/common';
@@ -43,13 +47,25 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 // Or if you are using CommonJS:
 // import * as cookieParser from 'cookie-parser';
-import { randomUUID } from 'crypto';
 import {
   McpAuthModule,
-  McpModule,
+  McpStrategy,
+  StreamableHttpTransport,
   GitHubOAuthProvider,
-  McpAuthJwtGuard
+  JwtTokenService,
 } from '@rekog/mcp-nest';
+import { GreetingTool } from './greeting.tool';
+
+const mcp = new McpStrategy({
+  name: 'secure-mcp-server',
+  version: '1.0.0',
+  transports: [
+    new StreamableHttpTransport({
+      enableJsonResponse: false,
+      statelessMode: false,
+    }),
+  ],
+});
 
 @Module({
   imports: [
@@ -62,18 +78,8 @@ import {
       serverUrl: 'http://localhost:3030',
       apiPrefix: 'auth',
     }),
-    McpModule.forRoot({
-      name: 'secure-mcp-server',
-      version: '1.0.0',
-      streamableHttp: {
-        enableJsonResponse: false,
-        sessionIdGenerator: () => randomUUID(),
-        statelessMode: false,
-      },
-      guards: [McpAuthJwtGuard],
-    }),
   ],
-  providers: [McpAuthJwtGuard],
+  controllers: [GreetingTool], // your @McpController() classes
 })
 class AppModule {}
 
@@ -89,6 +95,32 @@ async function bootstrap() {
     credentials: true,
   });
 
+  mcp.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy: mcp });
+
+  // Protect only the MCP transport routes; leave the OAuth endpoints
+  // (/auth/*, /.well-known/*) open so the handshake can run.
+  const jwt = app.get(JwtTokenService);
+  const mcpRoutes = ['/mcp', '/sse', '/messages'];
+  app.use((req: any, res: any, next: () => void) => {
+    const path: string = req.path ?? req.url ?? '';
+    const isMcpRoute = mcpRoutes.some(
+      (p) => path === p || path.startsWith(`${p}?`) || path.startsWith(`${p}/`),
+    );
+    if (!isMcpRoute) return next();
+
+    const auth: string | undefined = req.headers?.authorization;
+    const token = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
+    if (!token) { res.statusCode = 401; res.end('Unauthorized'); return; }
+
+    const payload = jwt.validateToken(token);
+    if (!payload) { res.statusCode = 401; res.end('Unauthorized'); return; }
+
+    req.user = payload;
+    next();
+  });
+
+  await app.startAllMicroservices(); // BEFORE listen()
   await app.listen(3030);
   console.log('Secure MCP Server running on http://localhost:3030');
 }

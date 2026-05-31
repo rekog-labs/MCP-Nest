@@ -1,13 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { Tool } from '@rekog/mcp-nest';
+/* eslint-disable @typescript-eslint/require-await */
+import { McpController, Tool } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 import { AnalyticsService } from '../services/analytics.service';
 
 /**
- * Analytics tools - provides analytics and metrics
- * This will be registered to the "admin-server"
+ * Analytics tools - provides analytics and metrics.
+ * Exposed on the "admin" MCP server.
  */
-@Injectable()
+@McpController()
 export class AnalyticsTools {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
@@ -44,13 +45,10 @@ System Metrics:
       userId: z.string().optional().describe('Optional user ID'),
     }),
   })
-  async trackRequest({
-    endpoint,
-    userId,
-  }: {
-    endpoint: string;
-    userId?: string;
-  }) {
+  async trackRequest(
+    @Payload()
+    { endpoint, userId }: { endpoint: string; userId?: string },
+  ) {
     this.analyticsService.trackRequest(endpoint, userId);
 
     return {

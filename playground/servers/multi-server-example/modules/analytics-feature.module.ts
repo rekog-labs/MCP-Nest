@@ -1,21 +1,16 @@
 import { Module } from '@nestjs/common';
-import { McpModule } from '@rekog/mcp-nest';
 import { AnalyticsTools } from '../tools/analytics.tools';
 import { AnalyticsService } from '../services/analytics.service';
 
 /**
  * Analytics Feature Module
- * Registers analytics tools to the "admin-server"
+ *
+ * The capability class is a `@McpController` (declared in `controllers`); its
+ * dependency is a normal provider.
  */
 @Module({
-  imports: [
-    // Register AnalyticsTools to the "admin-server"
-    McpModule.forFeature([AnalyticsTools], 'admin-server'),
-  ],
-  providers: [
-    AnalyticsTools,
-    AnalyticsService, // AnalyticsTools depends on AnalyticsService
-  ],
-  exports: [AnalyticsTools, AnalyticsService],
+  controllers: [AnalyticsTools],
+  providers: [AnalyticsService],
+  exports: [AnalyticsService],
 })
 export class AnalyticsFeatureModule {}

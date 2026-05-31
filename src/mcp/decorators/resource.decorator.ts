@@ -1,5 +1,6 @@
-import { SetMetadata } from '@nestjs/common';
+import { applyDecorators, SetMetadata } from '@nestjs/common';
 import { MCP_RESOURCE_METADATA_KEY } from './constants';
+import { mcpMessagePattern } from './mcp-message-pattern';
 
 export type ResourceOptions =
   // https://modelcontextprotocol.io/docs/concepts/resources#direct-resources
@@ -27,5 +28,8 @@ export interface ResourceMetadata {
  * @returns {MethodDecorator} - The decorator
  */
 export const Resource = (options: ResourceOptions) => {
-  return SetMetadata(MCP_RESOURCE_METADATA_KEY, options);
+  return applyDecorators(
+    SetMetadata(MCP_RESOURCE_METADATA_KEY, options),
+    mcpMessagePattern('resource', options.uri),
+  );
 };

@@ -1,9 +1,16 @@
-import { Injectable, Module, OnModuleInit } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import {
-  McpModule,
-  McpTransportType,
-  McpRegistryService,
+  Inject,
+  Injectable,
+  Module,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { Payload } from '@nestjs/microservices';
+import {
+  MCP_STRATEGY,
+  McpController,
+  McpStrategy,
+  StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
 import { z } from 'zod';
@@ -16,8 +23,10 @@ import { z } from 'zod';
  * 2. Server 1 (port 3031): Only has static decorator-based tools
  * 3. Server 2 (port 3032): Has both static tools AND dynamic tools registered at runtime
  *
- * Dynamic tools are registered using McpRegistryService in the onModuleInit lifecycle hook,
- * allowing you to:
+ * Dynamic tools are registered on the McpStrategy instance (injected via the
+ * `MCP_STRATEGY` token) in the onApplicationBootstrap lifecycle hook. The old
+ * global `McpRegistryService` is gone — register on the strategy instead. This
+ * lets you:
  * - Load tool descriptions from databases
  * - Create tools based on runtime configuration
  * - Build plugin systems with runtime tool registration
@@ -38,7 +47,7 @@ import { z } from 'zod';
 // Static Tool (Decorator-based) - Used by both servers
 // ============================================================================
 
-@Injectable()
+@McpController()
 class SimpleGreetingTool {
   @Tool({
     name: 'greet-static',
@@ -47,7 +56,7 @@ class SimpleGreetingTool {
       name: z.string().describe('Name of the person to greet'),
     }),
   })
-  greetStatic({ name }: { name: string }) {
+  greetStatic(@Payload() { name }: { name: string }) {
     return {
       content: [{ type: 'text', text: `Hello ${name}! (from static tool)` }],
     };
@@ -59,21 +68,21 @@ class SimpleGreetingTool {
 // ============================================================================
 
 @Injectable()
-class DynamicToolsService implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+class DynamicToolsService implements OnApplicationBootstrap {
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   /**
-   * onModuleInit runs before the server starts accepting requests.
-   * This is where you register dynamic tools using McpRegistryService.
+   * onApplicationBootstrap runs before the server starts accepting requests.
+   * This is where you register dynamic tools on the injected McpStrategy.
    */
-  async onModuleInit() {
+  async onApplicationBootstrap() {
     console.log('📝 Registering dynamic tools...');
 
     // Simulate fetching available collections from a database
     const collections = await this.loadCollectionsFromDatabase();
 
     // Register a dynamic search tool with description built from DB data
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'search-dynamic',
       description: `Search across collections. Available: ${collections.join(', ')}`,
       parameters: z.object({
@@ -102,7 +111,7 @@ class DynamicToolsService implements OnModuleInit {
     });
 
     // Register another dynamic tool
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'get-collections',
       description: 'Get list of available collections',
       handler: async () => {
@@ -119,7 +128,7 @@ class DynamicToolsService implements OnModuleInit {
     });
 
     // Register a dynamic tool with structured output
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'get-stats',
       description: 'Get search statistics with structured output',
       outputSchema: z.object({
@@ -141,11 +150,13 @@ class DynamicToolsService implements OnModuleInit {
   }
 
   // Simulate database operations
+  // eslint-disable-next-line @typescript-eslint/require-await
   private async loadCollectionsFromDatabase(): Promise<string[]> {
     // In a real app, this would query your database
     return ['documents', 'knowledge-base', 'faq', 'tutorials'];
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   private async performSearch(
     query: string,
     collection?: string,
@@ -168,16 +179,15 @@ class DynamicToolsService implements OnModuleInit {
 // Server 1: Static Tools Only
 // ============================================================================
 
-const server1Module = McpModule.forRoot({
+const staticStrategy = new McpStrategy({
   name: 'static-server',
   version: '1.0.0',
-  transport: McpTransportType.STREAMABLE_HTTP,
-  mcpEndpoint: '/mcp',
+  transports: [new StreamableHttpTransport({ endpoint: '/mcp' })],
+  logging: false,
 });
 
 @Module({
-  imports: [server1Module],
-  providers: [SimpleGreetingTool],
+  controllers: [SimpleGreetingTool],
 })
 class StaticServerModule {}
 
@@ -185,18 +195,18 @@ class StaticServerModule {}
 // Server 2: Static + Dynamic Tools
 // ============================================================================
 
-const server2Module = McpModule.forRoot({
+const dynamicStrategy = new McpStrategy({
   name: 'dynamic-server',
   version: '1.0.0',
-  transport: McpTransportType.STREAMABLE_HTTP,
-  mcpEndpoint: '/mcp',
+  transports: [new StreamableHttpTransport({ endpoint: '/mcp' })],
+  logging: false,
 });
 
 @Module({
-  imports: [server2Module],
+  controllers: [SimpleGreetingTool], // Static decorator-based tool
   providers: [
-    SimpleGreetingTool, // Static decorator-based tool
     DynamicToolsService, // Service that registers dynamic tools
+    { provide: MCP_STRATEGY, useValue: dynamicStrategy },
   ],
 })
 class DynamicServerModule {}
@@ -210,6 +220,9 @@ async function bootstrap() {
 
   // Start Server 1 on port 3031 (static tools only)
   const app1 = await NestFactory.create(StaticServerModule, { logger: false });
+  staticStrategy.setHttpAdapter(app1.getHttpAdapter());
+  app1.connectMicroservice({ strategy: staticStrategy });
+  await app1.startAllMicroservices();
   await app1.listen(3031);
   console.log('✅ Server 1 (Static Tools) started on port 3031');
   console.log(
@@ -218,6 +231,9 @@ async function bootstrap() {
 
   // Start Server 2 on port 3032 (static + dynamic tools)
   const app2 = await NestFactory.create(DynamicServerModule, { logger: false });
+  dynamicStrategy.setHttpAdapter(app2.getHttpAdapter());
+  app2.connectMicroservice({ strategy: dynamicStrategy });
+  await app2.startAllMicroservices();
   await app2.listen(3032);
   console.log('✅ Server 2 (Static + Dynamic Tools) started on port 3032');
   console.log(

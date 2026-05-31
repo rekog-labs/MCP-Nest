@@ -1,16 +1,16 @@
 # Resources
 
-Resources are static or dynamic data sources that AI agents can read. They're like read-only files or databases that tools can reference. In mcp-nest, resources are defined using the `@Resource()` decorator.
+Resources are static or dynamic data sources that AI agents can read. They're like read-only files or databases that tools can reference. In mcp-nest, resources are defined using the `@Resource()` decorator on `@McpController()` methods.
 
 ## Basic Resource
 
 A static resource with a fixed URI:
 
 ```typescript
-import { Injectable, Scope } from '@nestjs/common';
-import { Resource } from '@rekog/mcp-nest';
+import { McpController, Resource } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 
-@Injectable({ scope: Scope.REQUEST })
+@McpController()
 export class GreetingResource {
   @Resource({
     name: 'languages-informal-greetings',
@@ -18,7 +18,7 @@ export class GreetingResource {
     mimeType: 'application/json',
     uri: 'mcp://languages/informal-greetings',
   })
-  getLanguagesInformalGreetings({ uri }) {
+  getLanguagesInformalGreetings(@Payload() { uri }: { uri: string }) {
     const languages = {
       en: 'Hey',
       es: 'Qué tal',
@@ -51,12 +51,14 @@ export class GreetingResource {
 - **mimeType**: Content type (e.g., `application/json`, `text/plain`, `text/markdown`)
 - **uri**: Unique identifier using `mcp://` scheme
 
+Register the class in a module's `controllers` array (not `providers`) so NestJS scans it when the strategy is connected. See [Server Examples](server-examples.md) for the full bootstrap. For request-scoped behavior, read headers/user via `ctx.getRawRequest()`.
+
 ## Method Signature
 
 Resource methods receive:
 
-- An object with the `uri` parameter
-- Additional context if needed
+- `@Payload()` — an object with the `uri` parameter
+- `@Ctx() ctx: McpContext` — the MCP execution context, if needed (use `ctx.getRawRequest()` for the raw HTTP request)
 
 They must return:
 
@@ -74,7 +76,7 @@ They must return:
   mimeType: 'application/json',
   uri: 'mcp://config/app',
 })
-getConfig({ uri }) {
+getConfig(@Payload() { uri }: { uri: string }) {
   return {
     contents: [{
       uri,
@@ -94,7 +96,7 @@ getConfig({ uri }) {
   mimeType: 'text/plain',
   uri: 'mcp://help/usage',
 })
-getHelp({ uri }) {
+getHelp(@Payload() { uri }: { uri: string }) {
   return {
     contents: [{
       uri,
@@ -114,7 +116,7 @@ getHelp({ uri }) {
   mimeType: 'text/markdown',
   uri: 'mcp://docs/readme',
 })
-getReadme({ uri }) {
+getReadme(@Payload() { uri }: { uri: string }) {
   return {
     contents: [{
       uri,

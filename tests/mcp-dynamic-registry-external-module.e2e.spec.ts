@@ -1,32 +1,19 @@
-import {
-  INestApplication,
-  Injectable,
-  Module,
-  OnModuleInit,
-} from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { McpRegistryService } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createStreamableClient } from './utils';
+import { INestApplication, Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { MCP_STRATEGY, McpStrategy } from '../src';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { z } from 'zod';
 
 /**
- * Test Suite: Dynamic capability registration from an external module
+ * Test Suite: Dynamic capability registration from external provider services
  *
- * Validates that McpRegistryService works correctly when injected into
- * a module that is separate from the module where McpModule.forRoot() lives.
+ * Validates that dynamic registration via the McpStrategy works correctly when
+ * the registering services are decoupled from the capability controllers and
+ * obtain the strategy purely through the `MCP_STRATEGY` DI token (mirroring the
+ * old "register from a separate module" pattern).
  *
- * Module topology under test:
- *
- *   ServerModule  ──imports──►  McpModule.forRoot()
- *        │                      (exports McpRegistryService)
- *        │ re-exports McpRegistryService
- *        │
- *   ExternalModule ──imports──► ServerModule
- *        │                      (gets same McpRegistryService instance)
- *        │ providers register capabilities via McpRegistryService
- *        │
- *   AppModule ──imports──► ServerModule + ExternalModule
+ * The strategy is created and connected by `bootstrapMcpApp` and exposed under
+ * the `MCP_STRATEGY` DI token. Any provider can inject the same strategy
+ * instance and register capabilities in a lifecycle hook.
  */
 
 // ============================================================================
@@ -35,10 +22,10 @@ import { z } from 'zod';
 
 @Injectable()
 class ExternalToolsService implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'external-tool',
       description: 'A tool registered from an external module',
       parameters: z.object({ input: z.string() }),
@@ -47,7 +34,7 @@ class ExternalToolsService implements OnModuleInit {
       }),
     });
 
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'external-tool-no-params',
       description: 'A parameterless tool from an external module',
       handler: async () => ({
@@ -63,10 +50,10 @@ class ExternalToolsService implements OnModuleInit {
 
 @Injectable()
 class ExternalResourcesService implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerResource({
+    this.strategy.registerResource({
       uri: 'mcp://external-config',
       name: 'external-config',
       description: 'Config resource from an external module',
@@ -90,10 +77,10 @@ class ExternalResourcesService implements OnModuleInit {
 
 @Injectable()
 class ExternalPromptsService implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerPrompt({
+    this.strategy.registerPrompt({
       name: 'external-prompt',
       description: 'A prompt registered from an external module',
       parameters: z.object({ topic: z.string() }),
@@ -110,42 +97,15 @@ class ExternalPromptsService implements OnModuleInit {
 }
 
 // ============================================================================
-// Module structure
-// ============================================================================
-
-const serverMcpModule = McpModule.forRoot({
-  name: 'external-reg-server',
-  version: '1.0.0',
-  mcpEndpoint: '/ext/mcp',
-});
-
-@Module({
-  imports: [serverMcpModule],
-  exports: [serverMcpModule],
-})
-class ServerModule {}
-
-@Module({
-  imports: [ServerModule],
-  providers: [ExternalToolsService, ExternalResourcesService, ExternalPromptsService],
-})
-class ExternalModule {}
-
-@Module({
-  imports: [ServerModule, ExternalModule],
-})
-class AppModule {}
-
-// ============================================================================
 // Multi-server isolation variant
 // ============================================================================
 
 @Injectable()
 class ServerAExternalTools implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'server-a-external-tool',
       description: 'Tool registered externally for server A',
       handler: async () => ({
@@ -157,10 +117,10 @@ class ServerAExternalTools implements OnModuleInit {
 
 @Injectable()
 class ServerBExternalTools implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'server-b-external-tool',
       description: 'Tool registered externally for server B',
       handler: async () => ({
@@ -170,66 +130,27 @@ class ServerBExternalTools implements OnModuleInit {
   }
 }
 
-const mcpServerA = McpModule.forRoot({
-  name: 'multi-server-a',
-  version: '1.0.0',
-  mcpEndpoint: '/server-a/mcp',
-});
-
-const mcpServerB = McpModule.forRoot({
-  name: 'multi-server-b',
-  version: '1.0.0',
-  mcpEndpoint: '/server-b/mcp',
-});
-
-@Module({
-  imports: [mcpServerA],
-  exports: [mcpServerA],
-})
-class ServerAModule {}
-
-@Module({
-  imports: [mcpServerB],
-  exports: [mcpServerB],
-})
-class ServerBModule {}
-
-@Module({
-  imports: [ServerAModule],
-  providers: [ServerAExternalTools],
-})
-class ExternalModuleForA {}
-
-@Module({
-  imports: [ServerBModule],
-  providers: [ServerBExternalTools],
-})
-class ExternalModuleForB {}
-
-@Module({
-  imports: [ServerAModule, ServerBModule, ExternalModuleForA, ExternalModuleForB],
-})
-class MultiServerAppModule {}
-
 // ============================================================================
 // Tests
 // ============================================================================
 
 describe('E2E: Dynamic registration from an external module', () => {
-  jest.setTimeout(15000);
-
   describe('Tools, resources, and prompts registered from a separate module', () => {
     let app: INestApplication;
     let serverPort: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [AppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo).port;
+      const { app: a, port } = await bootstrapMcpApp({
+        name: 'external-reg-server',
+        controllers: [],
+        providers: [
+          ExternalToolsService,
+          ExternalResourcesService,
+          ExternalPromptsService,
+        ],
+      });
+      app = a;
+      serverPort = port;
     });
 
     afterAll(async () => {
@@ -238,18 +159,20 @@ describe('E2E: Dynamic registration from an external module', () => {
 
     describe('Dynamic tools', () => {
       it('should list tools registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort, { endpoint: '/ext/mcp' });
+        const client = await createStreamableClient(serverPort);
         try {
           const { tools } = await client.listTools();
           expect(tools.find((t) => t.name === 'external-tool')).toBeDefined();
-          expect(tools.find((t) => t.name === 'external-tool-no-params')).toBeDefined();
+          expect(
+            tools.find((t) => t.name === 'external-tool-no-params'),
+          ).toBeDefined();
         } finally {
           await client.close();
         }
       });
 
       it('should execute a tool registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort, { endpoint: '/ext/mcp' });
+        const client = await createStreamableClient(serverPort);
         try {
           const result: any = await client.callTool({
             name: 'external-tool',
@@ -262,7 +185,7 @@ describe('E2E: Dynamic registration from an external module', () => {
       });
 
       it('should execute a parameterless tool from the external module', async () => {
-        const client = await createStreamableClient(serverPort, { endpoint: '/ext/mcp' });
+        const client = await createStreamableClient(serverPort);
         try {
           const result: any = await client.callTool({
             name: 'external-tool-no-params',
@@ -277,19 +200,23 @@ describe('E2E: Dynamic registration from an external module', () => {
 
     describe('Dynamic resources', () => {
       it('should list resources registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort, { endpoint: '/ext/mcp' });
+        const client = await createStreamableClient(serverPort);
         try {
           const { resources } = await client.listResources();
-          expect(resources.find((r) => r.name === 'external-config')).toBeDefined();
+          expect(
+            resources.find((r) => r.name === 'external-config'),
+          ).toBeDefined();
         } finally {
           await client.close();
         }
       });
 
       it('should read a resource registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort, { endpoint: '/ext/mcp' });
+        const client = await createStreamableClient(serverPort);
         try {
-          const result: any = await client.readResource({ uri: 'mcp://external-config' });
+          const result: any = await client.readResource({
+            uri: 'mcp://external-config',
+          });
           const parsed = JSON.parse(result.contents[0].text);
           expect(parsed.source).toBe('external-module');
         } finally {
@@ -300,17 +227,19 @@ describe('E2E: Dynamic registration from an external module', () => {
 
     describe('Dynamic prompts', () => {
       it('should list prompts registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort, { endpoint: '/ext/mcp' });
+        const client = await createStreamableClient(serverPort);
         try {
           const { prompts } = await client.listPrompts();
-          expect(prompts.find((p) => p.name === 'external-prompt')).toBeDefined();
+          expect(
+            prompts.find((p) => p.name === 'external-prompt'),
+          ).toBeDefined();
         } finally {
           await client.close();
         }
       });
 
       it('should get a prompt registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort, { endpoint: '/ext/mcp' });
+        const client = await createStreamableClient(serverPort);
         try {
           const result: any = await client.getPrompt({
             name: 'external-prompt',
@@ -325,48 +254,67 @@ describe('E2E: Dynamic registration from an external module', () => {
   });
 
   describe('Multi-server isolation — external modules register to the correct server', () => {
-    let app: INestApplication;
-    let serverPort: number;
+    let appA: INestApplication;
+    let appB: INestApplication;
+    let portA: number;
+    let portB: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [MultiServerAppModule],
-      }).compile();
+      const serverA = await bootstrapMcpApp({
+        name: 'multi-server-a',
+        controllers: [],
+        providers: [ServerAExternalTools],
+      });
+      appA = serverA.app;
+      portA = serverA.port;
 
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo).port;
+      const serverB = await bootstrapMcpApp({
+        name: 'multi-server-b',
+        controllers: [],
+        providers: [ServerBExternalTools],
+      });
+      appB = serverB.app;
+      portB = serverB.port;
     });
 
     afterAll(async () => {
-      await app.close();
+      await appA.close();
+      await appB.close();
     });
 
     it('server A should only have its own external tool', async () => {
-      const client = await createStreamableClient(serverPort, { endpoint: '/server-a/mcp' });
+      const client = await createStreamableClient(portA);
       try {
         const { tools } = await client.listTools();
-        expect(tools.find((t) => t.name === 'server-a-external-tool')).toBeDefined();
-        expect(tools.find((t) => t.name === 'server-b-external-tool')).toBeUndefined();
+        expect(
+          tools.find((t) => t.name === 'server-a-external-tool'),
+        ).toBeDefined();
+        expect(
+          tools.find((t) => t.name === 'server-b-external-tool'),
+        ).toBeUndefined();
       } finally {
         await client.close();
       }
     });
 
     it('server B should only have its own external tool', async () => {
-      const client = await createStreamableClient(serverPort, { endpoint: '/server-b/mcp' });
+      const client = await createStreamableClient(portB);
       try {
         const { tools } = await client.listTools();
-        expect(tools.find((t) => t.name === 'server-b-external-tool')).toBeDefined();
-        expect(tools.find((t) => t.name === 'server-a-external-tool')).toBeUndefined();
+        expect(
+          tools.find((t) => t.name === 'server-b-external-tool'),
+        ).toBeDefined();
+        expect(
+          tools.find((t) => t.name === 'server-a-external-tool'),
+        ).toBeUndefined();
       } finally {
         await client.close();
       }
     });
 
     it('should execute tools on their respective servers', async () => {
-      const clientA = await createStreamableClient(serverPort, { endpoint: '/server-a/mcp' });
-      const clientB = await createStreamableClient(serverPort, { endpoint: '/server-b/mcp' });
+      const clientA = await createStreamableClient(portA);
+      const clientB = await createStreamableClient(portB);
       try {
         const resultA: any = await clientA.callTool({
           name: 'server-a-external-tool',

@@ -1,13 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { Tool } from '@rekog/mcp-nest';
+/* eslint-disable @typescript-eslint/require-await */
+import { McpController, Tool } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 import { WeatherService } from '../services/weather.service';
 
 /**
- * Weather tools - provides weather information
- * This will be registered to the "public-server"
+ * Weather tools - provides weather information.
+ * Exposed on the "public" MCP server.
  */
-@Injectable()
+@McpController()
 export class WeatherTools {
   constructor(private readonly weatherService: WeatherService) {}
 
@@ -20,7 +21,7 @@ export class WeatherTools {
         .describe('Name of the city (e.g., "New York", "London")'),
     }),
   })
-  async getWeather({ city }: { city: string }) {
+  async getWeather(@Payload() { city }: { city: string }) {
     const weather = this.weatherService.getWeather(city);
     const weatherText = `Weather in ${city}: ${weather.temp}°F, ${weather.condition}, ${weather.humidity}% humidity`;
 

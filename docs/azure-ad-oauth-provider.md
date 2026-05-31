@@ -168,17 +168,29 @@ McpAuthModule.forRoot({
 ```typescript
 import { NestFactory } from '@nestjs/core';
 import { Module } from '@nestjs/common';
-import { McpModule } from '@rekog/mcp-nest';
-import { McpTransportType } from '@rekog/mcp-nest/interfaces';
-import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest/authz';
+import {
+  McpStrategy,
+  SseTransport,
+  StreamableHttpTransport,
+} from '@rekog/mcp-nest';
+import {
+  McpAuthModule,
+  AzureADOAuthProvider,
+  JwtTokenService,
+} from '@rekog/mcp-nest';
+import { MyTools } from './my-tools'; // your @McpController() classes
+
+const mcp = new McpStrategy({
+  name: 'Azure AD MCP Server',
+  version: '1.0.0',
+  transports: [
+    new SseTransport(),
+    new StreamableHttpTransport({ statelessMode: false }),
+  ],
+});
 
 @Module({
   imports: [
-    McpModule.forRoot({
-      name: 'Azure AD MCP Server',
-      version: '1.0.0',
-      transport: [McpTransportType.SSE, McpTransportType.STREAMABLE_HTTP],
-    }),
     McpAuthModule.forRoot({
       provider: AzureADOAuthProvider,
       clientId: process.env.AZURE_AD_CLIENT_ID!,
@@ -196,14 +208,41 @@ import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest/authz';
       apiPrefix: 'auth',
     }),
   ],
+  controllers: [MyTools],
 })
 export class AppModule {}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({ origin: true, credentials: true });
+
+  mcp.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy: mcp });
+
+  // Validate the Bearer JWT on the MCP routes and set req.user.
+  const jwt = app.get(JwtTokenService);
+  const mcpRoutes = ['/mcp', '/sse', '/messages'];
+  app.use((req: any, res: any, next: () => void) => {
+    const path: string = req.path ?? req.url ?? '';
+    const isMcpRoute = mcpRoutes.some(
+      (p) => path === p || path.startsWith(`${p}?`) || path.startsWith(`${p}/`),
+    );
+    if (!isMcpRoute) return next();
+
+    const auth: string | undefined = req.headers?.authorization;
+    const token = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
+    if (!token) { res.statusCode = 401; res.end('Unauthorized'); return; }
+
+    const payload = jwt.validateToken(token);
+    if (!payload) { res.statusCode = 401; res.end('Unauthorized'); return; }
+
+    req.user = payload;
+    next();
+  });
+
+  await app.startAllMicroservices(); // BEFORE listen()
   await app.listen(3000);
-  
+
   console.log('🚀 Server running on http://localhost:3000');
   console.log('🔐 Login at http://localhost:3000/auth/authorize?response_type=code&client_id=your-client-id&redirect_uri=http://localhost:3000/auth/callback');
 }
@@ -453,22 +492,28 @@ const multiTenantProvider = {
 
 ### Custom Token Validation
 
-Implement custom token validation logic:
+Add custom validation in the middleware that gates the MCP routes — after the
+token is validated and `req.user` is populated, apply your own checks:
 
 ```typescript
-import { JwtAuthGuard } from '@rekog/mcp-nest/authz';
+const jwt = app.get(JwtTokenService);
 
-@Injectable()
-export class CustomJwtGuard extends JwtAuthGuard {
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isValid = await super.canActivate(context);
-    if (!isValid) return false;
-    
-    // Custom validation logic
-    const user = context.switchToHttp().getRequest().user;
-    return user.email.endsWith('@alloweddomain.com');
+app.use((req: any, res: any, next: () => void) => {
+  // ... (skip non-MCP routes, extract the Bearer token) ...
+
+  const payload = jwt.validateToken(token);
+  if (!payload) { res.statusCode = 401; res.end('Unauthorized'); return; }
+
+  // Custom validation logic
+  if (!payload.email?.endsWith('@alloweddomain.com')) {
+    res.statusCode = 403;
+    res.end('Forbidden');
+    return;
   }
-}
+
+  req.user = payload;
+  next();
+});
 ```
 
 This completes the comprehensive documentation for the Azure AD OAuth provider.

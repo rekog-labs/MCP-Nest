@@ -1,16 +1,15 @@
 # Tools
 
-Tools are functions that AI agents can execute to perform actions or computations. In mcp-nest, tools are defined using the `@Tool()` decorator on service methods.
+Tools are functions that AI agents can execute to perform actions or computations. In mcp-nest, tools are defined using the `@Tool()` decorator on `@McpController()` methods. Each tool becomes a real NestJS `@MessagePattern` handler, so guards, pipes, interceptors, and exception filters apply to it natively.
 
 ## Basic Tool
 
 ```typescript
-import type { Request } from 'express';
-import { Injectable } from '@nestjs/common';
-import { Tool, Context } from '@rekog/mcp-nest';
+import { McpController, Tool, McpContext } from '@rekog/mcp-nest';
+import { Ctx, Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 
-@Injectable()
+@McpController()
 export class GreetingTool {
   @Tool({
     name: 'greet-user',
@@ -20,7 +19,10 @@ export class GreetingTool {
       language: z.string().describe('Language code (e.g., "en", "es", "fr")'),
     }),
   })
-  async sayHello({ name, language }, context: Context, request: Request) {
+  async sayHello(
+    @Payload() { name, language }: { name: string; language: string },
+    @Ctx() ctx: McpContext,
+  ) {
     const greetings = {
       en: 'Hey',
       es: 'Qué tal',
@@ -33,19 +35,23 @@ export class GreetingTool {
 }
 ```
 
+Register the class in a module's `controllers` array (not `providers`) so NestJS scans it when the strategy is connected. See [Server Examples](server-examples.md) for the full bootstrap.
+
 ### Understanding Tool Method Parameters
 
-Every tool method receives exactly **three parameters** in this order:
+Tool methods are RPC handlers, so their parameters are bound with `@nestjs/microservices` decorators:
 
-1. **`args`** (first parameter): The validated input parameters as defined by the `parameters` Zod schema in the `@Tool` decorator.
+1. **`@Payload() args`**: The validated input parameters as defined by the `parameters` Zod schema in the `@Tool` decorator. The first parameter defaults to the payload, so a handler that only needs its arguments can keep a single (optionally `@Payload()`-decorated) param.
 
-2. **`context: Context`** (second parameter): The MCP execution context providing access to:
-   - `reportProgress()` - Method to report progress updates to the client
+2. **`@Ctx() ctx: McpContext`**: The MCP execution context providing access to:
+   - `reportProgress()` - Method to report progress updates to the client (session-aware transports only)
    - `mcpServer` - Access to the underlying MCP server instance for advanced operations like elicitation
-   - `mcpRequest` - The MCP request object
-   - Logging capabilities and other contextual information
+   - `mcpRequest` - The parsed JSON-RPC request
+   - `log` - server-side logging
+   - `getSession()` - `{ transport, stateless, sessionId }`
+   - `getRawRequest()` - The original HTTP request object (Express/Fastify), providing access to headers, query parameters, authentication data, and other HTTP-specific information. This returns `undefined` when using STDIO transport.
 
-3. **`request: Request`** (third parameter): The original HTTP request object (Express/Fastify), providing access to headers, query parameters, authentication data, and other HTTP-specific information. This parameter is `undefined` when using STDIO transport.
+> **Note:** When you use `@Ctx()`, you must also annotate the data param with `@Payload()`. The old third positional `request` parameter is now read via `ctx.getRawRequest()`.
 
 ### Tool Decorator Properties
 
@@ -61,7 +67,7 @@ The `@Tool()` decorator accepts a configuration object with the following proper
   - `idempotentHint`: Indicates if repeated calls with same input produce same output
   - `openWorldHint`: Suggests if the tool's behavior is predictable or may vary
 
-For detailed type definitions, refer to the `Context` interface and `ToolOptions` type in the `@rekog/mcp-nest` package.
+For detailed type definitions, refer to the `McpContext` interface and `ToolOptions` type in the `@rekog/mcp-nest` package.
 
 ## Tool with Progress Reporting
 
@@ -73,14 +79,14 @@ For detailed type definitions, refer to the `Context` interface and `ToolOptions
     data: z.string(),
   }),
 })
-async processData({ data }, context: Context) {
+async processData(@Payload() { data }: { data: string }, @Ctx() ctx: McpContext) {
   const totalSteps = 5;
 
   for (let i = 0; i < totalSteps; i++) {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     // Report progress to the client
-    await context.reportProgress({
+    await ctx.reportProgress({
       progress: (i + 1) * 20,
       total: 100,
     });
@@ -108,7 +114,7 @@ Tools can define structured output schemas for type safety:
     languageName: z.string(),
   }),
 })
-async sayHelloStructured({ name, language }) {
+async sayHelloStructured(@Payload() { name, language }: { name: string; language: string }) {
   return {
     greeting: `Hey, ${name}!`,
     language,
@@ -129,8 +135,8 @@ Tools can request additional input from users:
     name: z.string(),
   }),
 })
-async sayHelloInteractive({ name }, context: Context) {
-  const response = await context.mcpServer.server.elicitInput({
+async sayHelloInteractive(@Payload() { name }: { name: string }, @Ctx() ctx: McpContext) {
+  const response = await ctx.mcpServer.server.elicitInput({
     message: 'Please select your preferred language',
     requestedSchema: {
       type: 'object',
@@ -155,6 +161,8 @@ async sayHelloInteractive({ name }, context: Context) {
 ## Exception Handling with @UseFilters
 
 NestJS's `@UseFilters` and `@Catch` decorators work out of the box for tools, resources, and prompts. This allows you to create custom exception filters to handle errors consistently across your MCP server.
+
+> **Behavioral note:** A tool that throws a plain `Error` (or an `McpError`) inside the pipeline returns a graceful `{ isError: true }` with a generic message, because NestJS's RPC exception handler masks unknown errors. To surface a custom message/shape, throw `RpcException` or use `@UseFilters()` with an `RpcExceptionFilter` that returns the desired result.
 
 ### Creating an Exception Filter
 
@@ -190,11 +198,12 @@ class CatchAllFilter implements ExceptionFilter {
 Filters can be applied at the method level or class level:
 
 ```typescript
-import { Injectable, UseFilters } from '@nestjs/common';
-import { Tool, Resource, Prompt } from '@rekog/mcp-nest';
+import { UseFilters } from '@nestjs/common';
+import { McpController, Tool, Resource, Prompt } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 
-@Injectable()
+@McpController()
 @UseFilters(CatchAllFilter)
 class MyService {
   @Tool({
@@ -203,7 +212,7 @@ class MyService {
     parameters: z.object({ input: z.string() }),
   })
   @UseFilters(CustomErrorFilter)
-  async myTool({ input }) {
+  async myTool(@Payload() { input }: { input: string }) {
     if (!input) {
       throw new CustomError('Input is required', 'VALIDATION_ERROR');
     }
@@ -216,7 +225,7 @@ class MyService {
     uri: 'mcp://my-resource',
     mimeType: 'text/plain',
   })
-  async myResource({ uri }) {
+  async myResource(@Payload() { uri }: { uri: string }) {
     throw new Error('Resource unavailable');
   }
 
@@ -372,32 +381,33 @@ Connect to `http://localhost:3030/mcp` to test your tools interactively and see 
 
 ## Tool Guards
 
-Tools can be protected with NestJS guards for access control. When guards are specified, tools are:
-- **Hidden** from `tools/list` for unauthorized users.
-- **Blocked** from execution with "Access denied" error.
+Because tools are real RPC handlers, you protect them with standard NestJS `@UseGuards()` on the `@McpController` class or method — these run inside the RPC pipeline. (The old `@ToolGuards()` decorator is no longer evaluated by the strategy; replace it with `@UseGuards()`.)
 
 ```typescript
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { Tool, ToolGuards } from '@rekog/mcp-nest';
+import { Injectable, CanActivate, ExecutionContext, UseGuards } from '@nestjs/common';
+import { McpController, Tool, McpContext } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 
 @Injectable()
 class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
+    // In an RPC pipeline, read the MCP context and raw request via the context.
+    const ctx = context.switchToRpc().getContext<McpContext>();
+    const request = ctx.getRawRequest();
     return request?.user?.role === 'admin';
   }
 }
 
-@Injectable()
+@McpController()
 export class MyTools {
   @Tool({
     name: 'admin-action',
-    description: 'Only visible and executable by admins',
+    description: 'Only executable by admins',
     parameters: z.object({ target: z.string() }),
   })
-  @ToolGuards([AdminGuard])
-  async adminAction({ target }) {
+  @UseGuards(AdminGuard)
+  async adminAction(@Payload() { target }: { target: string }) {
     return { content: [{ type: 'text', text: `Admin action on ${target}` }] };
   }
 
@@ -406,19 +416,16 @@ export class MyTools {
     description: 'Requires both authentication and admin role',
     parameters: z.object({}),
   })
-  @ToolGuards([AuthGuard, AdminGuard])
+  @UseGuards(AuthGuard, AdminGuard)
   async secureAction() {
     return { content: [{ type: 'text', text: 'Secure action complete' }] };
   }
 }
 ```
 
-`@ToolGuards()` can be combined with `@PublicTool()`, `@ToolScopes()`, and `@ToolRoles()`. JWT-based authorization checks run first, then guards are evaluated.
+`@UseGuards()` can be combined with `@PublicTool()`, `@ToolScopes()`, and `@ToolRoles()` (the bespoke JWT-based authorization checks). Multiple guards use AND logic: all guards must pass for access to be granted.
 
-Multiple guards use AND logic: all guards must pass for access to be granted.
-
-Guards require HTTP context and are not supported with STDIO transport. 
-Tools with `@ToolGuards()` will be hidden when using STDIO.
+Guards that rely on an HTTP request are not usable with STDIO transport (`ctx.getRawRequest()` is `undefined` there).
 
 ## Example Location
 

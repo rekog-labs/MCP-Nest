@@ -1,63 +1,60 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Module,
-  Post,
-  Req,
-  Res,
-} from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { McpModule, McpStreamableHttpService } from '@rekog/mcp-nest';
+import {
+  MCP_STRATEGY,
+  McpStrategy,
+  StreamableHttpTransport,
+} from '@rekog/mcp-nest';
 import { GreetingPrompt } from '../resources/greeting.prompt';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingTool } from '../resources/greeting.tool';
 
-// `forRootAsync` does not auto-register transport controllers — NestJS resolves
-// controllers synchronously at module-definition time, but async options are
-// resolved later. Provide your own controller and inject the MCP service. This
-// is the same Custom Controllers pattern used with `forRoot`.
-@Controller()
-class StreamableHttpController {
-  constructor(private readonly mcp: McpStreamableHttpService) {}
-
-  @Post('/mcp')
-  handlePost(@Req() req: any, @Res() res: any, @Body() body: unknown) {
-    return this.mcp.handlePostRequest(req, res, body);
-  }
-
-  @Get('/mcp')
-  handleGet(@Req() req: any, @Res() res: any) {
-    return this.mcp.handleGetRequest(req, res);
-  }
-
-  @Delete('/mcp')
-  handleDelete(@Req() req: any, @Res() res: any) {
-    return this.mcp.handleDeleteRequest(req, res);
-  }
+// `McpModule.forRootAsync` no longer exists — the strategy IS the configuration.
+// To configure it from an async source (a ConfigService, a secrets fetch, etc.),
+// simply `await` the value before constructing the McpStrategy and bootstrapping
+// the app. Here we simulate that with a fake async config loader.
+interface McpConfig {
+  name: string;
+  version: string;
 }
 
-@Module({
-  imports: [
-    McpModule.forRootAsync({
-      useFactory: () => ({
-        // Pretend these came from a ConfigService or another async source.
-        name: process.env.MCP_NAME ?? 'playground-mcp-server-async',
-        version: process.env.MCP_VERSION ?? '0.0.1',
-      }),
-    }),
-  ],
-  controllers: [StreamableHttpController],
-  providers: [GreetingResource, GreetingTool, GreetingPrompt],
-})
-class AppModule {}
+async function loadConfigAsync(): Promise<McpConfig> {
+  // Pretend this resolves from a ConfigService / remote source.
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  return {
+    name: process.env.MCP_NAME ?? 'playground-mcp-server-async',
+    version: process.env.MCP_VERSION ?? '0.0.1',
+  };
+}
 
 async function bootstrap() {
+  // Async config resolution happens BEFORE the strategy is constructed.
+  const config = await loadConfigAsync();
+
+  const strategy = new McpStrategy({
+    name: config.name,
+    version: config.version,
+    transports: [
+      new StreamableHttpTransport({
+        statelessMode: true,
+        enableJsonResponse: true,
+      }),
+    ],
+  });
+
+  @Module({
+    controllers: [GreetingResource, GreetingTool, GreetingPrompt],
+    providers: [{ provide: MCP_STRATEGY, useValue: strategy }],
+  })
+  class AppModule {}
+
   const app = await NestFactory.create(AppModule);
+  strategy.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy });
+  await app.startAllMicroservices();
   await app.listen(3030);
 
-  console.log('MCP server (forRootAsync) started on port 3030');
+  console.log(`MCP server (async config) started on port 3030 as "${config.name}"`);
 }
 
 void bootstrap();

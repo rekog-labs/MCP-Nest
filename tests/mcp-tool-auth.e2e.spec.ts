@@ -1,42 +1,38 @@
 import { INestApplication, Injectable } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
-import { Tool } from '../src';
-import type { Context } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
+import { Ctx, Payload } from '@nestjs/microservices';
+import { McpContext, McpController, Tool } from '../src';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import { CanActivate, ExecutionContext } from '@nestjs/common';
-import { createSseClient } from './utils';
+import { bootstrapMcpApp, createSseClient } from './utils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
-// Mock authentication guard
-class MockAuthGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-
-    if (
-      request.headers.authorization &&
-      request.headers.authorization.includes('token-xyz')
-    ) {
-      request.user = {
-        id: 'user123',
-        name: 'Test User',
-        orgMemberships: [
-          {
-            orgId: 'org123',
-            organization: {
-              name: 'Auth Test Org',
-            },
+/**
+ * AUTHENTICATION for HTTP transports is now Express middleware, not a module
+ * guard. The middleware inspects the Authorization header, populates
+ * `req.user` on success, and replies 401 on failure — gating the MCP routes
+ * (including the SSE GET stream) the same way the old `guards: [MockAuthGuard]`
+ * did. Tools read the authenticated user via `@Ctx()` -> `getRawRequest().user`.
+ */
+const authMiddleware = (req: any, res: any, next: () => void) => {
+  const authorization = req.headers?.authorization;
+  if (authorization && authorization.includes('token-xyz')) {
+    req.user = {
+      id: 'user123',
+      name: 'Test User',
+      orgMemberships: [
+        {
+          orgId: 'org123',
+          organization: {
+            name: 'Auth Test Org',
           },
-        ],
-      };
-
-      return true;
-    }
-
-    return false;
+        },
+      ],
+    };
+    return next();
   }
-}
+  res.statusCode = 401;
+  res.end('Unauthorized');
+};
 
 // Mock user repository
 @Injectable()
@@ -58,7 +54,7 @@ class MockUserRepository {
 }
 
 // Greeting tool that uses the authentication context
-@Injectable()
+@McpController()
 export class AuthGreetingTool {
   constructor(private readonly userRepository: MockUserRepository) {}
 
@@ -69,10 +65,13 @@ export class AuthGreetingTool {
       name: z.string().default('World'),
     }),
   })
-  async sayHello({ name }, context: Context, request: Request & { user: any }) {
+  async sayHello(
+    @Payload() { name }: { name: string },
+    @Ctx() context: McpContext,
+  ) {
     // Access both repository data and the authenticated user context
     const repoUser = await this.userRepository.findOne();
-    const authUser = request.user; // Authenticated user from the request
+    const authUser = context.getRawRequest<{ user: any }>()?.user; // Authenticated user from the request
 
     // Construct greeting using both data sources
     const greeting = `Hello, ${name}! I'm ${authUser.name} from ${authUser.orgMemberships[0].organization.name}. Repository user is ${repoUser.name}.`;
@@ -102,28 +101,16 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   let testPort: number;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'test-auth-mcp-server',
-          version: '0.0.1',
-          // Specify the MockAuthGuard to protect the messages endpoint
-          guards: [MockAuthGuard],
-          capabilities: {
-            resources: {},
-            prompts: {},
-            tools: {},
-          },
-        }),
-      ],
-      providers: [AuthGreetingTool, MockUserRepository, MockAuthGuard],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
-
-    const server = app.getHttpServer();
-    testPort = server.address().port;
+    const bootstrapped = await bootstrapMcpApp({
+      name: 'test-auth-mcp-server',
+      controllers: [AuthGreetingTool],
+      providers: [MockUserRepository],
+      configure: (nestApp) => {
+        nestApp.use(authMiddleware);
+      },
+    });
+    app = bootstrapped.app;
+    testPort = bootstrapped.port;
   });
 
   afterAll(async () => {
@@ -187,7 +174,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should reject unauthenticated connections', async () => {
-    // Connection should be rejected
+    // Connection should be rejected by the auth middleware (401)
     let client: Client | undefined;
     try {
       client = await createSseClient(testPort, {
@@ -199,7 +186,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
       });
 
       // If we get here, the test should fail
-      fail('Connection should have been rejected');
+      throw new Error('Connection should have been rejected');
     } catch (error) {
       // We expect an error to be thrown when authentication fails
       expect(error).toBeDefined();

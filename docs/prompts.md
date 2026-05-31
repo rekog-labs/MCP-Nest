@@ -5,11 +5,11 @@ Prompts are reusable instruction templates that AI agents can use to guide conve
 ## Basic Prompt
 
 ```typescript
-import { Injectable, Scope } from '@nestjs/common';
-import { Prompt } from '@rekog/mcp-nest';
+import { McpController, Prompt } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 
-@Injectable({ scope: Scope.REQUEST })
+@McpController()
 export class GreetingPrompt {
   @Prompt({
     name: 'multilingual-greeting-guide',
@@ -19,7 +19,7 @@ export class GreetingPrompt {
       language: z.string().describe('The language to use for the greeting'),
     }),
   })
-  getGreetingInstructions({ name, language }) {
+  getGreetingInstructions(@Payload() { name, language }: { name: string; language: string }) {
     return {
       description: 'Greet users in their native languages!',
       messages: [
@@ -35,6 +35,8 @@ export class GreetingPrompt {
   }
 }
 ```
+
+Register the class in a module's `controllers` array (not `providers`) so NestJS scans it when the strategy is connected. See [Server Examples](server-examples.md) for the full bootstrap. The validated arguments arrive as the `@Payload()`; add `@Ctx() ctx: McpContext` if you need the execution context.
 
 ## Prompt Structure
 
@@ -56,7 +58,7 @@ Messages can have different roles:
     focusArea: z.string(),
   }),
 })
-getCodeReviewPrompt({ codeLanguage, focusArea }) {
+getCodeReviewPrompt(@Payload() { codeLanguage, focusArea }: { codeLanguage: string; focusArea: string }) {
   return {
     description: 'Guide for conducting thorough code reviews',
     messages: [
@@ -92,7 +94,7 @@ Create complex conversation flows:
     experience: z.string().describe('Years of experience'),
   }),
 })
-getInterviewGuide({ role, experience }) {
+getInterviewGuide(@Payload() { role, experience }: { role: string; experience: string }) {
   return {
     description: `Interview guide for ${role} position`,
     messages: [
@@ -171,7 +173,7 @@ Build prompts based on business logic:
     complexity: z.enum(['simple', 'medium', 'complex']),
   }),
 })
-getTaskPlannerPrompt({ task, complexity }) {
+getTaskPlannerPrompt(@Payload() { task, complexity }: { task: string; complexity: 'simple' | 'medium' | 'complex' }) {
   const baseMessage = `Plan the following task: ${task}`;
 
   const complexityInstructions = {

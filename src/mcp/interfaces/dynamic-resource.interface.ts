@@ -4,7 +4,7 @@ export type DynamicResourceHandler = (
   params: Record<string, unknown>,
   context: Context,
   request: any,
-) => Promise<any> | any;
+) => any;
 
 export interface DynamicResourceDefinition {
   /** URI that uniquely identifies this resource */

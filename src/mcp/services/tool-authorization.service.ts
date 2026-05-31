@@ -1,8 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { DiscoveredCapability } from './mcp-registry-discovery.service';
 import { ToolMetadata, SecurityScheme } from '../decorators/tool.decorator';
 import { JwtPayload } from '../../authz/services/jwt-token.service';
+
+/** Minimal shape the authorization logic needs: a capability carrying tool metadata. */
+export interface AuthorizableTool {
+  metadata: ToolMetadata;
+}
 
 /**
  * Service responsible for tool-level authorization logic
@@ -17,7 +21,7 @@ export class ToolAuthorizationService {
    * @returns Array of security schemes for the tool
    */
   generateSecuritySchemes(
-    tool: DiscoveredCapability<ToolMetadata>,
+    tool: AuthorizableTool,
     moduleHasGuards: boolean,
   ): SecurityScheme[] {
     const metadata = tool.metadata;
@@ -56,7 +60,7 @@ export class ToolAuthorizationService {
    */
   canAccessTool(
     user: JwtPayload | undefined,
-    tool: DiscoveredCapability<ToolMetadata>,
+    tool: AuthorizableTool,
     moduleHasGuards: boolean,
     allowUnauthenticatedAccess: boolean = false,
   ): boolean {
@@ -132,7 +136,7 @@ export class ToolAuthorizationService {
    */
   validateToolAccess(
     user: JwtPayload | undefined,
-    tool: DiscoveredCapability<ToolMetadata>,
+    tool: AuthorizableTool,
     moduleHasGuards: boolean,
     allowUnauthenticatedAccess: boolean = false,
   ): void {

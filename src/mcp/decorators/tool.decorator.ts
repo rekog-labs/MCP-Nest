@@ -1,7 +1,13 @@
-import { CanActivate, SetMetadata, Type } from '@nestjs/common';
+import {
+  applyDecorators,
+  CanActivate,
+  SetMetadata,
+  Type,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { ToolAnnotations as SdkToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { MCP_TOOL_METADATA_KEY } from './constants';
+import { mcpMessagePattern } from './mcp-message-pattern';
 
 /**
  * Security scheme type for MCP tools
@@ -51,5 +57,8 @@ export const Tool = (options: ToolOptions) => {
     options.parameters = z.object({});
   }
 
-  return SetMetadata(MCP_TOOL_METADATA_KEY, options);
+  return applyDecorators(
+    SetMetadata(MCP_TOOL_METADATA_KEY, options),
+    mcpMessagePattern('tool', options.name),
+  );
 };

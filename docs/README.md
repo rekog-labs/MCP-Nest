@@ -1,7 +1,8 @@
 ## Documentation
 
+- [Migration to the Strategy API](./migration-to-strategy.md) — Moving from `McpModule.forRoot(options)` to `McpStrategy` + `@McpController`.
 - [Tools Guide](./tools.md) — How to create and register tools.
-  - [Discovery and Registration of Tools](./tool-discovery-and-registration.md) — Automatic discovery and manual registration of tools.
+  - [Discovery and Registration of Tools](./tool-discovery-and-registration.md) — Automatic discovery via `@McpController` and runtime registration on the strategy.
   - [Dynamic Capabilities Guide](./dynamic-capabilities.md) — Register tools, resources, and prompts programmatically at runtime from databases or configuration.
   - [Per-Tool Authorization](./per-tool-authorization.md) — How to implement fine-grained authorization for individual tools.
 - [Server Examples](./server-examples.md) — Example server setups and configurations.
@@ -13,7 +14,7 @@
 
 ### Advanced Usage
 
-- [Custom Controllers](../playground/servers/custom-controllers/README.md) — Define your own controller and inject `McpStreamableHttpService` directly, for full control over endpoint paths, guards, interceptors, and middleware.
+- [Transports & endpoints](./migration-to-strategy.md#4-transports) — Configure `StreamableHttpTransport`/`SseTransport`/`StdioTransport` endpoints. HTTP transports mount their routes on the Nest HTTP adapter, so guards/interceptors/middleware apply via the standard NestJS RPC pipeline and `app.use(...)`.
 
 ### OAuth & Authorization
 
