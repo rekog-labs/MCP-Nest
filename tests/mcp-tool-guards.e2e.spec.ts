@@ -115,6 +115,24 @@ class OwnershipGuard implements CanActivate {
   }
 }
 
+/**
+ * Guard whose logic fails — it tries to use a context accessor that is not
+ * available in the RPC pipeline and throws. A throwing guard must deny the
+ * call (the old suite asserted such a tool was hidden at list time; native
+ * guards instead deny at call time).
+ */
+@Injectable()
+class ThrowingGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    // `getResponse()` returns no usable HTTP response in the RPC pipeline.
+    const res = context.switchToHttp().getResponse<unknown>();
+    if (!res || typeof (res as { status?: unknown }).status !== 'function') {
+      throw new Error('HTTP response is not available in the RPC pipeline');
+    }
+    return true;
+  }
+}
+
 const authMiddleware = (req: any, _res: any, next: () => void) => {
   const authHeader = req.headers?.authorization;
 
@@ -231,6 +249,16 @@ class GuardedTools {
   }
 
   @Tool({
+    name: 'bad-guard-tool',
+    description: 'Tool whose guard fails by accessing an unavailable context',
+    parameters: z.object({}),
+  })
+  @UseGuards(ThrowingGuard)
+  async badGuardTool() {
+    return { content: [{ type: 'text', text: 'Should never execute' }] };
+  }
+
+  @Tool({
     name: 'ownership-tool',
     description: 'Tool with an ownership guard that reads tool arguments',
     parameters: z.object({
@@ -279,6 +307,7 @@ describe('E2E: Tool Guards via native @UseGuards()', () => {
           AsyncGuard,
           ReflectorGuard,
           OwnershipGuard,
+          ThrowingGuard,
         ],
         transports: makeTransports(),
         // No module-level `guards`/`allowUnauthenticatedAccess`: gating here is
@@ -325,6 +354,25 @@ describe('E2E: Tool Guards via native @UseGuards()', () => {
 
         expect(toolNames).toContain('public-tool');
         expect(toolNames).toContain('authenticated-tool');
+        expect(toolNames).toContain('guarded-with-args');
+
+        await client.close();
+      });
+
+      it('should list all tools for admin user', async () => {
+        const client = await createClient(testPort, {
+          Authorization: 'Bearer admin-token',
+        });
+
+        const tools = await client.listTools();
+        const toolNames = tools.tools.map((t) => t.name);
+
+        // Native guards never filter listings, so every tool is visible.
+        expect(toolNames).toContain('public-tool');
+        expect(toolNames).toContain('authenticated-tool');
+        expect(toolNames).toContain('admin-tool');
+        expect(toolNames).toContain('multi-guard-tool');
+        expect(toolNames).toContain('async-guard-tool');
         expect(toolNames).toContain('guarded-with-args');
 
         await client.close();
@@ -491,6 +539,24 @@ describe('E2E: Tool Guards via native @UseGuards()', () => {
         });
         expect(userResult.isError).toBe(true);
         await userClient.close();
+      });
+
+      it('should deny execution when a guard throws (unavailable context method)', async () => {
+        const client = await createClient(testPort, {
+          Authorization: 'Bearer admin-token',
+        });
+
+        const result: any = await client.callTool({
+          name: 'bad-guard-tool',
+          arguments: {},
+        });
+        // The guard throws, so the call is denied rather than executing.
+        expect(result.isError).toBe(true);
+        expect(
+          (result.content as { type: string; text: string }[])[0].text,
+        ).not.toBe('Should never execute');
+
+        await client.close();
       });
 
       it('should pass arguments correctly to guarded tools', async () => {

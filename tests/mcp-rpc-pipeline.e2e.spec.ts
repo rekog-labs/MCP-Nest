@@ -11,7 +11,8 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { Payload, RpcExceptionFilter } from '@nestjs/microservices';
+import { RpcExceptionFilter } from '@nestjs/common';
+import { Payload } from '@nestjs/microservices';
 import { Observable, of, map } from 'rxjs';
 import { z } from 'zod';
 import {

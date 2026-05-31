@@ -94,3 +94,51 @@ describe('MCP under a prefixed endpoint (e2e)', () => {
     ).rejects.toThrow();
   });
 });
+
+// The old suite served MCP under a global prefix *and* a module-level
+// `apiPrefix` (e.g. `/api/service/custom/mcp`). Both options are gone; the
+// equivalent is simply a deeper endpoint path, which works the same way.
+const nestedEndpoint = '/api/service/custom/mcp';
+
+describe('MCP under a deeply-nested endpoint (e2e)', () => {
+  let app: INestApplication;
+  let port: number;
+
+  beforeAll(async () => {
+    const bootstrap = await bootstrapMcpApp({
+      name: 'prefix-mcp-server',
+      controllers: [Tools],
+      transports: [
+        new StreamableHttpTransport({
+          endpoint: nestedEndpoint,
+          statelessMode: false,
+        }),
+      ],
+    });
+    app = bootstrap.app;
+    port = bootstrap.port;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('should reach MCP under the deeply-nested endpoint', async () => {
+    const client = await createStreamableClient(port, {
+      endpoint: nestedEndpoint,
+    });
+    try {
+      const tools = await client.listTools();
+      expect(tools.tools.length).toBe(1);
+      expect(tools.tools[0].name).toBe('tool');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('should not be reachable at a shallower path', async () => {
+    await expect(
+      createStreamableClient(port, { endpoint: '/api/mcp' }),
+    ).rejects.toThrow();
+  });
+});

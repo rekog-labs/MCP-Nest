@@ -162,14 +162,14 @@ describe('E2E: McpStrategy capabilities', () => {
   it('reads a static resource', async () => {
     const client = await createStreamableClient(port);
     const res = await client.readResource({ uri: 'mcp://greeting' });
-    expect(res.contents[0].text).toBe('Hello World');
+    expect((res.contents[0] as { text: string }).text).toBe('Hello World');
     await client.close();
   });
 
   it('reads a resource template with extracted params', async () => {
     const client = await createStreamableClient(port);
     const res = await client.readResource({ uri: 'mcp://greeting/Alice' });
-    expect(res.contents[0].text).toBe('Hello Alice');
+    expect((res.contents[0] as { text: string }).text).toBe('Hello Alice');
     await client.close();
   });
 
@@ -179,7 +179,9 @@ describe('E2E: McpStrategy capabilities', () => {
       name: 'greeting-prompt',
       arguments: { name: 'Carol' },
     });
-    expect(res.messages[0].content.text).toBe('Hello Carol');
+    expect((res.messages[0].content as { text: string }).text).toBe(
+      'Hello Carol',
+    );
     await client.close();
   });
 

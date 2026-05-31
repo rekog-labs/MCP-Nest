@@ -329,6 +329,18 @@ describe('E2E: MCP ToolServer', () => {
         }
       });
 
+      it('should list tools without outputSchema', async () => {
+        const client = await clientCreator(port);
+        try {
+          const tools = await client.listTools();
+          const helloTool = tools.tools.find((t) => t.name === 'hello-world');
+          expect(helloTool).toBeDefined();
+          expect(helloTool?.outputSchema).not.toBeDefined();
+        } finally {
+          await client.close();
+        }
+      });
+
       it('should list tools with annotations', async () => {
         const client = await clientCreator(port);
         try {
@@ -443,6 +455,25 @@ describe('E2E: MCP ToolServer', () => {
         }
       });
 
+      it('should validate wrong parameter types', async () => {
+        const client = await clientCreator(port);
+        try {
+          const result: any = await client.callTool({
+            name: 'validation-test-tool',
+            arguments: {
+              requiredString: 123, // wrong type
+              requiredNumber: 'not a number', // wrong type
+            } as any,
+          });
+          expect(result.isError).toBe(true);
+          expect(result.content[0].text).toContain('Invalid parameters:');
+          expect(result.content[0].text).toContain('[requiredString]');
+          expect(result.content[0].text).toContain('[requiredNumber]');
+        } finally {
+          await client.close();
+        }
+      });
+
       it('should call the tool and receive a graceful error result', async () => {
         const client = await clientCreator(port);
         try {
@@ -506,6 +537,20 @@ describe('E2E: MCP ToolServer', () => {
     clientCreator: (port: number, options?: any) => Promise<Client>,
   ) => {
     describe(`Elicitation tests using ${clientType} client`, () => {
+      it('should list hello-world-elicitation tool', async () => {
+        const client = await clientCreator(statefulServerPort);
+        try {
+          const tools = await client.listTools();
+          const elicitationTool = tools.tools.find(
+            (t) => t.name === 'hello-world-elicitation',
+          );
+          expect(elicitationTool).toBeDefined();
+          expect(elicitationTool?.description).toContain('progress updates');
+        } finally {
+          await client.close();
+        }
+      });
+
       it('should handle elicitation in hello-world-elicitation tool', async () => {
         const client = await clientCreator(statefulServerPort);
         try {
@@ -527,6 +572,21 @@ describe('E2E: MCP ToolServer', () => {
             name: 'hello-world-elicitation',
             arguments: { name: 'TestUser' },
           });
+          expect(result.content[0].text).toContain('Hello, TestUser!');
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should handle cancelled elicitation gracefully', async () => {
+        const client = await clientCreator(statefulServerPort);
+        client.setRequestHandler(ElicitRequestSchema, () => ({ action: 'cancel' }));
+        try {
+          const result: any = await client.callTool({
+            name: 'hello-world-elicitation',
+            arguments: { name: 'TestUser' },
+          });
+          // Falls back to the default surname when elicitation is cancelled.
           expect(result.content[0].text).toContain('Hello, TestUser!');
         } finally {
           await client.close();
