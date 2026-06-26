@@ -9,9 +9,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { McpController, Tool } from '../src';
 import {
-  createSseClient,
+  createStreamableClient,
   McpStrategy,
-  SseTransport,
   StreamableHttpTransport,
 } from './utils';
 
@@ -51,11 +50,7 @@ describe('E2E: MCP Version', () => {
     const strategy = new McpStrategy({
       name: 'test-mcp-server',
       version: '0.0.1',
-      guards: [],
-      transports: [
-        new StreamableHttpTransport({ statelessMode: false }),
-        new SseTransport(),
-      ],
+      transports: [new StreamableHttpTransport({ statelessMode: false })],
     });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -83,8 +78,8 @@ describe('E2E: MCP Version', () => {
     await app.close();
   });
 
-  it('should access SSE endpoint without version prefix', async () => {
-    const client = await createSseClient(testPort);
+  it('should access the MCP endpoint without version prefix', async () => {
+    const client = await createStreamableClient(testPort);
     const tools = await client.listTools();
 
     expect(tools.tools.length).toBe(1);
@@ -92,7 +87,7 @@ describe('E2E: MCP Version', () => {
   });
 
   it('should report the configured server name and version', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
     const serverInfo = client.getServerVersion();
     expect(serverInfo?.name).toBe('test-mcp-server');
     expect(serverInfo?.version).toBe('0.0.1');

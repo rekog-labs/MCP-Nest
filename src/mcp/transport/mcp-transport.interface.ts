@@ -38,7 +38,7 @@ export interface McpTransportContext {
 }
 
 /**
- * A single MCP integration (stdio, streamable-HTTP, or SSE). Implementations
+ * A single MCP integration (stdio or streamable-HTTP). Implementations
  * are plain objects the user constructs and passes via {@link McpServerOptions.transports}.
  */
 export interface McpTransport {

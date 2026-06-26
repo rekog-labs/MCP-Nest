@@ -33,18 +33,29 @@ Example tool definition:
 
 ## How authorization works
 
-Because MCP HTTP routes are mounted on the Nest HTTP adapter (not as Nest
-controllers), authentication is applied with **Express middleware** rather than a
-module guard. The middleware validates the incoming token and, on success, sets
-`req.user`. Per-tool authorization is then enforced by the built-in
-`ToolAuthorizationService`, which reads `req.user` and evaluates the
-`@PublicTool()`, `@ToolScopes()`, and `@ToolRoles()` decorators on each tool.
+There are two complementary layers, and it helps to keep them separate:
 
+1. **Authentication / enforcement** — *who is this caller, and may they run this
+   tool at all?* This is the server's job, done either with standard NestJS
+   `@UseGuards()` on `@McpController` classes/methods (they run inside the RPC
+   pipeline at *call time*) or with Express middleware on the MCP HTTP routes
+   that validates the token and sets `req.user`.
+2. **Per-tool visibility / filtering** — *which tools should a known principal
+   see and be allowed to call?* This is what the built-in
+   `ToolAuthorizationService` does: it reads `req.user` and evaluates the
+   `@PublicTool()`, `@ToolScopes()`, and `@ToolRoles()` decorators on each tool,
+   filtering `tools/list` and rejecting unauthorized `tools/call`.
+
+Notes:
+
+- There is **no module-level `guards` option** on `McpStrategy`. Use
+  `@UseGuards()` (call-time enforcement) and/or auth middleware (sets `req.user`,
+  which list-time filtering needs) instead.
 - The OAuth `McpAuthModule` still provides the OAuth 2.1 controllers
   (`/register`, `/authorize`, `/token`, `.well-known/*`) — it is unchanged.
-- The `allowUnauthenticatedAccess` flag and the per-tool decorators are passed to
-  the `McpStrategy` constructor (along with a `guards` array that signals the
-  module "has guards"). See the [E2E test](../tests/mcp-per-tool-auth.e2e.spec.ts).
+- `allowUnauthenticatedAccess` (freemium) and the per-tool decorators are passed
+  to the `McpStrategy` constructor. See the
+  [E2E test](../tests/mcp-per-tool-auth.e2e.spec.ts).
 
 ## Basic Setup
 
@@ -62,7 +73,6 @@ import { NestFactory } from '@nestjs/core';
 import {
   McpStrategy,
   StreamableHttpTransport,
-  SseTransport,
 } from '@rekog/mcp-nest';
 import {
   McpAuthModule,
@@ -71,18 +81,10 @@ import {
 } from '@rekog/mcp-nest';
 import { MyTools } from './my-tools';
 
-// A non-empty `guards` array marks the module as "having guards", which the
-// freemium (allowUnauthenticatedAccess) logic depends on.
-class AuthGate { canActivate() { return true; } }
-
 const mcp = new McpStrategy({
   name: 'my-mcp-server',
   version: '1.0.0',
-  transports: [
-    new StreamableHttpTransport({ statelessMode: false }),
-    new SseTransport(),
-  ],
-  guards: [AuthGate],
+  transports: [new StreamableHttpTransport({ statelessMode: false })],
   // allowUnauthenticatedAccess: true, // enable @PublicTool() access (see below)
 });
 
@@ -108,7 +110,7 @@ async function bootstrap() {
 
   // Gate only the MCP transport routes; leave the OAuth endpoints open.
   const jwt = app.get(JwtTokenService);
-  const mcpRoutes = ['/mcp', '/sse', '/messages'];
+  const mcpRoutes = ['/mcp'];
   app.use((req: any, res: any, next: () => void) => {
     const path: string = req.path ?? req.url ?? '';
     const isMcpRoute = mcpRoutes.some(
@@ -162,7 +164,6 @@ const mcp = new McpStrategy({
   name: 'my-mcp-server',
   version: '1.0.0',
   transports: [new StreamableHttpTransport({ statelessMode: false })],
-  guards: [AuthGate],
   allowUnauthenticatedAccess: true, // Enable public tool access
 });
 ```
@@ -194,7 +195,7 @@ export class MyTools {
     return { content: [{ type: 'text', text: `Public search results for: ${query}` }] };
   }
 
-  // Protected tool - requires authentication (module has guards)
+  // Protected tool - requires an authenticated user (set by your guard/middleware)
   @Tool({
     name: 'user-profile',
     description: 'Get user profile',

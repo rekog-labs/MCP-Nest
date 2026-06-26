@@ -27,7 +27,6 @@ import { firstValueFrom } from 'rxjs';
 import { z, ZodType } from 'zod';
 
 import {
-  MCP_GUARDS_METADATA_KEY,
   MCP_PROMPT_METADATA_KEY,
   MCP_PUBLIC_METADATA_KEY,
   MCP_RESOURCE_METADATA_KEY,
@@ -135,10 +134,6 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   /** Provide the Nest HTTP adapter for HTTP transports (call after NestFactory.create). */
   setHttpAdapter(adapter: HttpServer): void {
     this.httpAdapter = adapter;
-  }
-
-  private get moduleHasGuards(): boolean {
-    return (this.options.guards?.length ?? 0) > 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -272,11 +267,9 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       MCP_ROLES_METADATA_KEY,
       methodRef,
     );
-    const guards = Reflect.getMetadata(MCP_GUARDS_METADATA_KEY, methodRef);
     if (isPublic !== undefined) base.isPublic = isPublic;
     if (requiredScopes) base.requiredScopes = requiredScopes;
     if (requiredRoles) base.requiredRoles = requiredRoles;
-    if (guards) base.guards = guards;
     return base;
   }
 
@@ -388,7 +381,6 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   ): void {
     if (this.getTools().length === 0) return;
 
-    const effectiveModuleHasGuards = rawRequest ? this.moduleHasGuards : false;
     const allowUnauthenticatedAccess =
       this.options.allowUnauthenticatedAccess ?? false;
 
@@ -399,7 +391,6 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           this.authService.canAccessTool(
             user,
             tool,
-            effectiveModuleHasGuards,
             allowUnauthenticatedAccess,
           ),
         )
@@ -412,7 +403,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           };
           const securitySchemes = this.authService.generateSecuritySchemes(
             tool,
-            effectiveModuleHasGuards,
+            allowUnauthenticatedAccess,
           );
           if (securitySchemes.length > 0) {
             schema._meta = { ...(schema._meta as object), securitySchemes };
@@ -445,7 +436,6 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       this.authService.validateToolAccess(
         this.getUser(rawRequest),
         tool,
-        effectiveModuleHasGuards,
         allowUnauthenticatedAccess,
       );
 
@@ -620,13 +610,29 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     return { content: defaultContent };
   }
 
+  /**
+   * Turn an error thrown while invoking a tool into a result the calling agent
+   * can act on.
+   *
+   * We deliberately surface the most specific message available so the agent can
+   * tell *why* the call failed and whether retrying makes sense:
+   *
+   * - `McpError` is re-thrown so the SDK emits a real JSON-RPC error with its
+   *   code (e.g. invalid params, output-schema mismatch).
+   * - Errors raised intentionally for the client — `throw new RpcException('…')`
+   *   or anything surfaced by a `@UseFilters` exception filter — carry an
+   *   explicit message/payload, which we return verbatim as an `isError` result.
+   * - Unexpected errors (`throw new Error('boom')` in a handler) are masked to a
+   *   generic "Internal server error" by NestJS's default RPC exception handler
+   *   *before* they reach here. That is intentional (don't leak internals); to
+   *   surface a custom message, throw `RpcException` or register the exported
+   *   `McpExceptionFilter`. Either way the agent gets `isError: true` and knows
+   *   the failure is server-side, not a bad-input problem it can fix by retrying.
+   */
   private toErrorResult(error: unknown): any {
     if (error instanceof McpError) {
       throw error;
     }
-    // Plain (unknown) errors are masked to a generic message by the NestJS RPC
-    // exception handler before reaching here. RpcException-derived errors carry
-    // an explicit string/object payload that we surface to the client.
     let message = 'Internal server error';
     if (error instanceof Error) {
       message = error.message;
@@ -637,6 +643,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       typeof error === 'object' &&
       typeof (error as { message?: unknown }).message === 'string'
     ) {
+      // RpcException payloads arrive as `{ status: 'error', message: '…' }`.
       message = (error as { message: string }).message;
     }
     this.logger.error(message);

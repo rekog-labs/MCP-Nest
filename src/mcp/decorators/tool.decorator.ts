@@ -1,9 +1,4 @@
-import {
-  applyDecorators,
-  CanActivate,
-  SetMetadata,
-  Type,
-} from '@nestjs/common';
+import { applyDecorators, SetMetadata } from '@nestjs/common';
 import { z } from 'zod';
 import { ToolAnnotations as SdkToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { MCP_TOOL_METADATA_KEY } from './constants';
@@ -28,7 +23,6 @@ export interface ToolMetadata {
   isPublic?: boolean;
   requiredScopes?: string[];
   requiredRoles?: string[];
-  guards?: Type<CanActivate>[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

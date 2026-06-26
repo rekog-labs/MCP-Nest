@@ -9,7 +9,6 @@ import {
   GitHubOAuthProvider,
   McpAuthModule,
   McpStrategy,
-  SseTransport,
   StreamableHttpTransport,
 } from '@rekog/mcp-nest';
 import { GreetingPrompt } from '../resources/greeting.prompt';
@@ -30,10 +29,7 @@ const allowUnauthenticatedAccess =
 const strategy = new McpStrategy({
   name: 'playground-mcp-server',
   version: '0.0.1',
-  transports: [
-    new StreamableHttpTransport({ statelessMode: false }),
-    new SseTransport(),
-  ],
+  transports: [new StreamableHttpTransport({ statelessMode: false })],
   allowUnauthenticatedAccess,
 });
 
@@ -91,7 +87,7 @@ class AppModule {}
 
 // Only gate the MCP transport routes; the OAuth controller endpoints
 // (/auth/*, /.well-known/*) must stay open so the handshake can run.
-const MCP_ROUTE_PREFIXES = ['/mcp', '/sse', '/messages'];
+const MCP_ROUTE_PREFIXES = ['/mcp'];
 
 function mcpAuthMiddleware(req: any, res: any, next: () => void) {
   const path: string = req.path ?? req.url ?? '';

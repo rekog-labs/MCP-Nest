@@ -8,20 +8,6 @@ A quick-start environment for testing and exploring MCP-Nest features without bu
 
 MCP Inspector provides a web-based UI to interact with your MCP server - perfect for testing tools, resources, and prompts visually.
 
-#### For HTTP+SSE Transport (Stateful Server)
-
-```bash
-# 1. Start the stateful server
-npx ts-node-dev --respawn ./playground/servers/server-stateful.ts
-
-# 2. Launch MCP Inspector
-npx @modelcontextprotocol/inspector
-
-# 3. In your browser at http://127.0.0.1:6274:
-#    - Set Transport Type to: SSE
-#    - Set URL to: http://localhost:3030/sse
-```
-
 #### For Streamable HTTP Transport
 
 ```bash
@@ -65,9 +51,6 @@ npx ts-node-dev --respawn ./playground/servers/server-stateless.ts
 # Then run a client:
 # For Streamable HTTP
 npx ts-node-dev --respawn ./playground/clients/http-streamable-client.ts
-
-# For HTTP+SSE (stateful server only)
-npx ts-node-dev --respawn ./playground/clients/http-sse.ts
 
 # For STDIO
 npx ts-node-dev --respawn ./playground/clients/stdio-client.ts

@@ -9,20 +9,34 @@ export interface AuthorizableTool {
 }
 
 /**
- * Service responsible for tool-level authorization logic
+ * Per-tool authorization.
+ *
+ * This service powers `tools/list` filtering and the `tools/call` access check
+ * based purely on the per-tool decorators (`@PublicTool()`, `@ToolScopes()`,
+ * `@ToolRoles()`) and the user resolved off the raw request (`req.user`, set by
+ * a guard or by transport-level auth middleware).
+ *
+ * It is intentionally NOT an authentication mechanism: real enforcement is the
+ * job of standard NestJS `@UseGuards()` (which run inside the RPC pipeline at
+ * call time) and/or auth middleware on the HTTP routes. This service only
+ * decides which tools a *known* principal may see and invoke.
  */
 @Injectable()
 export class ToolAuthorizationService {
   /**
-   * Generate security schemes for a tool based on its metadata and module configuration
+   * Generate security schemes for a tool, advertised to clients (e.g. ChatGPT)
+   * via the OpenAI `securitySchemes` spec so they know which tools need auth.
    *
    * @param tool - The discovered tool
-   * @param moduleHasGuards - Whether the module has guards configured
+   * @param freemiumMode - Whether the server runs in freemium mode
+   *   (`allowUnauthenticatedAccess`). In freemium mode an undecorated,
+   *   non-public tool still requires authentication, so it is advertised as
+   *   `oauth2`.
    * @returns Array of security schemes for the tool
    */
   generateSecuritySchemes(
     tool: AuthorizableTool,
-    moduleHasGuards: boolean,
+    freemiumMode: boolean,
   ): SecurityScheme[] {
     const metadata = tool.metadata;
     const schemes: SecurityScheme[] = [];
@@ -36,8 +50,12 @@ export class ToolAuthorizationService {
     if (metadata.requiredScopes && metadata.requiredScopes.length > 0) {
       schemes.push({ type: 'oauth2', scopes: metadata.requiredScopes });
     }
-    // Else if module has guards and tool is not public, require oauth2
-    else if (moduleHasGuards && !metadata.isPublic) {
+    // Else if tool requires specific roles, advertise that auth is needed
+    else if (metadata.requiredRoles && metadata.requiredRoles.length > 0) {
+      schemes.push({ type: 'oauth2' });
+    }
+    // Else, in freemium mode a non-public tool still requires authentication
+    else if (freemiumMode && !metadata.isPublic) {
       schemes.push({ type: 'oauth2' });
     }
 
@@ -50,18 +68,16 @@ export class ToolAuthorizationService {
   }
 
   /**
-   * Check if a user can access a tool based on security requirements
+   * Check if a user can access a tool based on its per-tool requirements.
    *
    * @param user - The authenticated user (may be undefined)
    * @param tool - The discovered tool
-   * @param moduleHasGuards - Whether the module has guards configured
    * @param allowUnauthenticatedAccess - Whether unauthenticated access is allowed (freemium mode)
-   * @returns true if user can access the tool, false otherwise
+   * @returns true if the user can access the tool, false otherwise
    */
   canAccessTool(
     user: JwtPayload | undefined,
     tool: AuthorizableTool,
-    moduleHasGuards: boolean,
     allowUnauthenticatedAccess: boolean = false,
   ): boolean {
     const metadata = tool.metadata;
@@ -94,50 +110,33 @@ export class ToolAuthorizationService {
       }
     }
 
-    // At this point:
-    // - Tool is not public
-    // - Tool has no specific scope/role requirements (or they passed)
+    // At this point the tool is not public and has no (or satisfied) scope/role
+    // requirements. The only remaining question is the undecorated tool:
     //
-    // Decision logic based on allowUnauthenticatedAccess:
-    //
-    // allowUnauthenticatedAccess = false (default, standard auth mode):
-    // - Guards are expected to fully authorize requests (via JWT, API keys, etc)
-    // - If guard let request through AND there's no user object:
-    //   * Guard used non-JWT auth mechanism (API key, IP whitelist, etc)
-    //   * Trust the guard's decision to authorize
-    // - If no guards configured, allow access (no auth required)
-    //
-    // allowUnauthenticatedAccess = true (freemium mode):
-    // - Guards may let unauthenticated requests through for per-tool auth
-    // - Only @PublicTool or tools with specific scopes/roles accessible
-    // - Tools without decorators require authentication (user must be present)
-    //
-    if (allowUnauthenticatedAccess && moduleHasGuards && !user) {
-      // Freemium mode: unauthenticated access only for @PublicTool or specific scopes
-      // This tool has no decorators, so it requires authentication
+    // - Freemium mode (allowUnauthenticatedAccess = true): anonymous callers may
+    //   only reach @PublicTool() (or specifically-scoped) tools, so an
+    //   undecorated tool requires a user.
+    // - Standard mode (default): real enforcement is delegated to @UseGuards /
+    //   auth middleware, so we trust that decision and allow access. (On stdio
+    //   there is no request and no user — all undecorated tools are reachable.)
+    if (allowUnauthenticatedAccess && !user) {
       return false;
     }
 
-    // Standard mode: If we're here, either:
-    // - No guards (open access)
-    // - Guards authorized it (trust guard decision, even without user object)
-    // - User is present and passed all checks
     return true;
   }
 
   /**
-   * Validate that a user can access a tool, throwing an error if not authorized
+   * Validate that a user can access a tool, throwing an error if not authorized.
    *
    * @param user - The authenticated user (may be undefined)
    * @param tool - The discovered tool
-   * @param moduleHasGuards - Whether the module has guards configured
    * @param allowUnauthenticatedAccess - Whether unauthenticated access is allowed (freemium mode)
    * @throws McpError if user is not authorized to access the tool
    */
   validateToolAccess(
     user: JwtPayload | undefined,
     tool: AuthorizableTool,
-    moduleHasGuards: boolean,
     allowUnauthenticatedAccess: boolean = false,
   ): void {
     const metadata = tool.metadata;
@@ -180,37 +179,14 @@ export class ToolAuthorizationService {
       }
     }
 
-    // At this point:
-    // - Tool is not public
-    // - Tool has no specific scope/role requirements (or they passed)
-    //
-    // Decision logic based on allowUnauthenticatedAccess:
-    //
-    // allowUnauthenticatedAccess = false (default, standard auth mode):
-    // - Guards are expected to fully authorize requests (via JWT, API keys, etc)
-    // - If guard let request through AND there's no user object:
-    //   * Guard used non-JWT auth mechanism (API key, IP whitelist, etc)
-    //   * Trust the guard's decision to authorize
-    // - If no guards configured, allow access (no auth required)
-    //
-    // allowUnauthenticatedAccess = true (freemium mode):
-    // - Guards may let unauthenticated requests through for per-tool auth
-    // - Only @PublicTool or tools with specific scopes/roles accessible
-    // - Tools without decorators require authentication (user must be present)
-    //
-    if (allowUnauthenticatedAccess && moduleHasGuards && !user) {
-      // Freemium mode: unauthenticated access only for @PublicTool or specific scopes
-      // This tool has no decorators, so it requires authentication
+    // Freemium mode: an undecorated, non-public tool still requires a user.
+    // Standard mode trusts @UseGuards / auth middleware (see canAccessTool).
+    if (allowUnauthenticatedAccess && !user) {
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Tool '${toolName}' requires authentication`,
       );
     }
-
-    // Standard mode: If we're here, either:
-    // - No guards (open access)
-    // - Guards authorized it (trust guard decision, even without user object)
-    // - User is present and passed all checks
   }
 
   /**

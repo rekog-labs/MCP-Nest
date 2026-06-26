@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { Context, McpRequest, SerializableValue } from '../interfaces';
 
-export type McpTransportKind = 'stdio' | 'streamable-http' | 'sse';
+export type McpTransportKind = 'stdio' | 'streamable-http';
 
 export interface McpSessionInfo {
   /** The MCP session id, when the transport is session-aware. */
@@ -13,8 +13,8 @@ export interface McpSessionInfo {
   transport: McpTransportKind;
   /**
    * `true` only for the per-request streamable-HTTP stateless mode, where the
-   * server cannot push notifications/progress back to the client. stdio, SSE
-   * and stateful streamable-HTTP are all session-aware (`false`).
+   * server cannot push notifications/progress back to the client. stdio and
+   * stateful streamable-HTTP are both session-aware (`false`).
    */
   stateless: boolean;
 }

@@ -44,7 +44,7 @@ await app.listen(3000);
 export const mcp = new McpStrategy({
   name: 'srv',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport({ statelessMode: false }), new SseTransport()],
+  transports: [new StreamableHttpTransport({ statelessMode: false })],
 });
 
 @Module({
@@ -172,13 +172,15 @@ is enabled in `tsconfig.json`. A constraint violation returns
 
 ```typescript
 new StreamableHttpTransport({ endpoint: '/mcp', statelessMode: false, enableJsonResponse: false });
-new SseTransport({ sseEndpoint: '/sse', messagesEndpoint: '/messages' });
 new StdioTransport();
 ```
 
-- HTTP transports mount their routes on the Nest HTTP adapter — there is no
+> The legacy **HTTP+SSE** transport has been removed. Use Streamable HTTP (the
+> current MCP HTTP transport) or stdio.
+
+- The HTTP transport mounts its routes on the Nest HTTP adapter — there is no
   longer an `apiPrefix`/global-prefix mechanism for MCP; set the `endpoint`
-  (or `sseEndpoint`/`messagesEndpoint`) directly.
+  directly (a deeper path like `/api/service/mcp` works the same way).
 - STDIO is session-aware now, so it supports progress and logging. Disable
   logging on stdio servers (`logging: false` + `{ logger: false }`) since stdout
   carries the protocol.
@@ -212,25 +214,36 @@ the NestJS pipeline (no guards/pipes/interceptors).
 ## 6. Authentication & authorization
 
 Because MCP HTTP routes are mounted on the adapter (not as Nest controllers),
-Nest controller/module guards no longer gate them at the HTTP layer.
+Nest controller/module guards no longer gate them at the HTTP layer. There is
+also **no `guards` option on `McpStrategy`** (and no fake "AuthGate" idiom) — it
+has been removed.
 
 - **Authenticate** with Express middleware that sets `req.user` (and rejects with
-  401 when appropriate). The bespoke `ToolAuthorizationService` reads
-  `req.user` to enforce `@PublicTool`, `@ToolScopes`, and `@ToolRoles`.
+  401 when appropriate). The built-in `ToolAuthorizationService` reads `req.user`
+  to filter `tools/list` and gate `tools/call` against `@PublicTool`,
+  `@ToolScopes`, and `@ToolRoles` (plus the `allowUnauthenticatedAccess`
+  freemium flag).
 - **Enforce** per-tool access with standard `@UseGuards()` on the
-  `@McpController` class or method — these run inside the RPC pipeline. In a
-  guard, use `context.switchToRpc().getContext<McpContext>()` and
+  `@McpController` class or method — these run inside the RPC pipeline at call
+  time. In a guard, use `context.switchToRpc().getContext<McpContext>()` and
   `.getRawRequest()`.
-- `@ToolGuards()` is no longer evaluated by the strategy — replace it with
-  `@UseGuards()`.
+- `@ToolGuards()` has been **removed** (it had become a silent no-op) — use
+  native `@UseGuards()` instead.
 
 ## 7. Behavioral changes to be aware of
 
-- **Unknown errors are masked.** A tool that throws a plain `Error` (or even an
-  `McpError`) inside the pipeline returns a graceful `{ isError: true }` with a
-  generic message, because NestJS's RPC exception handler masks unknown errors.
-  To surface a custom message/shape, throw `RpcException` or use `@UseFilters()`
-  with an `RpcExceptionFilter` that returns the desired result.
+- **Unknown errors are masked; actionable ones are not.** A tool that throws a
+  plain `Error` (or even an `McpError`) inside the pipeline returns a graceful
+  `{ isError: true }` with a generic "Internal server error" message, because
+  NestJS's RPC exception handler masks unknown errors before the strategy sees
+  them (this avoids leaking internals). Input/parameter problems are different:
+  Zod validation returns a clear `Invalid parameters: …` result, so the agent
+  knows to fix its input. To surface a custom, client-facing message for other
+  failures, either:
+  - `throw new RpcException('…')` (its payload is passed through unmasked), or
+  - register the library's `McpExceptionFilter` (exported from `@rekog/mcp-nest`)
+    via `{ provide: APP_FILTER, useClass: McpExceptionFilter }` or `@UseFilters`,
+    which surfaces the original error message instead of masking it.
 - **Request scoping:** `@Inject(REQUEST)` in a request-scoped tool resolves to the
   RPC request context, not the raw HTTP request. Read headers/user via
   `ctx.getRawRequest()`.
@@ -238,5 +251,7 @@ Nest controller/module guards no longer gate them at the HTTP layer.
   `McpRegistryDiscoveryService` (capability metadata is now read directly off the
   decorated method), `McpRegistryService`, the
   `createStreamableHttpController`/`createSseController` factories, the
-  `StdioService`, and the module options `transport`, `apiPrefix`,
-  `sseEndpoint`, `messagesEndpoint`, `mcpEndpoint`, and `streamableHttp`.
+  `StdioService`, the **`SseTransport` (HTTP+SSE) transport**, the
+  **`guards` option** on `McpStrategy`, the **`@ToolGuards()` decorator**, and
+  the module options `transport`, `apiPrefix`, `sseEndpoint`, `messagesEndpoint`,
+  `mcpEndpoint`, and `streamableHttp`.

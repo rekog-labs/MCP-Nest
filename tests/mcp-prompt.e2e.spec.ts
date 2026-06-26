@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
 import { McpController, Prompt } from '../src';
-import { bootstrapMcpApp, createSseClient } from './utils';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { z } from 'zod';
 
 @McpController()
@@ -47,7 +47,7 @@ describe('E2E: MCP Prompt Server', () => {
   });
 
   it('should list prompts', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
     const prompts = await client.listPrompts();
 
     expect(prompts.prompts.find((p) => p.name === 'hello-world')).toEqual({
@@ -66,7 +66,7 @@ describe('E2E: MCP Prompt Server', () => {
   });
 
   it('should call the dynamic resource', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     const result: any = await client.getPrompt({
       name: 'hello-world',
@@ -80,7 +80,7 @@ describe('E2E: MCP Prompt Server', () => {
   });
 
   it('should validate the arguments', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     try {
       await client.getPrompt({

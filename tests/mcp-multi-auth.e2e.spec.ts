@@ -4,7 +4,6 @@ import { Payload } from '@nestjs/microservices';
 import {
   McpController,
   McpStrategy,
-  SseTransport,
   StreamableHttpTransport,
   Tool,
 } from '../src';
@@ -126,7 +125,7 @@ describe('E2E: Multiple McpAuthModule instances', () => {
     });
 
     // Each MCP server is now a microservice transport strategy with its own
-    // distinct HTTP routes (replacing the old mcpEndpoint/sseEndpoint options).
+    // distinct HTTP route (replacing the old mcpEndpoint option).
     const strategyA = new McpStrategy({
       name: 'server-a',
       version: '0.0.1',
@@ -134,10 +133,6 @@ describe('E2E: Multiple McpAuthModule instances', () => {
         new StreamableHttpTransport({
           endpoint: '/servers/a/mcp',
           statelessMode: false,
-        }),
-        new SseTransport({
-          sseEndpoint: '/servers/a/sse',
-          messagesEndpoint: '/servers/a/messages',
         }),
       ],
     });
@@ -149,10 +144,6 @@ describe('E2E: Multiple McpAuthModule instances', () => {
         new StreamableHttpTransport({
           endpoint: '/servers/b/mcp',
           statelessMode: false,
-        }),
-        new SseTransport({
-          sseEndpoint: '/servers/b/sse',
-          messagesEndpoint: '/servers/b/messages',
         }),
       ],
     });

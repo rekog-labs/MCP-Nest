@@ -3,15 +3,15 @@ import { z } from 'zod';
 import { Ctx, Payload } from '@nestjs/microservices';
 import { McpContext, McpController, Tool } from '../src';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import { bootstrapMcpApp, createSseClient } from './utils';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 /**
  * AUTHENTICATION for HTTP transports is now Express middleware, not a module
  * guard. The middleware inspects the Authorization header, populates
  * `req.user` on success, and replies 401 on failure — gating the MCP routes
- * (including the SSE GET stream) the same way the old `guards: [MockAuthGuard]`
- * did. Tools read the authenticated user via `@Ctx()` -> `getRawRequest().user`.
+ * the same way the old `guards: [MockAuthGuard]` did. Tools read the
+ * authenticated user via `@Ctx()` -> `getRawRequest().user`.
  */
 const authMiddleware = (req: any, res: any, next: () => void) => {
   const authorization = req.headers?.authorization;
@@ -118,7 +118,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should list tools', async () => {
-    const client = await createSseClient(testPort, {
+    const client = await createStreamableClient(testPort, {
       requestInit: {
         headers: {
           Authorization: 'Bearer token-xyz',
@@ -137,7 +137,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should inject authentication context into the tool', async () => {
-    const client = await createSseClient(testPort, {
+    const client = await createStreamableClient(testPort, {
       requestInit: {
         headers: {
           Authorization: 'Bearer token-xyz',
@@ -177,7 +177,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
     // Connection should be rejected by the auth middleware (401)
     let client: Client | undefined;
     try {
-      client = await createSseClient(testPort, {
+      client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer invalid-token',

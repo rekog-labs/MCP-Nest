@@ -182,7 +182,6 @@ You select transports by passing instances in the `transports` array. Each trans
 ```typescript
 import {
   McpStrategy,
-  SseTransport,
   StreamableHttpTransport,
   // StdioTransport,
 } from '@rekog/mcp-nest';
@@ -191,7 +190,6 @@ const mcp = new McpStrategy({
   name: 'multi-transport-server',
   version: '0.0.1',
   transports: [
-    new SseTransport(),
     new StreamableHttpTransport({ statelessMode: false }),
     // new StdioTransport(), // Uncomment to enable STDIO
   ],
@@ -206,8 +204,6 @@ class AppModule {}
 
 **Endpoints exposed:**
 
-- `GET /sse` - SSE connection
-- `POST /messages` - Tool execution (SSE transport)
 - `POST /mcp` - Streamable HTTP operations
 
 ## Server with Authentication
@@ -243,7 +239,7 @@ async function bootstrap() {
 }
 ```
 
-The strategy's `guards` option still reports module-level guards as security schemes / feeds the bespoke authorization service; standard `@UseGuards()` on `@McpController` classes and methods are applied automatically by the RPC pipeline.
+Standard `@UseGuards()` on `@McpController` classes and methods are applied automatically by the RPC pipeline at call time. Combine them with `@PublicTool()`, `@ToolScopes()`, and `@ToolRoles()` (which read `req.user` via the bespoke authorization service) and the `allowUnauthenticatedAccess` flag to control per-tool visibility. See [Per-Tool Authorization](per-tool-authorization.md) for details.
 
 ### Disabling OAuth Discovery Endpoints
 
@@ -379,7 +375,7 @@ If you need `ConfigService`, instantiate the Nest app first and read config from
 
 ## Custom Endpoints
 
-Endpoints are set directly on the transport constructors — there is no longer an `apiPrefix`/`mcpEndpoint`/`sseEndpoint`/`messagesEndpoint` module option:
+Endpoints are set directly on the transport constructors — there is no longer an `apiPrefix`/`mcpEndpoint` module option:
 
 ```typescript
 const mcp = new McpStrategy({
@@ -387,18 +383,12 @@ const mcp = new McpStrategy({
   version: '0.0.1',
   transports: [
     new StreamableHttpTransport({ endpoint: '/api/v1/mcp-operations' }),
-    new SseTransport({
-      sseEndpoint: '/api/v1/events',
-      messagesEndpoint: '/api/v1/chat',
-    }),
   ],
 });
 ```
 
 **Endpoints exposed:**
 
-- `GET /api/v1/events` - SSE connection
-- `POST /api/v1/chat` - Messages
 - `POST /api/v1/mcp-operations` - MCP operations
 
 ## Global Prefix Integration
@@ -412,7 +402,7 @@ async function bootstrap() {
   // Affects your normal Nest controllers only; MCP routes are unaffected.
   app.setGlobalPrefix('/api');
 
-  // MCP routes stay at the transport endpoints you configured (e.g. /mcp, /sse).
+  // MCP routes stay at the transport endpoints you configured (e.g. /mcp).
   mcp.setHttpAdapter(app.getHttpAdapter());
   app.connectMicroservice({ strategy: mcp });
   await app.startAllMicroservices();

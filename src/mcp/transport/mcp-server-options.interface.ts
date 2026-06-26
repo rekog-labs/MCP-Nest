@@ -1,5 +1,5 @@
 import { Icon, ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
-import { CanActivate, HttpServer, Type } from '@nestjs/common';
+import { HttpServer } from '@nestjs/common';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpTransport } from './mcp-transport.interface';
 
@@ -32,7 +32,7 @@ export interface McpServerOptions {
 
   /**
    * The integrations this server exposes. Provide one entry per transport,
-   * e.g. `[new StreamableHttpTransport(), new SseTransport(), new StdioTransport()]`.
+   * e.g. `[new StreamableHttpTransport(), new StdioTransport()]`.
    */
   transports: McpTransport[];
 
@@ -45,12 +45,15 @@ export interface McpServerOptions {
   httpAdapter?: HttpServer;
 
   /**
-   * Module-level guards reported as security schemes / used by the bespoke
-   * authorization service. Note: standard `@UseGuards()` on `@McpController`
-   * classes/methods are applied automatically by the NestJS RPC pipeline.
+   * Freemium mode. When `true`, anonymous (unauthenticated) sessions may reach
+   * `@PublicTool()` tools, while every other tool still requires a resolved
+   * `req.user`. When `false` (default), per-tool listing/visibility trusts the
+   * server's own authentication — `@UseGuards()` on `@McpController` classes or
+   * methods (run by the NestJS RPC pipeline at call time) and/or auth middleware
+   * on the HTTP routes.
+   *
+   * @default false
    */
-  guards?: Type<CanActivate>[];
-  /** Allow unauthenticated sessions to reach `@PublicTool()` tools. @default false */
   allowUnauthenticatedAccess?: boolean;
   /**
    * Logging configuration.

@@ -55,7 +55,7 @@ Copy these values from your app registration:
 import { Module } from '@nestjs/common';
 import {
   McpStrategy,
-  SseTransport,
+  StreamableHttpTransport,
   McpAuthModule,
   AzureADOAuthProvider,
 } from '@rekog/mcp-nest';
@@ -65,7 +65,7 @@ import { MyTools } from './my-tools'; // your @McpController() classes
 export const mcp = new McpStrategy({
   name: 'My MCP Server with Azure AD',
   version: '1.0.0',
-  transports: [new SseTransport()],
+  transports: [new StreamableHttpTransport({ statelessMode: false })],
 });
 
 @Module({
@@ -100,7 +100,7 @@ middleware that validates the Bearer JWT (see the
 const app = await NestFactory.create(AppModule);
 mcp.setHttpAdapter(app.getHttpAdapter());
 app.connectMicroservice({ strategy: mcp });
-// app.use(...) to validate the token and set req.user on /mcp, /sse, /messages
+// app.use(...) to validate the token and set req.user on /mcp
 await app.startAllMicroservices();
 await app.listen(3000);
 ```

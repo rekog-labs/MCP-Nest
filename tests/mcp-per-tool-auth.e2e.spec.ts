@@ -1,4 +1,4 @@
-import { CanActivate, INestApplication } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { z } from 'zod';
 import { Ctx, Payload } from '@nestjs/microservices';
 import {
@@ -9,7 +9,7 @@ import {
   ToolScopes,
   ToolRoles,
 } from '../src';
-import { bootstrapMcpApp, createSseClient } from './utils';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 /**
  * Authentication is now Express middleware (replacing the old transport-level
@@ -17,16 +17,9 @@ import { bootstrapMcpApp, createSseClient } from './utils';
  * a user) and enriches `req.user` when a recognised token is present. Per-tool
  * authorization (@PublicTool/@ToolScopes/@ToolRoles + freemium
  * allowUnauthenticatedAccess) is still enforced by the ToolAuthorizationService
- * reading the user off the raw request. A dummy `guards` class is passed so the
- * strategy treats the module as "having guards" (moduleHasGuards = true), which
- * the freemium logic depends on.
+ * reading the user off the raw request. Freemium mode is keyed off
+ * `allowUnauthenticatedAccess` alone.
  */
-class FreemiumGate implements CanActivate {
-  canActivate(): boolean {
-    return true;
-  }
-}
-
 const authMiddleware = (req: any, _res: any, next: () => void) => {
   const authHeader = req.headers?.authorization;
 
@@ -92,7 +85,7 @@ export class PerToolAuthTools {
     };
   }
 
-  // Protected tool - requires authentication (module has guards)
+  // Protected tool - requires authentication
   @Tool({
     name: 'user-profile',
     description: 'Get user profile',
@@ -198,7 +191,6 @@ describe('E2E: Per-Tool Authorization', () => {
     const bootstrapped = await bootstrapMcpApp({
       name: 'test-per-tool-auth-server',
       controllers: [PerToolAuthTools],
-      guards: [FreemiumGate],
       allowUnauthenticatedAccess: true, // Enable freemium mode for testing @PublicTool() tools
       configure: (nestApp) => {
         nestApp.use(authMiddleware);
@@ -214,7 +206,7 @@ describe('E2E: Per-Tool Authorization', () => {
 
   describe('Tool Listing with Authorization', () => {
     it('should list only public tools when not authenticated', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
 
       const tools = await client.listTools();
       const toolNames = tools.tools.map((t) => t.name);
@@ -233,7 +225,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should list basic tools for authenticated basic user', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token',
@@ -258,7 +250,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should list all tools for admin user', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer admin-token',
@@ -283,7 +275,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should list premium tools for premium user', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer premium-token',
@@ -308,7 +300,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should include securitySchemes in tool listing', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer admin-token',
@@ -376,7 +368,7 @@ describe('E2E: Per-Tool Authorization', () => {
 
   describe('Tool Execution with Authorization', () => {
     it('should allow calling public tools without auth', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
 
       const result = await client.callTool({
         name: 'public-search',
@@ -389,7 +381,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should reject protected tool calls without auth', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
 
       await expect(
         client.callTool({
@@ -402,7 +394,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should allow calling protected tools with valid auth', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token',
@@ -421,7 +413,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should reject scope-protected tools without required scopes', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token', // Only has 'read' scope
@@ -440,7 +432,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should allow scope-protected tools with required scopes', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer admin-token', // Has 'admin' and 'write' scopes
@@ -459,7 +451,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should reject role-protected tools without required roles', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token', // Only has 'user' role
@@ -478,7 +470,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should allow role-protected tools with required roles', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer admin-token', // Has 'admin' role
@@ -497,7 +489,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should support optional auth tools - anonymous access', async () => {
-      const client = await createSseClient(testPort); // No auth
+      const client = await createStreamableClient(testPort); // No auth
 
       const result = await client.callTool({
         name: 'smart-search',
@@ -510,7 +502,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should support optional auth tools - enhanced with auth', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer premium-token',
@@ -531,7 +523,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should allow premium-only tools for premium users', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer premium-token',
@@ -550,7 +542,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should reject premium-only tools for basic users', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token',

@@ -12,10 +12,8 @@ import { CanActivate } from '@nestjs/common';
 import { McpContext, McpController, Tool, PublicTool } from '../src';
 import {
   bootstrapMcpApp,
-  createSseClient,
   createStreamableClient,
   StreamableHttpTransport,
-  SseTransport,
 } from './utils';
 
 /**
@@ -279,12 +277,6 @@ class GuardedTools {
 describe('E2E: Tool Guards via native @UseGuards()', () => {
   describe.each([
     {
-      transportName: 'SSE',
-      makeTransports: () => [new SseTransport()],
-      createClient: (port: number, headers?: Record<string, string>) =>
-        createSseClient(port, headers ? { requestInit: { headers } } : {}),
-    },
-    {
       transportName: 'Streamable HTTP (stateful)',
       makeTransports: () => [new StreamableHttpTransport({ statelessMode: false })],
       createClient: (port: number, headers?: Record<string, string>) =>
@@ -310,9 +302,10 @@ describe('E2E: Tool Guards via native @UseGuards()', () => {
           ThrowingGuard,
         ],
         transports: makeTransports(),
-        // No module-level `guards`/`allowUnauthenticatedAccess`: gating here is
-        // done purely by native @UseGuards at call time, so the bespoke
-        // ToolAuthorizationService stays out of the way (moduleHasGuards=false).
+        // No `allowUnauthenticatedAccess`: gating here is done purely by native
+        // @UseGuards at call time, so the per-tool ToolAuthorizationService
+        // (which only acts on @PublicTool/@ToolScopes/@ToolRoles) stays out of
+        // the way.
         configure: (nestApp) => {
           nestApp.use(authMiddleware);
         },

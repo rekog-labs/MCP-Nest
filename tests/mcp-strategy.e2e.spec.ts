@@ -14,7 +14,6 @@ import {
   McpContext,
   McpController,
   McpStrategy,
-  SseTransport,
   StreamableHttpTransport,
   Tool,
 } from '../src';
@@ -68,10 +67,7 @@ describe('E2E: McpStrategy (streamable-http)', () => {
     strategy = new McpStrategy({
       name: 'test-strategy-server',
       version: '0.0.1',
-      transports: [
-        new StreamableHttpTransport({ statelessMode: false }),
-        new SseTransport(),
-      ],
+      transports: [new StreamableHttpTransport({ statelessMode: false })],
     });
 
     const moduleFixture = await Test.createTestingModule({

@@ -19,9 +19,6 @@ server is a NestJS microservices custom transport strategy.
 │  │ Transports:            │    │ Transports:                 │  │
 │  │ • StreamableHttp       │    │ • StreamableHttp            │  │
 │  │     /public/mcp        │    │     /admin/mcp              │  │
-│  │ • Sse                  │    │ • Sse                       │  │
-│  │     /public/sse        │    │     /admin/sse              │  │
-│  │     /public/messages   │    │     /admin/messages         │  │
 │  └────────────────────────┘    └─────────────────────────────┘  │
 │           │  connectMicroservice              │                  │
 │           └────────────┬──────────────────────┘                 │

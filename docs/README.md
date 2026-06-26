@@ -14,7 +14,7 @@
 
 ### Advanced Usage
 
-- [Transports & endpoints](./migration-to-strategy.md#4-transports) — Configure `StreamableHttpTransport`/`SseTransport`/`StdioTransport` endpoints. HTTP transports mount their routes on the Nest HTTP adapter, so guards/interceptors/middleware apply via the standard NestJS RPC pipeline and `app.use(...)`.
+- [Transports & endpoints](./migration-to-strategy.md#4-transports) — Configure `StreamableHttpTransport`/`StdioTransport` endpoints. The HTTP transport mounts its routes on the Nest HTTP adapter, so guards/interceptors/middleware apply via the standard NestJS RPC pipeline and `app.use(...)`.
 
 ### OAuth & Authorization
 

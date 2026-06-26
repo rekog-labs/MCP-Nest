@@ -8,7 +8,6 @@ import {
   McpContext,
   McpController,
   McpStrategy,
-  SseTransport,
   StreamableHttpTransport,
   Tool,
 } from '../src';
@@ -26,7 +25,7 @@ import type {
   ClientRegistrationDto,
 } from '../src/authz/stores/oauth-store.interface';
 import type { OAuthSession } from '../src/authz/providers/oauth-provider.interface';
-import { createSseClient } from './utils';
+import { createStreamableClient } from './utils';
 
 // Mock OAuth Provider for testing
 const MockOAuthProvider: OAuthProviderConfig = {
@@ -223,10 +222,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
     const strategy = new McpStrategy({
       name: 'test-oauth-mcp-server',
       version: '0.0.1',
-      transports: [
-        new StreamableHttpTransport({ statelessMode: false }),
-        new SseTransport(),
-      ],
+      transports: [new StreamableHttpTransport({ statelessMode: false })],
     });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -255,7 +251,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
     const jwtTokenService = app.get(JwtTokenService);
     // Only gate the MCP transport routes; the OAuth controller endpoints
     // (/auth/*, /.well-known/*) must stay open so the handshake can run.
-    const mcpRoutePrefixes = ['/mcp', '/sse', '/messages'];
+    const mcpRoutePrefixes = ['/mcp'];
     app.use((req: any, res: any, next: () => void) => {
       const path: string = req.path ?? req.url ?? '';
       const isMcpRoute = mcpRoutePrefixes.some(
@@ -547,7 +543,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
     });
 
     it('should allow access to protected MCP endpoints with valid token', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: `Bearer ${validAccessToken}`,
@@ -575,7 +571,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
       // Standard OAuth flow: connection without token should get 401
       // This triggers the MCP Authorization flow for the client
       await expect(
-        createSseClient(testPort, {
+        createStreamableClient(testPort, {
           requestInit: {
             headers: {},
           },
@@ -585,7 +581,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
 
     it('should reject access to protected MCP endpoints with invalid token', async () => {
       await expect(
-        createSseClient(testPort, {
+        createStreamableClient(testPort, {
           requestInit: {
             headers: {
               Authorization: 'Bearer invalid-token',

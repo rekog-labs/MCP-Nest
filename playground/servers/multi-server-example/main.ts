@@ -22,19 +22,11 @@ async function bootstrap() {
   console.log('═══════════════════════════════════════════════════════════');
   console.log('📡 PUBLIC SERVER (public-server)');
   console.log('═══════════════════════════════════════════════════════════');
-  console.log(`   SSE Endpoint:        http://localhost:${port}/public/sse`);
-  console.log(
-    `   Messages Endpoint:   http://localhost:${port}/public/messages`,
-  );
   console.log(`   MCP Endpoint:        http://localhost:${port}/public/mcp`);
   console.log('');
   console.log('═══════════════════════════════════════════════════════════');
   console.log('🔐 ADMIN SERVER (admin-server)');
   console.log('═══════════════════════════════════════════════════════════');
-  console.log(`   SSE Endpoint:        http://localhost:${port}/admin/sse`);
-  console.log(
-    `   Messages Endpoint:   http://localhost:${port}/admin/messages`,
-  );
   console.log(`   MCP Endpoint:        http://localhost:${port}/admin/mcp`);
   console.log('');
   console.log('   Available Tools (shared across both servers):');
@@ -51,14 +43,12 @@ async function bootstrap() {
   console.log('💡 Example Usage with MCP Inspector:');
   console.log('');
   console.log('   npx @modelcontextprotocol/inspector \\');
-  console.log(`     http://localhost:${port}/public/sse \\`);
-  console.log(`     http://localhost:${port}/public/messages`);
+  console.log(`     http://localhost:${port}/public/mcp`);
   console.log('');
   console.log('   Or for the admin server:');
   console.log('');
   console.log('   npx @modelcontextprotocol/inspector \\');
-  console.log(`     http://localhost:${port}/admin/sse \\`);
-  console.log(`     http://localhost:${port}/admin/messages`);
+  console.log(`     http://localhost:${port}/admin/mcp`);
   console.log('');
   console.log('═══════════════════════════════════════════════════════════');
   console.log('');

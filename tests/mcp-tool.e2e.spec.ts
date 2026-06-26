@@ -1,14 +1,12 @@
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { INestApplication, Injectable, Scope } from '@nestjs/common';
-import { Ctx, Payload } from '@nestjs/microservices';
+import { Ctx, Payload, RpcException } from '@nestjs/microservices';
 import { z } from 'zod';
 import { McpContext, McpController, Tool } from '../src';
 import {
   bootstrapMcpApp,
-  createSseClient,
   createStreamableClient,
-  createSseClientWithElicitation,
   createStreamableClientWithElicitation,
   StreamableHttpTransport,
 } from './utils';
@@ -52,6 +50,17 @@ export class GreetingTool {
   })
   async sayHelloError() {
     throw new Error('any error');
+  }
+
+  @Tool({
+    name: 'hello-world-rpc-error',
+    description: 'A sample tool that throws a client-facing RpcException',
+    parameters: z.object({}),
+  })
+  async sayHelloRpcError() {
+    // RpcException carries an explicit, client-facing payload that is NOT masked
+    // by the NestJS RPC exception handler, so the agent receives the real reason.
+    throw new RpcException('Order #42 not found');
   }
 
   @Tool({
@@ -490,6 +499,22 @@ describe('E2E: MCP ToolServer', () => {
         }
       });
 
+      it('should surface the message of an intentional RpcException', async () => {
+        const client = await clientCreator(port);
+        try {
+          const result: any = await client.callTool({
+            name: 'hello-world-rpc-error',
+            arguments: {},
+          });
+          // RpcException is the sanctioned way to return an actionable, non-masked
+          // error to the calling agent.
+          expect(result.isError).toBe(true);
+          expect(result.content[0].text).toContain('Order #42 not found');
+        } finally {
+          await client.close();
+        }
+      });
+
       it('should transform non-MCP-compliant response', async () => {
         const client = await clientCreator(port);
         try {
@@ -512,6 +537,10 @@ describe('E2E: MCP ToolServer', () => {
             arguments: { name: 'TestUser' },
           });
           expect(result.structuredContent).toEqual({ greeting: 'Hello, TestUser!' });
+          // A text content[] block is always emitted alongside structuredContent.
+          expect(Array.isArray(result.content)).toBe(true);
+          expect(result.content[0].type).toBe('text');
+          expect(result.content[0].text).toContain('Hello, TestUser!');
         } finally {
           await client.close();
         }
@@ -595,12 +624,11 @@ describe('E2E: MCP ToolServer', () => {
     });
   };
 
-  runElicitationTests('http+sse', createSseClientWithElicitation);
   runElicitationTests('streamable http', createStreamableClientWithElicitation);
 
   describe('Elicitation with non-elicitation clients', () => {
     it('falls back gracefully when client lacks elicitation capability', async () => {
-      const client = await createSseClient(statefulServerPort);
+      const client = await createStreamableClient(statefulServerPort);
       try {
         const result: any = await client.callTool({
           name: 'hello-world-elicitation',
@@ -615,7 +643,6 @@ describe('E2E: MCP ToolServer', () => {
     });
   });
 
-  runClientTests('http+sse', createSseClient, 'any-value');
   runClientTests('streamable http', createStreamableClient, 'streamable-value');
   runClientTests('streamable http', createStreamableClient, 'stateless-value', true);
 });

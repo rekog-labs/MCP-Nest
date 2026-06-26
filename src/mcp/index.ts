@@ -1,6 +1,7 @@
 export * from './decorators';
 export * from './interfaces';
 export * from './services/tool-authorization.service';
+export * from './filters/mcp-exception.filter';
 
 // Microservice transport strategy API
 export * from './transport/mcp-transport.constants';

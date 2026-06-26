@@ -35,10 +35,11 @@ The code of the deployed project is in this GitHub repository: [rekog-labs/mcp-n
 ## Setting up a new project
 
 The `McpAuthModule` still provides the OAuth 2.1 controllers exactly as before.
-What changed: MCP itself now runs as a `McpStrategy` microservice (no
-`McpModule`), and the MCP transport routes are protected with Express middleware
-that validates the Bearer JWT (reusing the module's `JwtTokenService`) and sets
-`req.user`, replacing the old `guards: [McpAuthJwtGuard]` option.
+MCP itself runs as a `McpStrategy` microservice, and the MCP transport routes
+are protected with Express middleware that validates the Bearer JWT (reusing the
+module's `JwtTokenService`) and sets `req.user`. Per-tool access is then enforced
+with standard NestJS `@UseGuards()` on `@McpController` classes/methods and/or
+the `@PublicTool()`/`@ToolScopes()`/`@ToolRoles()` decorators.
 
 ```typescript
 import { Module } from '@nestjs/common';
@@ -101,7 +102,7 @@ async function bootstrap() {
   // Protect only the MCP transport routes; leave the OAuth endpoints
   // (/auth/*, /.well-known/*) open so the handshake can run.
   const jwt = app.get(JwtTokenService);
-  const mcpRoutes = ['/mcp', '/sse', '/messages'];
+  const mcpRoutes = ['/mcp'];
   app.use((req: any, res: any, next: () => void) => {
     const path: string = req.path ?? req.url ?? '';
     const isMcpRoute = mcpRoutes.some(

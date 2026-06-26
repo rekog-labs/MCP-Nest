@@ -8,7 +8,7 @@
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const SERVER_URL = 'http://localhost:3000';
 
@@ -23,14 +23,15 @@ const EXPECTED_TOOLS = [
   'mark-notification-read',
 ];
 
-async function testServer(serverName: string, sseEndpoint: string) {
+async function testServer(serverName: string, mcpEndpoint: string) {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`Testing ${serverName}`);
   console.log('='.repeat(60));
 
-  // The SSE transport opens the event stream; the server advertises its
-  // messages endpoint via the SSE `endpoint` event.
-  const transport = new SSEClientTransport(new URL(sseEndpoint, SERVER_URL));
+  // Connect over the Streamable HTTP transport at the server's /mcp endpoint.
+  const transport = new StreamableHTTPClientTransport(
+    new URL(mcpEndpoint, SERVER_URL),
+  );
 
   const client = new Client(
     {
@@ -74,10 +75,10 @@ async function main() {
 
   try {
     // Test Public Server
-    await testServer('Public Server', '/public/sse');
+    await testServer('Public Server', '/public/mcp');
 
     // Test Admin Server
-    await testServer('Admin Server', '/admin/sse');
+    await testServer('Admin Server', '/admin/mcp');
 
     console.log('\n' + '='.repeat(60));
     console.log('✅ All tests completed!');

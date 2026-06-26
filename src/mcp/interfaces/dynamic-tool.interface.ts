@@ -14,7 +14,7 @@ export type DynamicToolHandler = (
 
 /**
  * Definition for a dynamically registered tool.
- * Use this with McpRegistryService.registerTool() to register tools at runtime.
+ * Use this with `McpStrategy.registerTool()` to register tools at runtime.
  *
  * @example
  * ```typescript

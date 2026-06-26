@@ -8,7 +8,6 @@ import {
   McpContext,
   McpController,
   McpStrategy,
-  SseTransport,
   StreamableHttpTransport,
   Tool,
 } from '../src';
@@ -139,14 +138,11 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
 
     // Create Fastify-based server (test subject) inline. The MCP transports use
     // an internal HttpAdapterFactory that detects Fastify and reads the raw
-    // Node request/response, so streamable + SSE work on top of Fastify.
+    // Node request/response, so streamable-HTTP works on top of Fastify.
     const strategy = new McpStrategy({
       name: 'test-fastify-mcp-server',
       version: '0.0.1',
-      transports: [
-        new StreamableHttpTransport({ statelessMode: false }),
-        new SseTransport(),
-      ],
+      transports: [new StreamableHttpTransport({ statelessMode: false })],
     });
 
     const fastifyModuleFixture: TestingModule = await Test.createTestingModule({

@@ -1,12 +1,9 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { INestApplication } from '@nestjs/common';
 import { z } from 'zod';
 import { McpController, Tool } from '../src';
 import {
   bootstrapMcpApp,
   createStreamableClient,
-  SseTransport,
   StreamableHttpTransport,
 } from './utils';
 
@@ -24,21 +21,8 @@ class Tools {
 
 // MCP routes are mounted directly on the HTTP adapter, bypassing Nest's router
 // and `setGlobalPrefix`/`apiPrefix`. To serve MCP under a prefixed path, set the
-// transport endpoints explicitly.
+// transport endpoint explicitly.
 const streamableEndpoint = '/api/mcp';
-const sseEndpoint = '/api/sse';
-const messagesEndpoint = '/api/messages';
-
-async function createPrefixedSseClient(port: number): Promise<Client> {
-  const client = new Client(
-    { name: 'example-client', version: '1.0.0' },
-    { capabilities: {} },
-  );
-  const sseUrl = new URL(`http://localhost:${port}${sseEndpoint}`);
-  const transport = new SSEClientTransport(sseUrl);
-  await client.connect(transport);
-  return client;
-}
 
 describe('MCP under a prefixed endpoint (e2e)', () => {
   let app: INestApplication;
@@ -53,7 +37,6 @@ describe('MCP under a prefixed endpoint (e2e)', () => {
           endpoint: streamableEndpoint,
           statelessMode: false,
         }),
-        new SseTransport({ sseEndpoint, messagesEndpoint }),
       ],
     });
     app = bootstrap.app;
@@ -68,17 +51,6 @@ describe('MCP under a prefixed endpoint (e2e)', () => {
     const client = await createStreamableClient(port, {
       endpoint: streamableEndpoint,
     });
-    try {
-      const tools = await client.listTools();
-      expect(tools.tools.length).toBe(1);
-      expect(tools.tools[0].name).toBe('tool');
-    } finally {
-      await client.close();
-    }
-  });
-
-  it('should reach MCP over SSE under the prefixed endpoint', async () => {
-    const client = await createPrefixedSseClient(port);
     try {
       const tools = await client.listTools();
       expect(tools.tools.length).toBe(1);

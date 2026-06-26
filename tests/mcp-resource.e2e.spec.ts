@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
 import { McpError } from '@modelcontextprotocol/sdk/types.js';
-import { bootstrapMcpApp, createSseClient } from './utils';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { McpController, Resource, ResourceTemplate } from '../src';
 
 @McpController()
@@ -152,7 +152,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should list resources', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
     const resources = await client.listResources();
     const resourceTemplates = await client.listResourceTemplates();
 
@@ -192,7 +192,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should call the static resource', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     const result = await client.readResource({
       uri: 'mcp://hello-world-world',
@@ -206,7 +206,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should call the dynamic resource', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     const result = await client.readResource({
       uri: 'mcp://hello-world-dynamic/Raphael_John',
@@ -222,7 +222,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should call the dynamic resource with multiple paths', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     const result = await client.readResource({
       uri: 'mcp://hello-world-dynamic-multiple-paths/123/Raphael_John',
@@ -240,7 +240,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should throw internal error when resource throws generic error', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     try {
       // Unknown errors are masked by the NestJS RPC exception handler.
@@ -255,7 +255,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should throw resource not found error', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
     const uri = 'mcp://hello-world-not-found/123';
 
     try {

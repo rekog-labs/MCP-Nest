@@ -1,25 +1,18 @@
-import { CanActivate, INestApplication } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { z } from 'zod';
 import { Payload } from '@nestjs/microservices';
 import { McpController, Tool } from '../src';
-import { bootstrapMcpApp, createSseClient } from './utils';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 /**
  * Represents authentication that authorizes through means other than a user
  * object (API key, IP whitelist, custom logic). In the new model, that is
  * Express middleware that simply calls `next()` without setting `req.user`.
  *
- * The module is still declared as "having guards" (so `moduleHasGuards` is
- * true), but with `allowUnauthenticatedAccess` left at its default (false) the
- * ToolAuthorizationService trusts the gate and allows access even when no user
- * object is present.
+ * With `allowUnauthenticatedAccess` left at its default (false) the
+ * ToolAuthorizationService trusts the middleware that allowed the request
+ * through and allows access even when no user object is present.
  */
-class SimpleGuard implements CanActivate {
-  canActivate(): boolean {
-    return true;
-  }
-}
-
 const allowAllMiddleware = (_req: any, _res: any, next: () => void) => {
   // Authorizes the request without populating req.user.
   next();
@@ -55,9 +48,8 @@ describe('E2E: MCP Server with Guard but no User', () => {
     const bootstrapped = await bootstrapMcpApp({
       name: 'test-simple-guard-server',
       controllers: [SimpleGreetingTool],
-      // Gate is configured but doesn't set request.user. `guards` flips the
-      // `moduleHasGuards` flag the ToolAuthorizationService reads.
-      guards: [SimpleGuard],
+      // Gate (middleware) allows the request through but doesn't set
+      // request.user.
       configure: (nestApp) => {
         nestApp.use(allowAllMiddleware);
       },
@@ -71,7 +63,7 @@ describe('E2E: MCP Server with Guard but no User', () => {
   });
 
   it('should list tools even when guard does not set request.user', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
     const tools = await client.listTools();
 
     // This should work because the gate allowed the request through
@@ -83,7 +75,7 @@ describe('E2E: MCP Server with Guard but no User', () => {
   });
 
   it('should execute tool even when guard does not set request.user', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     const result: any = await client.callTool({
       name: 'simple-hello',

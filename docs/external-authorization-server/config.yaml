@@ -5,12 +5,10 @@ port: 3030
 
 # Path configuration
 paths:
-  sse: "/sse"
-  messages: "/messages"
   streamable_http: "/mcp"
 
 # Transport mode
-transport_mode: "sse"
+transport_mode: "streamable_http"
 
 # CORS configuration
 cors:

@@ -4,11 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import * as dotenv from 'dotenv';
 import 'reflect-metadata';
-import {
-  McpStrategy,
-  SseTransport,
-  StreamableHttpTransport,
-} from '@rekog/mcp-nest';
+import { McpStrategy, StreamableHttpTransport } from '@rekog/mcp-nest';
 import { GreetingPrompt } from '../resources/greeting.prompt';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingTool } from '../resources/greeting.tool';
@@ -21,10 +17,7 @@ const allowUnauthenticatedAccess = true;
 const strategy = new McpStrategy({
   name: 'playground-mcp-server-simple',
   version: '0.0.1',
-  transports: [
-    new StreamableHttpTransport({ statelessMode: false }),
-    new SseTransport(),
-  ],
+  transports: [new StreamableHttpTransport({ statelessMode: false })],
   // Per-tool authorization reads `req.user` set by the JWT middleware below.
   allowUnauthenticatedAccess,
 });

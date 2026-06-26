@@ -3,9 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
 import { McpController, Tool } from '../src';
 import {
-  createSseClient,
+  createStreamableClient,
   McpStrategy,
-  SseTransport,
   StreamableHttpTransport,
 } from './utils';
 import type { McpServerOptions } from '../src';
@@ -73,12 +72,12 @@ describe('MCP Logging Configuration (e2e)', () => {
   describe('Default logging behavior', () => {
     it('should use default NestJS logging when logging option is undefined', async () => {
       const bootstrapped = await bootstrapWithLogging(undefined, [
-        new SseTransport(),
+        new StreamableHttpTransport({ statelessMode: false }),
       ]);
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -92,12 +91,12 @@ describe('MCP Logging Configuration (e2e)', () => {
   describe('Disabled logging', () => {
     it('should not log when logging is set to false', async () => {
       const bootstrapped = await bootstrapWithLogging(false, [
-        new SseTransport(),
+        new StreamableHttpTransport({ statelessMode: false }),
       ]);
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -115,12 +114,12 @@ describe('MCP Logging Configuration (e2e)', () => {
     it('should only log specified levels when logging.level is configured', async () => {
       const bootstrapped = await bootstrapWithLogging(
         { level: ['error', 'warn'] },
-        [new SseTransport()],
+        [new StreamableHttpTransport({ statelessMode: false })],
       );
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -136,12 +135,12 @@ describe('MCP Logging Configuration (e2e)', () => {
       // Test with all log levels
       const bootstrapped = await bootstrapWithLogging(
         { level: ['log', 'error', 'warn', 'debug', 'verbose'] },
-        [new SseTransport()],
+        [new StreamableHttpTransport({ statelessMode: false })],
       );
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -155,13 +154,12 @@ describe('MCP Logging Configuration (e2e)', () => {
   describe('Multiple transports with logging configuration', () => {
     it('should apply logging configuration to all transports', async () => {
       const bootstrapped = await bootstrapWithLogging({ level: ['error'] }, [
-        new SseTransport(),
         new StreamableHttpTransport({ statelessMode: false }),
       ]);
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },

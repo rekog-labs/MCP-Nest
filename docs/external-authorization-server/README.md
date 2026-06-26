@@ -59,7 +59,7 @@ Time to see the authentication in action! You have two options:
 npx @modelcontextprotocol/inspector@0.14.3
 
 # Option 2: Run MCP client (in another terminal from the root)
-npx ts-node-dev --respawn playground/clients/http-sse-oauth-client.ts
+npx ts-node-dev --respawn playground/clients/http-streamable-oauth-client.ts
 ```
 
 Either option will walk you through the OAuth flow in your browser. The MCP client in the terminal then will let you run commands as follows:
@@ -196,26 +196,33 @@ class WellKnownController {
 }
 ```
 
-And register it with Nest:
+And register it with Nest. MCP runs as an `McpStrategy` microservice (there is no
+`McpModule`), and your `@McpController()` capability classes plus the
+`WellKnownController` go in the module's `controllers` array:
 
 ```typescript
-@Module({
-  imports: [
-    McpModule.forRoot({
-      name: 'playground-mcp-server',
-      version: '0.0.1',
-      streamableHttp: {
-        enableJsonResponse: false,
-        sessionIdGenerator: () => randomUUID(),
-        statelessMode: false,
-      },
+const mcp = new McpStrategy({
+  name: 'playground-mcp-server',
+  version: '0.0.1',
+  transports: [
+    new StreamableHttpTransport({
+      enableJsonResponse: false,
+      statelessMode: false,
     }),
   ],
-  controllers: [WellKnownController],  // Registering it
-  providers: [GreetingResource, GreetingTool, GreetingPrompt],
+});
+
+@Module({
+  // GreetingResource/GreetingTool/GreetingPrompt are @McpController() classes.
+  controllers: [WellKnownController, GreetingResource, GreetingTool, GreetingPrompt],
+  providers: [{ provide: MCP_STRATEGY, useValue: mcp }],
 })
+class AppModule {}
 ```
 
-You can drop this in the file `playground/servers/server-stateful.ts` and try it out.
+Wire the strategy in `main.ts` (`setHttpAdapter` + `connectMicroservice` +
+`startAllMicroservices` before `listen`) — see
+[Server Examples](../server-examples.md) for the full bootstrap. You can drop
+this into `playground/servers/server-stateful.ts` and try it out.
 
 The beauty is that once this is set up, it just works. New MCP clients can connect automatically, users control access through familiar OAuth consent screens, and your server stays focused on what it does best.

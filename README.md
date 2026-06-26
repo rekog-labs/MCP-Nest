@@ -18,7 +18,7 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 ## Features
 
 - 🧩 **[NestJS Microservice Strategy](docs/migration-to-strategy.md)**: MCP runs as a `CustomTransportStrategy`, so tools/resources/prompts are real `@MessagePattern` handlers — **guards, pipes, interceptors, and exception filters apply to them natively**
-- 🚀 **[Multi-Transport Support](docs/server-examples.md#multiple-transport-types)**: HTTP+SSE, Streamable HTTP, and STDIO — selected via the `transports` array
+- 🚀 **[Multi-Transport Support](docs/server-examples.md#multiple-transport-types)**: Streamable HTTP and STDIO — selected via the `transports` array
 - 🔧 **[Tools](docs/tools.md)**: Expose NestJS methods as MCP tools with automatic discovery and Zod validation
   - 🛠️ **[Elicitation](docs/tools.md#interactive-tool-calls)**: Interactive tool calls with user input elicitation
   - 🌐 **[HTTP Request Access](docs/tools.md#understanding-tool-method-parameters)**: Full access to request context within MCP handlers
@@ -58,7 +58,7 @@ npm install @nestjs/typeorm typeorm
 MCP-Nest runs as a **NestJS microservice transport strategy**. Tools, resources,
 and prompts live on `@McpController()` classes (so NestJS guards, pipes,
 interceptors, and exception filters apply to them), and the strategy serves them
-over one or more transports (Streamable HTTP, HTTP+SSE, STDIO).
+over one or more transports (Streamable HTTP, STDIO).
 
 ```typescript
 // greeting.controller.ts
@@ -90,7 +90,6 @@ import {
   McpStrategy,
   MCP_STRATEGY,
   StreamableHttpTransport,
-  SseTransport,
 } from '@rekog/mcp-nest';
 import { GreetingController } from './greeting.controller';
 
@@ -100,7 +99,6 @@ export const mcp = new McpStrategy({
   version: '1.0.0',
   transports: [
     new StreamableHttpTransport({ statelessMode: false }),
-    new SseTransport(),
   ],
 });
 

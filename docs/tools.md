@@ -162,7 +162,7 @@ async sayHelloInteractive(@Payload() { name }: { name: string }, @Ctx() ctx: Mcp
 
 NestJS's `@UseFilters` and `@Catch` decorators work out of the box for tools, resources, and prompts. This allows you to create custom exception filters to handle errors consistently across your MCP server.
 
-> **Behavioral note:** A tool that throws a plain `Error` (or an `McpError`) inside the pipeline returns a graceful `{ isError: true }` with a generic message, because NestJS's RPC exception handler masks unknown errors. To surface a custom message/shape, throw `RpcException` or use `@UseFilters()` with an `RpcExceptionFilter` that returns the desired result.
+> **Behavioral note:** An unexpected error thrown inside a tool/resource/prompt handler is masked by NestJS's RPC pipeline to a generic "Internal server error", returned as `{ isError: true }`. To surface an actionable, client-facing message to the calling agent, throw `RpcException('...')` (from `@nestjs/microservices`) or register the library's `McpExceptionFilter` (exported from `@rekog/mcp-nest`) via `APP_FILTER` or `@UseFilters()`. Input/parameter validation errors are already returned as a clear `Invalid parameters: ...` tool result, so you don't need to handle those yourself.
 
 ### Creating an Exception Filter
 
@@ -381,7 +381,7 @@ Connect to `http://localhost:3030/mcp` to test your tools interactively and see 
 
 ## Tool Guards
 
-Because tools are real RPC handlers, you protect them with standard NestJS `@UseGuards()` on the `@McpController` class or method — these run inside the RPC pipeline. (The old `@ToolGuards()` decorator is no longer evaluated by the strategy; replace it with `@UseGuards()`.)
+Because tools are real RPC handlers, you protect them with standard NestJS `@UseGuards()` on the `@McpController` class or method — these run inside the RPC pipeline.
 
 ```typescript
 import { Injectable, CanActivate, ExecutionContext, UseGuards } from '@nestjs/common';

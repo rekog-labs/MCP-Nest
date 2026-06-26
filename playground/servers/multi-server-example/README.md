@@ -12,8 +12,8 @@ each as its own `McpStrategy` mounted on distinct HTTP endpoints.
 
 ### Two MCP Servers
 
-1. **Public Server** (`public-server`) — endpoints `/public/mcp`, `/public/sse`
-2. **Admin Server** (`admin-server`) — endpoints `/admin/mcp`, `/admin/sse`
+1. **Public Server** (`public-server`) — endpoint `/public/mcp`
+2. **Admin Server** (`admin-server`) — endpoint `/admin/mcp`
 
 Each is a separate `McpStrategy` instance (defined in `app.module.ts`) connected
 to the same Nest app in `main.ts`.
@@ -76,16 +76,14 @@ npx ts-node playground/servers/multi-server-example/main.ts
 
 ```bash
 npx @modelcontextprotocol/inspector \
-  http://localhost:3000/public/sse \
-  http://localhost:3000/public/messages
+  http://localhost:3000/public/mcp
 ```
 
 ### Admin Server
 
 ```bash
 npx @modelcontextprotocol/inspector \
-  http://localhost:3000/admin/sse \
-  http://localhost:3000/admin/messages
+  http://localhost:3000/admin/mcp
 ```
 
 Both endpoints advertise the same shared tool set:

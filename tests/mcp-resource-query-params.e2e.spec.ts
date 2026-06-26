@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
 import { McpController, ResourceTemplate } from '../src';
-import { bootstrapMcpApp, createSseClient } from './utils';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 @McpController()
 export class QueryParamResource {
@@ -124,7 +124,7 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
 
   describe('Single query parameter {?param}', () => {
     it('should list resource templates with query parameter syntax', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       try {
         const resourceTemplates = await client.listResourceTemplates();
 
@@ -141,7 +141,7 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
     });
 
     it('should read resource with query parameter', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       try {
         const resource = await client.readResource({
           uri: 'ui://widget/pizza-carousel?pizzaTopping=pepperoni',
@@ -159,7 +159,7 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
     });
 
     it('should read resource without query parameter', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       try {
         const resource = await client.readResource({
           uri: 'ui://widget/pizza-carousel',
@@ -179,7 +179,7 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
 
   describe('Multiple query parameters {?param1,param2}', () => {
     it('should list resource templates with multiple query parameters', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       try {
         const resourceTemplates = await client.listResourceTemplates();
 
@@ -196,7 +196,7 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
     });
 
     it('should read resource with multiple query parameters', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       try {
         const resource = await client.readResource({
           uri: 'ui://widget/pizza-list?topping=mushroom&size=large',
@@ -215,7 +215,7 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
     });
 
     it('should read resource with partial query parameters', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       try {
         const resource = await client.readResource({
           uri: 'ui://widget/pizza-list?topping=pepperoni',
@@ -236,7 +236,7 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
 
   describe('Mixed path and query parameters', () => {
     it('should list resource templates with mixed parameters', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       try {
         const resourceTemplates = await client.listResourceTemplates();
 
@@ -253,7 +253,7 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
     });
 
     it('should read resource with path and query parameters', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       try {
         const resource = await client.readResource({
           uri: 'ui://widget/pizza/vegetarian?topping=olives',
@@ -272,7 +272,7 @@ describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
     });
 
     it('should read resource with path parameter only', async () => {
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       try {
         const resource = await client.readResource({
           uri: 'ui://widget/pizza/meat-lovers',

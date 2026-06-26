@@ -9,11 +9,10 @@ import {
   Prompt,
   Resource,
   ResourceTemplate,
-  SseTransport,
   StreamableHttpTransport,
   Tool,
 } from '../src';
-import { createSseClient, createStreamableClient } from './utils';
+import { createStreamableClient } from './utils';
 
 @Injectable()
 class Repo {
@@ -103,10 +102,7 @@ describe('E2E: McpStrategy capabilities', () => {
     strategy = new McpStrategy({
       name: 'features-server',
       version: '0.0.1',
-      transports: [
-        new StreamableHttpTransport({ statelessMode: false }),
-        new SseTransport(),
-      ],
+      transports: [new StreamableHttpTransport({ statelessMode: false })],
     });
 
     const moduleFixture = await Test.createTestingModule({
@@ -194,16 +190,6 @@ describe('E2E: McpStrategy capabilities', () => {
       arguments: { value: 'hi' },
     })) as { content: Array<{ text: string }> };
     expect(res.content[0].text).toBe('echo:hi');
-    await client.close();
-  });
-
-  it('works over the SSE transport too', async () => {
-    const client = await createSseClient(port);
-    const res = (await client.callTool({
-      name: 'greet',
-      arguments: { name: 'Sse' },
-    })) as { content: Array<{ text: string }> };
-    expect(res.content[0].text).toBe('Hello Sse');
     await client.close();
   });
 });

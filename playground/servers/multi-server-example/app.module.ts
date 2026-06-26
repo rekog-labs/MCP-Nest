@@ -1,9 +1,5 @@
 import { Module } from '@nestjs/common';
-import {
-  McpStrategy,
-  SseTransport,
-  StreamableHttpTransport,
-} from '@rekog/mcp-nest';
+import { McpStrategy, StreamableHttpTransport } from '@rekog/mcp-nest';
 import { WeatherFeatureModule } from './modules/weather-feature.module';
 import { AnalyticsFeatureModule } from './modules/analytics-feature.module';
 import { NotificationFeatureModule } from './modules/notification-feature.module';
@@ -14,8 +10,8 @@ import { NotificationFeatureModule } from './modules/notification-feature.module
  * This example demonstrates two isolated MCP servers running in a single NestJS
  * application, each as its own `McpStrategy` mounted on distinct HTTP endpoints:
  *
- * - Public Server: /public/mcp, /public/sse
- * - Admin Server:  /admin/mcp,  /admin/sse
+ * - Public Server: /public/mcp
+ * - Admin Server:  /admin/mcp
  *
  * ## What changed vs. the old McpModule version
  *
@@ -38,25 +34,13 @@ import { NotificationFeatureModule } from './modules/notification-feature.module
 export const publicStrategy = new McpStrategy({
   name: 'public-server',
   version: '1.0.0',
-  transports: [
-    new StreamableHttpTransport({ endpoint: '/public/mcp' }),
-    new SseTransport({
-      sseEndpoint: '/public/sse',
-      messagesEndpoint: '/public/messages',
-    }),
-  ],
+  transports: [new StreamableHttpTransport({ endpoint: '/public/mcp' })],
 });
 
 export const adminStrategy = new McpStrategy({
   name: 'admin-server',
   version: '1.0.0',
-  transports: [
-    new StreamableHttpTransport({ endpoint: '/admin/mcp' }),
-    new SseTransport({
-      sseEndpoint: '/admin/sse',
-      messagesEndpoint: '/admin/messages',
-    }),
-  ],
+  transports: [new StreamableHttpTransport({ endpoint: '/admin/mcp' })],
 });
 
 @Module({

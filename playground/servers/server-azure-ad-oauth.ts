@@ -13,7 +13,7 @@ import {
   AzureADOAuthProvider,
   McpAuthModule,
   McpStrategy,
-  SseTransport,
+  StreamableHttpTransport,
 } from '@rekog/mcp-nest';
 import { GreetingTool } from '../resources/greeting.tool';
 import { GreetingResource } from '../resources/greeting.resource';
@@ -28,7 +28,7 @@ const JWT_SECRET =
 const strategy = new McpStrategy({
   name: 'OAuth Azure AD Server',
   version: '1.0.0',
-  transports: [new SseTransport()],
+  transports: [new StreamableHttpTransport({ statelessMode: false })],
 });
 
 @Module({
@@ -83,9 +83,9 @@ const strategy = new McpStrategy({
 })
 export class AzureADServerModule {}
 
-// Gate only the MCP transport routes (SSE), leaving /auth/* and /.well-known/*
+// Gate only the MCP transport routes, leaving /auth/* and /.well-known/*
 // open so the OAuth handshake can run.
-const MCP_ROUTE_PREFIXES = ['/sse', '/messages'];
+const MCP_ROUTE_PREFIXES = ['/mcp'];
 
 function mcpAuthMiddleware(req: any, res: any, next: () => void) {
   const path: string = req.path ?? req.url ?? '';
@@ -145,7 +145,7 @@ async function bootstrap() {
 
   console.log('\n🚀 Azure AD OAuth Server started!');
   console.log(`Server: http://localhost:${port}`);
-  console.log(`MCP (SSE) Endpoint: http://localhost:${port}/sse`);
+  console.log(`MCP Endpoint: http://localhost:${port}/mcp`);
   console.log('\n📋 OAuth Endpoints:');
   console.log(`  Authorization: http://localhost:${port}/auth/authorize`);
   console.log(`  Token: http://localhost:${port}/auth/token`);

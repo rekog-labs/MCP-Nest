@@ -35,7 +35,7 @@ const strategy = new McpStrategy({
 ```
 
 `StreamableHttpTransport` accepts `endpoint`, `statelessMode`, `enableJsonResponse`,
-and `sessionIdGenerator`. `SseTransport` accepts `sseEndpoint` / `messagesEndpoint`.
+and `sessionIdGenerator`.
 
 ### Step 2: Declare your capabilities as controllers and connect the strategy
 

@@ -170,7 +170,6 @@ import { NestFactory } from '@nestjs/core';
 import { Module } from '@nestjs/common';
 import {
   McpStrategy,
-  SseTransport,
   StreamableHttpTransport,
 } from '@rekog/mcp-nest';
 import {
@@ -184,7 +183,6 @@ const mcp = new McpStrategy({
   name: 'Azure AD MCP Server',
   version: '1.0.0',
   transports: [
-    new SseTransport(),
     new StreamableHttpTransport({ statelessMode: false }),
   ],
 });
@@ -221,7 +219,7 @@ async function bootstrap() {
 
   // Validate the Bearer JWT on the MCP routes and set req.user.
   const jwt = app.get(JwtTokenService);
-  const mcpRoutes = ['/mcp', '/sse', '/messages'];
+  const mcpRoutes = ['/mcp'];
   app.use((req: any, res: any, next: () => void) => {
     const path: string = req.path ?? req.url ?? '';
     const isMcpRoute = mcpRoutes.some(
