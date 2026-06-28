@@ -76,9 +76,10 @@ export class AppModule {}
 - Capability classes must be decorated with `@McpController()` and listed in a
   module's `controllers` array (directly or via an imported module).
 - Any dependencies a controller injects must be available as `providers`.
-- Discovery happens when the microservice is connected and started; there is no
-  per-server name to match — all discovered `@McpController` handlers bind to
-  the connected strategy.
-- For multiple MCP servers in one app, construct one `McpStrategy` per server,
-  connect each as a separate microservice, and partition the `@McpController`
-  classes across the modules whose controllers each microservice scans.
+- Discovery happens when the microservice is connected and started. By default
+  (unnamed `@McpController()` + plain `McpStrategy()`) all discovered handlers
+  bind to the connected strategy.
+- For multiple isolated MCP servers in one app, use **named servers**: tag a
+  controller with `@McpController({ server: 'x' })` and it binds only to a
+  matching `McpStrategy({ server: 'x' })`. See
+  [Multiple MCP Servers](./multiple-servers.md).

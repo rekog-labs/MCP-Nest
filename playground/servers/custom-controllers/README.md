@@ -1,72 +1,191 @@
-# Custom Endpoints
+# Two-layer pipeline: interceptors, filters & middleware
 
-> **Migrated:** This example used to disable the auto-generated transports and
-> hand-write a controller around `McpStreamableHttpService`. That whole mechanism
-> is gone. Transports now mount their own routes on the Nest HTTP adapter, so
-> customizing an endpoint is just a transport option.
+An MCP server in NestJS has **two layers** where you can attach standard
+request-handling pieces, and they do different jobs. This example wires the same
+three kinds of piece to **both** layers so you can watch the difference in the
+logs.
 
-## When You Need This
+| piece | HTTP layer — `McpHttpController` | RPC layer — `@McpController` (`DemoTools`) |
+| --- | --- | --- |
+| **middleware** | ✓ logs every transport request | **N/A** — middleware is HTTP-only |
+| **interceptor** | ✓ timing/logging per request | ✓ per **tool call**; can rewrite the result |
+| **exception filter** | ✓ catches route-level throws | ✓ surfaces the real error of a thrown tool |
 
-Use a custom transport configuration when you need:
+> Previously this folder showed the old "hand-write a controller around
+> `McpStreamableHttpService`" pattern. That's gone. The route is now an ordinary
+> NestJS controller (`McpHttpController extends McpHttpControllerFor(transport)`),
+> so the entire Nest pipeline composes on it the normal way.
 
-- **Custom routing**: Serve MCP on a non-default path (e.g. `/api/mcp`).
-- **Multiple servers in one app**: Mount several `McpStrategy` instances on distinct endpoints (see [`../multi-server-example`](../multi-server-example)).
-- **Stateful vs stateless**: Toggle session management or JSON responses per transport.
+## The two layers
 
-For request-level concerns:
-
-- **Authentication**: Add Express middleware via `app.use(...)` that validates the token and sets `req.user` (see [`../server-oauth.ts`](../server-oauth.ts) / [`../server-simple-jwt.ts`](../server-simple-jwt.ts)). The bespoke `ToolAuthorizationService` reads `req.user`.
-- **Guards / pipes / interceptors / filters**: Because every tool is a real NestJS RPC handler, apply standard `@UseGuards()`, `@UsePipes()`, etc. directly on the `@McpController` class or method — they run inside the RPC pipeline.
-
-## How to Implement
-
-### Step 1: Configure the transport endpoint
-
-```typescript
-import { McpStrategy, StreamableHttpTransport } from '@rekog/mcp-nest';
-
-const strategy = new McpStrategy({
-  name: 'my-server',
-  version: '1.0.0',
-  transports: [
-    new StreamableHttpTransport({ endpoint: '/mcp' }), // any custom path
-  ],
-});
+```
+POST /mcp ──► [HTTP layer]  McpHttpController                 ← middleware, HTTP interceptor, HTTP filter
+                  │            (one HTTP request)
+                  ▼
+              transport (sessions, SSE, raw body)
+                  ▼
+              [RPC layer]  @McpController  DemoTools.greet()   ← RPC interceptor, RPC filter
+                           (one tool call)
 ```
 
-`StreamableHttpTransport` accepts `endpoint`, `statelessMode`, `enableJsonResponse`,
-and `sessionIdGenerator`.
+- **HTTP layer** sees *every transport request*: the `initialize` POST, the
+  `tools/list` POST, the long-lived GET SSE stream, and **each** `tools/call`.
+- **RPC layer** sees *only capability invocations* — one event per tool call,
+  with the parsed tool name, validated arguments, and the `McpContext`, and it
+  can rewrite the returned result.
 
-### Step 2: Declare your capabilities as controllers and connect the strategy
+One MCP session is many HTTP requests but only a handful of tool calls — so the
+same `greet` call produces **one** `[rpc-interceptor]` line but several
+`[http-*]` lines. That granularity difference is the whole point: attach a piece
+at the layer that matches what you want to act on.
 
-```typescript
-@Module({
-  controllers: [GreetingTool, GreetingResource, GreetingPrompt],
-})
-class AppModule {}
+### Why no middleware on the RPC layer?
 
-const app = await NestFactory.create(AppModule);
-strategy.setHttpAdapter(app.getHttpAdapter());
-app.connectMicroservice({ strategy });
-await app.startAllMicroservices(); // BEFORE listen()
-await app.listen(3030);
+Middleware is part of the **HTTP** request pipeline (it's registered with
+`consumer.apply(...).forRoutes(...)`), so it can only attach to an HTTP
+controller. An `@McpController` has no HTTP routes — its methods are RPC message
+handlers — so there is nothing for middleware to sit in front of. The RPC-layer
+equivalents are **guards / interceptors / pipes**.
+
+## The granularity ladder
+
+Beyond the two layers, NestJS lets you scope a piece to exactly the breadth you
+need. From widest to narrowest:
+
+| Scope | Attach on | Runs for | Demoed by |
+| --- | --- | --- | --- |
+| **HTTP route** | `McpHttpController` | every transport request to `/mcp` | `HttpTimingInterceptor` |
+| **RPC controller (class)** | `@McpController` class | every tool in the class | `RpcLoggingInterceptor` |
+| **RPC tool (method)** | a single `@Tool` method | that one tool | `AuditInterceptor` (on `greet` only) |
+
+They **stack** in order (global → controller → method), so a single `greet`
+call runs both the class-level interceptor and its method-level one, while
+`boom` runs only the class-level one:
+
+```
+greet:  [audit] greet invoked            ← method-level (greet only)
+        [rpc-interceptor] DemoTools.greet ← class-level (all tools)
+boom:   [rpc-interceptor] DemoTools.boom  ← class-level only — no [audit]
 ```
 
-## Running the Example
+Note there is **no per-tool middleware** — middleware lives only at the HTTP
+layer. To scope something to one tool, use a method-level interceptor or guard:
+it runs in the RPC pipeline, so it has the parsed arguments and the `McpContext`
+that middleware never sees.
+
+## Files
+
+| File | Layer | What it shows |
+| --- | --- | --- |
+| `mcp.runtime.ts` | — | The `StreamableHttpTransport` + `McpStrategy` (shared, no circular import). |
+| `mcp-http.controller.ts` | HTTP | `McpHttpController` — the `/mcp` route, with HTTP `@UseInterceptors`/`@UseFilters`. |
+| `http-layer.ts` | HTTP | `HttpLoggingMiddleware`, `HttpTimingInterceptor`, `HttpDemoExceptionFilter`. |
+| `demo.tools.ts` | RPC | `@McpController() DemoTools`: class-level interceptor/filter, plus a method-level `AuditInterceptor` on `greet` only. |
+| `rpc-layer.ts` | RPC | `RpcLoggingInterceptor` (class), `AuditInterceptor` (method), `RpcLoggingExceptionFilter` (extends the library's `McpExceptionFilter`). |
+| `server.ts` | — | Module (incl. `configure()` for middleware) + bootstrap. |
+| `scripts/call-tools.ts` | — | A tiny MCP client that calls `greet` then `boom`. |
+
+## Run it
 
 ```bash
-npx ts-node-dev --respawn playground/servers/custom-controllers/server.ts
+# Terminal 1 — start the server (default port 3030)
+TS_NODE_PROJECT=tsconfig.playground.json npx ts-node-dev --respawn -r tsconfig-paths/register playground/servers/custom-controllers/server.ts
+
+# Terminal 2 — drive it
+npx ts-node-dev -r tsconfig-paths/register playground/servers/custom-controllers/scripts/call-tools.ts
 ```
 
-## Testing with MCP Inspector
+The client prints:
 
-The server exposes the Streamable HTTP endpoint:
+```
+Tools: greet, boom
+greet → {"type":"text","text":"Hello, Ada! [rpc]"}     ← RPC interceptor tagged the result
+boom  → {"content":[{"type":"text","text":"intentional failure (RPC layer)"}],"isError":true}
+```
 
-- **Streamable HTTP Transport**: `http://localhost:3030/mcp`
+`boom` throws `new Error('intentional failure (RPC layer)')`. The real message
+reaches the client because `RpcLoggingExceptionFilter` extends the library's
+`McpExceptionFilter`. **Without that filter**, NestJS masks it to a generic
+`Internal server error`.
 
-Use [MCP Inspector](https://github.com/modelcontextprotocol/inspector) to connect
-and test tool calls, resource requests, and prompt interactions.
+### What the server logs (the 5 active cells)
 
-## Example Files
+The HTTP-layer lines decode the JSON-RPC body, so you can see *which* MCP message
+each `POST /mcp` was (not just an opaque path):
 
-- `server.ts` - Strategy server mounting Streamable HTTP on a custom `/mcp` endpoint.
+```
+[http-mw] POST /mcp → initialize                   reqId=h75931
+[http-interceptor] POST /mcp → initialize                   reqId=h75931 took 9ms
+[http-mw] POST /mcp → notifications/initialized    reqId=p38u4v
+[http-interceptor] POST /mcp → notifications/initialized    reqId=p38u4v took 1ms
+[http-mw] GET  /mcp (SSE stream)                   reqId=3ci8it
+[http-mw] POST /mcp → tools/list                   reqId=06mh7m
+[http-interceptor] POST /mcp → tools/list                   reqId=06mh7m took 1ms
+[http-mw] POST /mcp → tools/call (greet)           reqId=49usi2
+[http-interceptor] full JSON-RPC body for this request:
+{
+  "method": "tools/call",
+  "params": { "name": "greet", "arguments": { "name": "Ada" } },
+  "jsonrpc": "2.0",
+  "id": 2
+}
+[audit] greet invoked                                          ← method-level: greet ONLY
+[audit] greet → ok (0ms)
+[rpc-interceptor] DemoTools.greet took 0ms                     ← class-level: every tool (+ tags result)
+[http-interceptor] POST /mcp → tools/call (greet)           reqId=49usi2 took 2ms
+[http-mw] POST /mcp → tools/call (boom)            reqId=jmuxco
+[rpc-interceptor] DemoTools.boom threw after 0ms               ← class-level fires for boom too — but no [audit]
+[rpc-filter] caught: intentional failure (RPC layer) → surfacing real message   ← RPC filter (boom)
+[http-interceptor] POST /mcp → tools/call (boom)            reqId=jmuxco took 1ms
+[http-interceptor] GET  /mcp (SSE stream)                   reqId=3ci8it took 21ms
+```
+
+Two things to notice:
+
+- **One `greet` call = one `[rpc-interceptor]` line, but many `[http-*]` lines.**
+  The session is `initialize` → `notifications/initialized` → a long-lived
+  `GET` SSE stream → `tools/list` → each `tools/call`. The HTTP layer sees them
+  all; the RPC layer sees only the two actual tool calls.
+- **The one-time full-body dump** (on the first `tools/call`) shows exactly what a
+  raw MCP message looks like at the HTTP boundary — `method`, `params.name`,
+  `arguments`, and the JSON-RPC `id`. The decoder also handles **batch arrays**
+  (logged as `[initialize, tools/list]`) and bodyless requests (labelled by verb,
+  e.g. `(SSE stream)`).
+
+> **On ordering:** the decoded method appears on the `[http-mw]` line too, because
+> in this Express app Nest's body parser runs *before* route middleware, so
+> `req.body` is already parsed when the middleware logs. The decode reads only
+> `req.body` (never the raw stream) — reading the raw stream here would starve the
+> transport and break every call.
+
+### Triggering the HTTP exception filter
+
+The HTTP interceptor throws when a request carries `x-demo-fail: http`, and
+`HttpDemoExceptionFilter` catches it:
+
+```bash
+curl -s -XPOST http://localhost:3030/mcp \
+  -H 'content-type: application/json' -H 'x-demo-fail: http' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+# → {"jsonrpc":"2.0","error":{"code":-32099,"message":"Injected HTTP-layer failure (x-demo-fail: http)"},"id":null}
+```
+
+> **Honest caveat:** a controller-scoped HTTP filter catches throws from the
+> controller's own guards/interceptors/handler — **not** from middleware.
+> Middleware runs before controller filters are in scope, so a throw there would
+> go to a *global* filter (`APP_FILTER`). That's why the demo failure is injected
+> from the interceptor, not the middleware.
+
+## Takeaways
+
+- Put **cross-cutting HTTP concerns** (request logging, raw-header auth,
+  rate-limit headers, CORS-ish tweaks, timing) on the **`McpHttpController`** —
+  they run once per transport request.
+- Put **per-capability concerns** (tool-call auditing, result shaping,
+  turning thrown errors into useful `isError` results, role/scope guards) on the
+  **`@McpController`** — they run once per tool call and can touch the result.
+- Scope something to **one tool** with a method-level `@UseInterceptors`/
+  `@UseGuards` on that `@Tool` — it stacks on top of the class-level pieces
+  (global → controller → method) and still has the args + `McpContext`.
+- Reach for the library's **`McpExceptionFilter`** (globally via `APP_FILTER`, or
+  per controller) when you want a tool's real error message to reach the agent.

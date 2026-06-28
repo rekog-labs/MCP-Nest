@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
 import { McpError } from '@modelcontextprotocol/sdk/types.js';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
-import { McpController, Resource, ResourceTemplate } from '../src';
+import { McpController, Resource, ResourceTemplate } from '@rekog/mcp-nest';
 
 @McpController()
 export class GreetingToolResource {

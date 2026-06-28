@@ -67,6 +67,12 @@ All MCP requests require authentication. Construct the strategy, gate the MCP
 routes with middleware that validates the Bearer token and sets `req.user`, and
 keep the OAuth controller endpoints open so the handshake can run:
 
+The OAuth authorization server lives in a separate package. Install it alongside `@rekog/mcp-nest`:
+
+```bash
+npm install @rekog/mcp-nest-auth
+```
+
 ```typescript
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -78,13 +84,13 @@ import {
   McpAuthModule,
   GitHubOAuthProvider,
   JwtTokenService,
-} from '@rekog/mcp-nest';
+} from '@rekog/mcp-nest-auth';
 import { MyTools } from './my-tools';
 
 const mcp = new McpStrategy({
   name: 'my-mcp-server',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
   // allowUnauthenticatedAccess: true, // enable @PublicTool() access (see below)
 });
 
@@ -163,7 +169,7 @@ set `allowUnauthenticatedAccess: true` on the strategy:
 const mcp = new McpStrategy({
   name: 'my-mcp-server',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
   allowUnauthenticatedAccess: true, // Enable public tool access
 });
 ```
@@ -172,12 +178,12 @@ When `true`, unauthenticated users can access `@PublicTool()` tools, while prote
 
 ### 2. Define Tools
 
-Tools live on an `@McpController()` class. Read the authenticated user via the
-execution context (`@Ctx()` -> `getRawRequest().user`):
+Tools live on an `@McpController()` class. Read the authenticated user from the
+raw request — inject it with `@McpRawRequest()` and read `req.user`:
 
 ```typescript
-import { McpController, Tool, PublicTool, ToolScopes, ToolRoles, McpContext } from '@rekog/mcp-nest';
-import { Ctx, Payload } from '@nestjs/microservices';
+import { McpController, Tool, PublicTool, ToolScopes, ToolRoles, McpRawRequest } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 
 @McpController()
@@ -200,8 +206,11 @@ export class MyTools {
     name: 'user-profile',
     description: 'Get user profile',
   })
-  async getUserProfile(@Payload() _args: unknown, @Ctx() ctx: McpContext) {
-    const user = ctx.getRawRequest<{ user?: any }>()?.user;
+  async getUserProfile(
+    @Payload() _args: unknown,
+    @McpRawRequest() req?: { user?: any },
+  ) {
+    const user = req?.user;
     return { content: [{ type: 'text', text: `Profile for ${user.name}` }] };
   }
 

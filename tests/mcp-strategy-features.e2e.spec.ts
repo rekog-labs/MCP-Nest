@@ -11,7 +11,7 @@ import {
   ResourceTemplate,
   StreamableHttpTransport,
   Tool,
-} from '../src';
+} from '@rekog/mcp-nest';
 import { createStreamableClient } from './utils';
 
 @Injectable()
@@ -102,7 +102,7 @@ describe('E2E: McpStrategy capabilities', () => {
     strategy = new McpStrategy({
       name: 'features-server',
       version: '0.0.1',
-      transports: [new StreamableHttpTransport({ statelessMode: false })],
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
     });
 
     const moduleFixture = await Test.createTestingModule({

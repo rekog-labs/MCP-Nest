@@ -9,7 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { z } from 'zod';
 import { Payload } from '@nestjs/microservices';
 import { CanActivate } from '@nestjs/common';
-import { McpContext, McpController, Tool, PublicTool } from '../src';
+import { McpContext, McpController, Tool, PublicTool } from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
   createStreamableClient,
@@ -278,7 +278,7 @@ describe('E2E: Tool Guards via native @UseGuards()', () => {
   describe.each([
     {
       transportName: 'Streamable HTTP (stateful)',
-      makeTransports: () => [new StreamableHttpTransport({ statelessMode: false })],
+      makeTransports: () => [new StreamableHttpTransport({ statefulMode: true })],
       createClient: (port: number, headers?: Record<string, string>) =>
         createStreamableClient(
           port,

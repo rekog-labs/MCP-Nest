@@ -1,126 +1,65 @@
-# Multi-Server MCP Example
+# Multi-Domain MCP Example
 
-This example demonstrates running **two isolated MCP servers in one NestJS app**,
-each as its own `McpStrategy` mounted on distinct HTTP endpoints.
-
-> **Migrated:** `McpModule.forRoot` and `McpModule.forFeature` are gone. Each
-> server is now an `McpStrategy` connected via `app.connectMicroservice`. Tool
-> classes are `@McpController`s declared in a module's `controllers`; their
-> dependencies stay as `providers`.
-
-## Architecture
-
-### Two MCP Servers
-
-1. **Public Server** (`public-server`) — endpoint `/public/mcp`
-2. **Admin Server** (`admin-server`) — endpoint `/admin/mcp`
-
-Each is a separate `McpStrategy` instance (defined in `app.module.ts`) connected
-to the same Nest app in `main.ts`.
-
-### Feature Modules
-
-Each domain is organized into its own feature module:
-
-```
-modules/
-├── weather-feature.module.ts      → controllers: [WeatherTools],      providers: [WeatherService]
-├── analytics-feature.module.ts    → controllers: [AnalyticsTools],    providers: [AnalyticsService]
-└── notification-feature.module.ts → controllers: [NotificationTools], providers: [NotificationService]
-
-tools/        (now @McpController capability classes)
-├── weather.tools.ts         → depends on WeatherService
-├── analytics.tools.ts       → depends on AnalyticsService
-└── notification.tools.ts    → depends on NotificationService
-
-services/     (plain providers)
-├── weather.service.ts
-├── analytics.service.ts
-└── notification.service.ts
-```
-
-## Important: tool visibility changed
-
-With the strategy model, **every `@McpController` in the application binds to
-every connected strategy** — all strategies share the same microservice transport
-id. As a result, BOTH servers expose the SAME tool set. The old behavior where
-`forFeature(tools, 'public-server')` gave each server its own distinct tool list
-is no longer available through controllers.
-
-If you need genuinely different tool sets per server, register them dynamically on
-the specific strategy instance instead:
-
-```typescript
-publicStrategy.registerTool({ name: 'get-weather', /* ... */, handler });
-adminStrategy.registerTool({ name: 'get-metrics', /* ... */, handler });
-```
-
-See [`../servers-with-dynamic-tools.ts`](../servers-with-dynamic-tools.ts) for the
-dynamic-registration pattern. This example keeps the "multiple isolated servers on
-distinct endpoints" intent; the endpoints are isolated even though the advertised
-tools are shared.
+This is an example how to expose multiple MCP-Servers. It additionally shows how to share tools, by keeping the logic in services, and just duplicating the tool defintion.
 
 ## Running the Example
 
 ```bash
 # From the project root
-npm run start:multi-server-example
-
-# Or with ts-node
-npx ts-node playground/servers/multi-server-example/main.ts
+npm run start:multi-server
 ```
 
 ## Testing with MCP Inspector
 
-### Public Server
+### Weather Server
 
 ```bash
-npx @modelcontextprotocol/inspector \
-  http://localhost:3000/public/mcp
+npx -y @modelcontextprotocol/inspector --cli http://localhost:3000/weather/mcp --transport http --method tools/list | jq '.tools[].name'
+
+"get-weather"
+"list-cities"
 ```
 
-### Admin Server
+The **weather** endpoint advertises:
 
-```bash
-npx @modelcontextprotocol/inspector \
-  http://localhost:3000/admin/mcp
-```
-
-Both endpoints advertise the same shared tool set:
-
-- `get-weather` with `{ "city": "New York" }`
+- `get-weather` with `{ "city": "Tokyo" }`
 - `list-cities`
-- `get-metrics`
-- `track-request` with `{ "endpoint": "/api/test", "userId": "admin1" }`
-- `send-notification` with `{ "userId": "user1", "message": "Hello!" }`
-- `get-notifications` with `{ "userId": "user1" }`
-- `mark-notification-read` with `{ "notificationId": "..." }`
+
+### Travel Server
+
+```bash
+npx -y @modelcontextprotocol/inspector --cli http://localhost:3000/travel/mcp --transport http --method tools/list | jq '.tools[].name'
+
+"recommend-destination"
+"weather-at-destination"
+```
+
+The **travel** endpoint advertises:
+
+- `recommend-destination` with `{ "interest": "food" }`
+- `weather-at-destination` with `{ "interest": "food" }` (reuses `WeatherService`)
+
 
 ## File Structure
 
 ```
 multi-server-example/
-├── README.md                           # This file
-├── ARCHITECTURE.md                     # Strategy/transport architecture
-├── main.ts                             # Entry point: connect + start both strategies
-├── app.module.ts                       # Strategy definitions + feature module imports
-├── modules/
-│   ├── weather-feature.module.ts
-│   ├── analytics-feature.module.ts
-│   └── notification-feature.module.ts
-├── tools/                              # @McpController capability classes
-│   ├── weather.tools.ts
-│   ├── analytics.tools.ts
-│   └── notification.tools.ts
-└── services/                           # plain providers
-    ├── weather.service.ts
-    ├── analytics.service.ts
-    └── notification.service.ts
+├── README.md                   # This file
+├── main.ts                     # Entry point: connect + start both strategies
+├── app.module.ts               # Strategy definitions (named servers) + feature module imports
+├── weather/                    # weather feature (self-contained)
+│   ├── weather.service.ts      # SHARED @Injectable(), exported by WeatherModule
+│   ├── weather.tools.ts        # @McpController({ server: 'weather' })
+│   └── weather.module.ts
+└── travel/                     # travel feature (self-contained)
+    ├── travel.service.ts
+    ├── travel.tools.ts         # @McpController({ server: 'travel' })
+    └── travel.module.ts        # imports WeatherModule to reuse WeatherService
 ```
 
 ## How It Works
 
-1. **Strategy creation**: `new McpStrategy({ name, version, transports })` creates each server (`app.module.ts`).
-2. **Capabilities**: `@McpController` classes in feature modules' `controllers` are bound to the connected strategies automatically.
+1. **Strategy creation**: `new McpStrategy({ name, version, server, transports })` creates each named domain server (`app.module.ts`).
+2. **Capabilities**: `@McpController({ server })` classes bind ONLY to the strategy whose `server` matches.
 3. **Connection**: `main.ts` calls `setHttpAdapter` + `connectMicroservice` for each strategy, then a single `startAllMicroservices()` and `listen()`.
-4. **Dependency injection**: NestJS injects services into the controllers as usual; tools run through the full RPC pipeline (guards/pipes/interceptors/filters).
+4. **Shared logic**: `WeatherService` is a single instance, injected into both servers' controllers via DI; the travel server reuses it without duplicating any weather logic.

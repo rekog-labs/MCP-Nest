@@ -2,7 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "@rekog/mcp-nest": ["src/index.ts"]
+      "@rekog/mcp-nest": ["packages/mcp-nest/src/index.ts"],
+      "@rekog/mcp-nest-auth": ["packages/mcp-nest-auth/src/index.ts"]
     }
   }
 }

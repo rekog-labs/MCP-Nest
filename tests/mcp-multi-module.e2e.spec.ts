@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { McpController, Tool } from '../src';
+import { McpController, Tool } from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
   createStreamableClient,
@@ -51,22 +51,22 @@ describe('E2E: Multiple MCP servers (Streamable HTTP)', () => {
     const statefulA = await bootstrapMcpApp({
       name: 'server-a',
       controllers: [ToolsA],
-      transports: [new StreamableHttpTransport({ statelessMode: false })],
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
     });
     const statefulB = await bootstrapMcpApp({
       name: 'server-b',
       controllers: [ToolsB],
-      transports: [new StreamableHttpTransport({ statelessMode: false })],
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
     });
     const statelessA = await bootstrapMcpApp({
       name: 'server-a',
       controllers: [ToolsA],
-      transports: [new StreamableHttpTransport({ statelessMode: true })],
+      transports: [new StreamableHttpTransport({ statefulMode: false })],
     });
     const statelessB = await bootstrapMcpApp({
       name: 'server-b',
       controllers: [ToolsB],
-      transports: [new StreamableHttpTransport({ statelessMode: true })],
+      transports: [new StreamableHttpTransport({ statefulMode: false })],
     });
 
     apps.push(statefulA.app, statefulB.app, statelessA.app, statelessB.app);

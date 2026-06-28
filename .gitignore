@@ -1,6 +1,10 @@
 coverage
 node_modules
 dist
+# Vendored clone of the old repo, kept locally for the parity audit only.
+# Ignored so `bun test` (which honors .gitignore) doesn't run its stale suite.
+old-repo/
+old-version/
 tsconfig.tsbuildinfo
 tsconfig.build.tsbuildinfo
 .claude

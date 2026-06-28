@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { z } from 'zod';
-import { McpController, Tool } from '../src';
+import { McpController, Tool } from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
   createStreamableClient,
@@ -35,7 +35,7 @@ describe('MCP under a prefixed endpoint (e2e)', () => {
       transports: [
         new StreamableHttpTransport({
           endpoint: streamableEndpoint,
-          statelessMode: false,
+          statefulMode: true,
         }),
       ],
     });
@@ -83,7 +83,7 @@ describe('MCP under a deeply-nested endpoint (e2e)', () => {
       transports: [
         new StreamableHttpTransport({
           endpoint: nestedEndpoint,
-          statelessMode: false,
+          statefulMode: true,
         }),
       ],
     });

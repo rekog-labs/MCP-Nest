@@ -20,7 +20,7 @@ This guide maps the old API to the new one.
 | Transport selection | `transport: McpTransportType[]` | `transports: McpTransport[]` instances |
 | Tool args | first positional param | `@Payload()` (or the first param by default) |
 | Tool context | second positional param (`Context`) | `@Ctx() ctx: McpContext` |
-| Raw HTTP request | third positional param | `ctx.getRawRequest()` |
+| Raw HTTP request | third positional param | `ctx.getRawRequest()`, or inject directly with `@McpRawRequest()` |
 | Runtime registration | `McpRegistryService.registerTool()` | `strategy.registerTool()` |
 
 ## 1. Bootstrap
@@ -44,7 +44,7 @@ await app.listen(3000);
 export const mcp = new McpStrategy({
   name: 'srv',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
 });
 
 @Module({
@@ -83,7 +83,8 @@ export class GreetingController {
 
 - A method that only needs its arguments can keep `(args)` — the first parameter
   defaults to the payload.
-- If you use `@Ctx()`, you must also annotate the data param with `@Payload()`.
+- If you use `@Ctx()` (or any other param decorator such as `@McpRawRequest()`),
+  you must also annotate the data param with `@Payload()`.
 - `@Tool`, `@Resource`, `@ResourceTemplate`, and `@Prompt` are unchanged in shape;
   they now also emit the `@MessagePattern` metadata internally.
 
@@ -171,7 +172,8 @@ is enabled in `tsconfig.json`. A constraint violation returns
 ## 4. Transports
 
 ```typescript
-new StreamableHttpTransport({ endpoint: '/mcp', statelessMode: false, enableJsonResponse: false });
+new StreamableHttpTransport(); // stateless + JSON — the default
+new StreamableHttpTransport({ statefulMode: true }); // session-managed + SSE
 new StdioTransport();
 ```
 
@@ -184,6 +186,29 @@ new StdioTransport();
 - STDIO is session-aware now, so it supports progress and logging. Disable
   logging on stdio servers (`logging: false` + `{ logger: false }`) since stdout
   carries the protocol.
+
+### Streamable HTTP is stateless by default (renamed `statelessMode` → `statefulMode`)
+
+The old `statelessMode` flag is gone. The transport is now **stateless by
+default**, and you opt into session management with `statefulMode: true`:
+
+| Before | After |
+| --- | --- |
+| `new StreamableHttpTransport({ statelessMode: true })` | `new StreamableHttpTransport()` |
+| `new StreamableHttpTransport({ statelessMode: false })` | `new StreamableHttpTransport({ statefulMode: true })` |
+
+`enableJsonResponse` now **defaults to the session mode** instead of always
+`false`: JSON in stateless mode (a plain POST gets a JSON reply), SSE in stateful
+mode (so server-initiated messages can stream). Set it explicitly to override —
+e.g. `new StreamableHttpTransport({ enableJsonResponse: false })` keeps SSE on a
+stateless server.
+
+- **Stateless** (default): every request is self-contained, a fresh server is
+  created per request, and `GET`/`DELETE /mcp` return `405`. Best for most
+  servers and REST-like usage.
+- **Stateful**: sessions are tracked by the `mcp-session-id` header, with
+  `GET /mcp` (SSE stream) and `DELETE /mcp` (teardown). Use it when you need
+  server-initiated streaming/notifications tied to a long-lived session.
 
 ## 5. Dynamic registration
 
@@ -255,3 +280,19 @@ has been removed.
   **`guards` option** on `McpStrategy`, the **`@ToolGuards()` decorator**, and
   the module options `transport`, `apiPrefix`, `sseEndpoint`, `messagesEndpoint`,
   `mcpEndpoint`, and `streamableHttp`.
+
+## 8. Multiple servers in one app (the `forFeature` replacement)
+
+`McpModule.forFeature([...], 'server-name')` registered capability classes to a
+*named* server so a monolith could expose several MCP servers, each with its own
+tool set. The strategy API does the same with **named servers**: tag a controller
+with `@McpController({ server: 'name' })` and it binds only to a
+`McpStrategy({ server: 'name' })` connected on its own endpoint. Unnamed
+controllers/strategies keep the single shared-server behavior.
+
+Sharing a tool across servers is ordinary NestJS DI — put the logic in an
+`@Injectable()` service and re-declare a thin `@Tool` on each server's controller
+(a class is tagged for exactly one server, but the service can back many).
+
+See **[Multiple MCP Servers](./multiple-servers.md)** for the full pattern and a
+runnable example.

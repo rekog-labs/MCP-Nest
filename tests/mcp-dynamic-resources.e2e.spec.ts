@@ -1,6 +1,6 @@
 import { INestApplication, Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
-import { MCP_STRATEGY, McpController, McpStrategy, Resource } from '../src';
+import { MCP_STRATEGY, McpController, McpStrategy, Resource } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 // ============================================================================

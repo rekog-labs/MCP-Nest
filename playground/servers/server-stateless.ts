@@ -9,17 +9,13 @@ import { GreetingPrompt } from '../resources/greeting.prompt';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingTool } from '../resources/greeting.tool';
 
-// Stateless streamable-HTTP server: every request is self-contained (no session
-// id), and JSON responses are enabled so simple POSTs work without an SSE stream.
+// Stateless streamable-HTTP server: this is the default mode — every request is
+// self-contained (no session id) and a plain POST gets a JSON reply, so there is
+// nothing to configure. `new StreamableHttpTransport()` is stateless.
 const strategy = new McpStrategy({
   name: 'playground-mcp-server',
   version: '0.0.1',
-  transports: [
-    new StreamableHttpTransport({
-      statelessMode: true,
-      enableJsonResponse: true,
-    }),
-  ],
+  transports: [new StreamableHttpTransport()],
 });
 
 @Module({

@@ -7,7 +7,8 @@
     "smoke:local": "TS_NODE_PROJECT=tsconfig.local.json node -r ts-node/register -r tsconfig-paths/register --test smoke.ts"
   },
   "dependencies": {
-    "@rekog/mcp-nest": "file:..",
+    "@rekog/mcp-nest": "file:../packages/mcp-nest",
+    "@rekog/mcp-nest-auth": "file:../packages/mcp-nest-auth",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@nestjs/common": "^11.1.14",
     "@nestjs/core": "^11.1.14",

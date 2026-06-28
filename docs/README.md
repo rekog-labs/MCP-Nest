@@ -5,6 +5,7 @@
   - [Discovery and Registration of Tools](./tool-discovery-and-registration.md) — Automatic discovery via `@McpController` and runtime registration on the strategy.
   - [Dynamic Capabilities Guide](./dynamic-capabilities.md) — Register tools, resources, and prompts programmatically at runtime from databases or configuration.
   - [Per-Tool Authorization](./per-tool-authorization.md) — How to implement fine-grained authorization for individual tools.
+- [Multiple MCP Servers](./multiple-servers.md) — Run several isolated MCP servers in one app with named servers (`@McpController({ server })` + `McpStrategy({ server })`).
 - [Server Examples](./server-examples.md) — Example server setups and configurations.
 - [Prompts Guide](./prompts.md) — How to define and use prompts.
 - [Resource Templates Guide](./resource-templates.md) — Resource URI templates and usage.

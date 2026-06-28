@@ -10,7 +10,7 @@ import {
   McpStrategy,
   StreamableHttpTransport,
   Tool,
-} from '../src';
+} from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { randomUUID } from 'crypto';
@@ -142,7 +142,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
     const strategy = new McpStrategy({
       name: 'test-fastify-mcp-server',
       version: '0.0.1',
-      transports: [new StreamableHttpTransport({ statelessMode: false })],
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
     });
 
     const fastifyModuleFixture: TestingModule = await Test.createTestingModule({

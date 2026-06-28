@@ -20,10 +20,14 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "esModuleInterop": true,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@rekog/mcp-nest": ["packages/mcp-nest/src/index.ts"],
+      "@rekog/mcp-nest-auth": ["packages/mcp-nest-auth/src/index.ts"]
+    }
   },
   "include": [
-    "src/**/*",
+    "packages/**/*",
     "tests/**/*",
     "playground/**/*"
   ],

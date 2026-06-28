@@ -17,7 +17,7 @@ const allowUnauthenticatedAccess = true;
 const strategy = new McpStrategy({
   name: 'playground-mcp-server-simple',
   version: '0.0.1',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
   // Per-tool authorization reads `req.user` set by the JWT middleware below.
   allowUnauthenticatedAccess,
 });

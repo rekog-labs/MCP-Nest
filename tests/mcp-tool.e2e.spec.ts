@@ -3,7 +3,7 @@ import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { INestApplication, Injectable, Scope } from '@nestjs/common';
 import { Ctx, Payload, RpcException } from '@nestjs/microservices';
 import { z } from 'zod';
-import { McpContext, McpController, Tool } from '../src';
+import { McpContext, McpController, McpRawRequest, Tool } from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
   createStreamableClient,
@@ -114,11 +114,10 @@ export class GreetingToolRequestScoped {
 export class HeaderTool {
   @Tool({
     name: 'get-request-scoped',
-    description: 'Reads a header from the raw request via @Ctx()',
+    description: 'Reads a header from the raw request via @McpRawRequest()',
     parameters: z.object({}),
   })
-  getRequest(@Ctx() ctx: McpContext) {
-    const raw = ctx.getRawRequest<{ headers?: Record<string, string> }>();
+  getRequest(@McpRawRequest() raw?: { headers?: Record<string, string> }) {
     return {
       content: [
         { type: 'text', text: raw?.headers?.['any-header'] ?? 'No header found' },
@@ -290,7 +289,7 @@ describe('E2E: MCP ToolServer', () => {
       name: 'test-stateless-mcp-server',
       controllers: TOOL_CONTROLLERS,
       providers: [MockUserRepository],
-      transports: [new StreamableHttpTransport({ statelessMode: true })],
+      transports: [new StreamableHttpTransport({ statefulMode: false })],
     });
     statelessApp = stateless.app;
     statelessServerPort = stateless.port;

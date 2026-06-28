@@ -1,6 +1,6 @@
 import { INestApplication, Injectable } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { McpController, Tool } from '../src';
+import { McpController, Tool } from '@rekog/mcp-nest';
 import {
   createStreamableClient,
   McpStrategy,
@@ -95,7 +95,7 @@ async function bootstrapServer(config: {
   const strategy = new McpStrategy({
     name: config.name,
     version: '0.0.1',
-    transports: [new StreamableHttpTransport({ statelessMode: false })],
+    transports: [new StreamableHttpTransport({ statefulMode: true })],
   });
 
   const moduleFixture: TestingModule = await Test.createTestingModule({

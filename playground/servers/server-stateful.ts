@@ -10,10 +10,11 @@ import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingTool } from '../resources/greeting.tool';
 
 // Stateful server: session-aware streamable HTTP (POST/GET/DELETE /mcp).
+// Stateless is the default, so opt into sessions with `statefulMode: true`.
 const strategy = new McpStrategy({
   name: 'playground-mcp-server',
   version: '0.0.1',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport({ statefulMode: true })],
 });
 
 @Module({

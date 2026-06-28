@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { McpController, Tool } from '../src';
+import { McpController, Tool } from '@rekog/mcp-nest';
 import {
   createStreamableClient,
   McpStrategy,
@@ -50,7 +50,7 @@ describe('E2E: MCP Version', () => {
     const strategy = new McpStrategy({
       name: 'test-mcp-server',
       version: '0.0.1',
-      transports: [new StreamableHttpTransport({ statelessMode: false })],
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
     });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({

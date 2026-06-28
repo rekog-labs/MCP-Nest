@@ -2,7 +2,7 @@ import { INestApplication, UsePipes, ValidationPipe } from '@nestjs/common';
 import { Payload, RpcException } from '@nestjs/microservices';
 import { IsInt, IsString, Min, MinLength } from 'class-validator';
 import { z } from 'zod';
-import { McpController, Tool } from '../src';
+import { McpController, Tool } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 class CreateUserDto {

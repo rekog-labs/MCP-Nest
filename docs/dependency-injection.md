@@ -38,12 +38,11 @@ export class GreetingTool {
 
 ### Request-scoped behavior
 
-In a request-scoped capability, `@Inject(REQUEST)` resolves to the **RPC request context**, not the raw HTTP request. To read HTTP headers, the authenticated user, etc., use `ctx.getRawRequest()` instead:
+In a request-scoped capability, `@Inject(REQUEST)` resolves to the **RPC request context**, not the raw HTTP request. To read HTTP headers, the authenticated user, etc., inject the raw request with `@McpRawRequest()`:
 
 ```typescript
-async sayHello(@Payload() { name }: { name: string }, @Ctx() ctx: McpContext) {
-  const httpRequest = ctx.getRawRequest(); // Express/Fastify request (undefined for stdio)
-  const user = httpRequest?.user;
+async sayHello(@Payload() { name }: { name: string }, @McpRawRequest() req?: Request) {
+  const user = req?.user; // Express/Fastify request (undefined for stdio)
   // ...
 }
 ```

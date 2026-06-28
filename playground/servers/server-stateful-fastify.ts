@@ -70,7 +70,7 @@ export class GreetingTool {
 const strategy = new McpStrategy({
   name: 'fastify-mcp-server',
   version: '0.0.1',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport({ statefulMode: true })],
 });
 
 @Module({

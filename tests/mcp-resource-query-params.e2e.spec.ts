@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
-import { McpController, ResourceTemplate } from '../src';
+import { McpController, ResourceTemplate } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 @McpController()

@@ -8,7 +8,7 @@ import {
   PublicTool,
   ToolScopes,
   ToolRoles,
-} from '../src';
+} from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 /**

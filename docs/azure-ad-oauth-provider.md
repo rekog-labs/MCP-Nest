@@ -86,8 +86,14 @@ Copy these values for your application configuration:
 
 ### Basic Configuration
 
+The Azure AD provider ships with the built-in authorization server package. Install it alongside `@rekog/mcp-nest`:
+
+```bash
+npm install @rekog/mcp-nest-auth
+```
+
 ```typescript
-import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest';
+import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest-auth';
 
 @Module({
   imports: [
@@ -176,14 +182,14 @@ import {
   McpAuthModule,
   AzureADOAuthProvider,
   JwtTokenService,
-} from '@rekog/mcp-nest';
+} from '@rekog/mcp-nest-auth';
 import { MyTools } from './my-tools'; // your @McpController() classes
 
 const mcp = new McpStrategy({
   name: 'Azure AD MCP Server',
   version: '1.0.0',
   transports: [
-    new StreamableHttpTransport({ statelessMode: false }),
+    new StreamableHttpTransport(),
   ],
 });
 
@@ -343,7 +349,7 @@ For applications requiring access to Microsoft Graph APIs beyond basic profile:
 ### Unit Tests
 
 ```typescript
-import { AzureADOAuthProvider } from '@rekog/mcp-nest/authz';
+import { AzureADOAuthProvider } from '@rekog/mcp-nest-auth';
 
 describe('Azure AD Provider', () => {
   it('should map profile correctly', () => {

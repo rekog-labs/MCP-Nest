@@ -6,8 +6,8 @@ import {
   McpStrategy,
   StreamableHttpTransport,
   Tool,
-} from '../src';
-import { McpAuthModule } from '../src/authz/mcp-oauth.module';
+} from '@rekog/mcp-nest';
+import { McpAuthModule } from '@rekog/mcp-nest-auth';
 import { z } from 'zod';
 
 const MockOAuthProviderA = {
@@ -132,7 +132,7 @@ describe('E2E: Multiple McpAuthModule instances', () => {
       transports: [
         new StreamableHttpTransport({
           endpoint: '/servers/a/mcp',
-          statelessMode: false,
+          statefulMode: true,
         }),
       ],
     });
@@ -143,7 +143,7 @@ describe('E2E: Multiple McpAuthModule instances', () => {
       transports: [
         new StreamableHttpTransport({
           endpoint: '/servers/b/mcp',
-          statelessMode: false,
+          statefulMode: true,
         }),
       ],
     });

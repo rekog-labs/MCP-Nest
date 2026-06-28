@@ -7,7 +7,7 @@ import {
   McpStrategy,
   StreamableHttpTransport,
   Tool,
-} from '../src';
+} from '@rekog/mcp-nest';
 
 @McpController()
 class MixedController {
@@ -35,7 +35,7 @@ describe('E2E: McpStrategy transport scoping', () => {
     strategy = new McpStrategy({
       name: 'scoping-server',
       version: '0.0.1',
-      transports: [new StreamableHttpTransport({ statelessMode: false })],
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
     });
 
     const moduleFixture = await Test.createTestingModule({

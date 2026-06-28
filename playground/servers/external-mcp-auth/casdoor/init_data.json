@@ -1,0 +1,96 @@
+{
+  "organizations": [
+    {
+      "owner": "admin",
+      "name": "built-in",
+      "displayName": "Built-in Organization",
+      "passwordType": "bcrypt",
+      "passwordOptions": ["AtLeast6"],
+      "countryCodes": ["US"],
+      "languages": ["en"],
+      "tags": [],
+      "defaultApplication": "app-built-in",
+      "dcrPolicy": "open",
+      "hasPrivilegeConsent": true,
+      "initScore": 2000,
+      "enableSoftDeletion": false,
+      "isProfilePublic": true
+    }
+  ],
+  "applications": [
+    {
+      "owner": "admin",
+      "name": "app-built-in",
+      "displayName": "Casdoor (MCP playground)",
+      "organization": "built-in",
+      "cert": "cert-built-in",
+      "enablePassword": true,
+      "enableSignUp": true,
+      "enableCodeSignin": true,
+      "clientId": "mcp-playground-client",
+      "clientSecret": "mcp-playground-secret-dev-only",
+      "providers": [],
+      "signinMethods": [
+        { "name": "Password", "displayName": "Password", "rule": "All" }
+      ],
+      "signupItems": [
+        { "name": "ID", "visible": false, "required": true, "prompted": false, "rule": "Random" },
+        { "name": "Username", "visible": true, "required": true, "prompted": false, "rule": "None" },
+        { "name": "Display name", "visible": true, "required": true, "prompted": false, "rule": "None" },
+        { "name": "Password", "visible": true, "required": true, "prompted": false, "rule": "None" },
+        { "name": "Confirm password", "visible": true, "required": true, "prompted": false, "rule": "None" },
+        { "name": "Email", "visible": true, "required": true, "prompted": false, "rule": "None" }
+      ],
+      "grantTypes": [
+        "authorization_code",
+        "password",
+        "client_credentials",
+        "refresh_token",
+        "token",
+        "id_token"
+      ],
+      "redirectUris": [
+        "http://localhost:8000/callback",
+        "http://localhost:3030/callback",
+        "http://localhost:6274/oauth/callback",
+        "http://127.0.0.1:6274/oauth/callback"
+      ],
+      "tokenFormat": "JWT",
+      "tokenFields": [],
+      "expireInHours": 168,
+      "refreshExpireInHours": 168,
+      "failedSigninLimit": 5,
+      "failedSigninFrozenTime": 15
+    }
+  ],
+  "users": [
+    {
+      "owner": "built-in",
+      "name": "admin",
+      "type": "normal-user",
+      "password": "admin123",
+      "displayName": "Admin",
+      "email": "admin@example.com",
+      "isAdmin": true,
+      "isForbidden": false,
+      "isDeleted": false,
+      "signupApplication": "app-built-in",
+      "score": 2000,
+      "ranking": 1
+    },
+    {
+      "owner": "built-in",
+      "name": "joe",
+      "type": "normal-user",
+      "password": "password123",
+      "displayName": "Joe Example",
+      "email": "joe@example.com",
+      "isAdmin": false,
+      "isForbidden": false,
+      "isDeleted": false,
+      "signupApplication": "app-built-in",
+      "score": 2000,
+      "ranking": 2
+    }
+  ]
+}

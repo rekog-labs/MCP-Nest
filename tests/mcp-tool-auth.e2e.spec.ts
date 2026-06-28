@@ -1,7 +1,7 @@
 import { INestApplication, Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { Ctx, Payload } from '@nestjs/microservices';
-import { McpContext, McpController, Tool } from '../src';
+import { McpContext, McpController, McpRawRequest, Tool } from '@rekog/mcp-nest';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -11,7 +11,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
  * guard. The middleware inspects the Authorization header, populates
  * `req.user` on success, and replies 401 on failure — gating the MCP routes
  * the same way the old `guards: [MockAuthGuard]` did. Tools read the
- * authenticated user via `@Ctx()` -> `getRawRequest().user`.
+ * authenticated user by injecting the request with `@McpRawRequest()` and
+ * reading `req.user`.
  */
 const authMiddleware = (req: any, res: any, next: () => void) => {
   const authorization = req.headers?.authorization;
@@ -68,10 +69,11 @@ export class AuthGreetingTool {
   async sayHello(
     @Payload() { name }: { name: string },
     @Ctx() context: McpContext,
+    @McpRawRequest() req?: { user?: any }, // raw request; read req.user
   ) {
     // Access both repository data and the authenticated user context
     const repoUser = await this.userRepository.findOne();
-    const authUser = context.getRawRequest<{ user: any }>()?.user; // Authenticated user from the request
+    const authUser = req?.user;
 
     // Construct greeting using both data sources
     const greeting = `Hello, ${name}! I'm ${authUser.name} from ${authUser.orgMemberships[0].organization.name}. Repository user is ${repoUser.name}.`;

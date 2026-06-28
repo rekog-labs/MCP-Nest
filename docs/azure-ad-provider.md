@@ -51,21 +51,29 @@ Copy these values from your app registration:
 
 ### Basic Setup
 
+The Azure AD provider ships with the built-in authorization server package. Install it alongside `@rekog/mcp-nest`:
+
+```bash
+npm install @rekog/mcp-nest-auth
+```
+
 ```typescript
 import { Module } from '@nestjs/common';
 import {
   McpStrategy,
   StreamableHttpTransport,
+} from '@rekog/mcp-nest';
+import {
   McpAuthModule,
   AzureADOAuthProvider,
-} from '@rekog/mcp-nest';
+} from '@rekog/mcp-nest-auth';
 import { MyTools } from './my-tools'; // your @McpController() classes
 
 // MCP runs as a microservice strategy — there is no McpModule.
 export const mcp = new McpStrategy({
   name: 'My MCP Server with Azure AD',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
 });
 
 @Module({

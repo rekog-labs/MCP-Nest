@@ -9,14 +9,14 @@ import {
   McpStrategy,
   McpTransport,
   StreamableHttpTransport,
-} from '../src';
+} from '@rekog/mcp-nest';
 
 export {
   MCP_STRATEGY,
   McpStrategy,
   StreamableHttpTransport,
   StdioTransport,
-} from '../src';
+} from '@rekog/mcp-nest';
 
 export interface BootstrapMcpConfig {
   controllers: ModuleMetadata['controllers'];
@@ -49,7 +49,7 @@ export async function bootstrapMcpApp(
     allowUnauthenticatedAccess: config.allowUnauthenticatedAccess,
     serverMutator: config.serverMutator,
     transports: config.transports ?? [
-      new StreamableHttpTransport({ statelessMode: false }),
+      new StreamableHttpTransport({ statefulMode: true }),
     ],
   });
 

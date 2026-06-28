@@ -51,7 +51,9 @@ Tool methods are RPC handlers, so their parameters are bound with `@nestjs/micro
    - `getSession()` - `{ transport, stateless, sessionId }`
    - `getRawRequest()` - The original HTTP request object (Express/Fastify), providing access to headers, query parameters, authentication data, and other HTTP-specific information. This returns `undefined` when using STDIO transport.
 
-> **Note:** When you use `@Ctx()`, you must also annotate the data param with `@Payload()`. The old third positional `request` parameter is now read via `ctx.getRawRequest()`.
+3. **`@McpRawRequest() req`**: Injects the raw transport request directly — the MCP analog of NestJS's `@Req()`. This is sugar for `ctx.getRawRequest()`; reach for it when the request is all you need from the context, so you don't have to take `@Ctx()` just to call `getRawRequest()`. Like `getRawRequest()`, it is `undefined` under STDIO. The decorator does not type the value — annotate the parameter with your framework's request type (e.g. `@McpRawRequest() req?: Request`).
+
+> **Note:** When you use `@Ctx()` (or any other param decorator such as `@McpRawRequest()`), you must also annotate the data param with `@Payload()`. The old third positional `request` parameter is now read via `ctx.getRawRequest()` or injected with `@McpRawRequest()`.
 
 ### Tool Decorator Properties
 

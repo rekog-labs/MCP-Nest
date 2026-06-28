@@ -8,7 +8,7 @@ import {
 import { Payload } from '@nestjs/microservices';
 import { Observable, of } from 'rxjs';
 import { z } from 'zod';
-import { McpController, Prompt, Resource, Tool } from '../src';
+import { McpController, Prompt, Resource, Tool } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 class CustomError extends Error {

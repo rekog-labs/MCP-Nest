@@ -204,12 +204,7 @@ And register it with Nest. MCP runs as an `McpStrategy` microservice (there is n
 const mcp = new McpStrategy({
   name: 'playground-mcp-server',
   version: '0.0.1',
-  transports: [
-    new StreamableHttpTransport({
-      enableJsonResponse: false,
-      statelessMode: false,
-    }),
-  ],
+  transports: [new StreamableHttpTransport()],
 });
 
 @Module({

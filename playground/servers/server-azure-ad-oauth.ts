@@ -9,12 +9,8 @@
 import { NestFactory } from '@nestjs/core';
 import { Module } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
-import {
-  AzureADOAuthProvider,
-  McpAuthModule,
-  McpStrategy,
-  StreamableHttpTransport,
-} from '@rekog/mcp-nest';
+import { McpStrategy, StreamableHttpTransport } from '@rekog/mcp-nest';
+import { AzureADOAuthProvider, McpAuthModule } from '@rekog/mcp-nest-auth';
 import { GreetingTool } from '../resources/greeting.tool';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingPrompt } from '../resources/greeting.prompt';
@@ -28,7 +24,7 @@ const JWT_SECRET =
 const strategy = new McpStrategy({
   name: 'OAuth Azure AD Server',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
 });
 
 @Module({

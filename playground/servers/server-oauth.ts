@@ -1,16 +1,19 @@
-import { Module } from '@nestjs/common';
+import { Controller, Module, UseGuards } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import * as dotenv from 'dotenv';
 import 'reflect-metadata';
-import * as jwt from 'jsonwebtoken';
 import {
-  GitHubOAuthProvider,
-  McpAuthModule,
+  McpHttpControllerFor,
   McpStrategy,
   StreamableHttpTransport,
 } from '@rekog/mcp-nest';
+import {
+  GitHubOAuthProvider,
+  McpAuthJwtGuard,
+  McpAuthModule,
+} from '@rekog/mcp-nest-auth';
 import { GreetingPrompt } from '../resources/greeting.prompt';
 import { GreetingResource } from '../resources/greeting.resource';
 import { GreetingTool } from '../resources/greeting.tool';
@@ -21,17 +24,32 @@ const JWT_SECRET = process.env.JWT_SECRET!;
 const allowUnauthenticatedAccess =
   process.env.ALLOW_UNAUTHENTICATED_ACCESS === 'true';
 
-// The MCP server is now a microservice transport strategy. The OAuth 2.1 module
+// The MCP server is a microservice transport strategy. The OAuth 2.1 module
 // (McpAuthModule) is NOT McpModule — it still provides its register/authorize/
-// token/well-known controllers and is kept in `imports`. Its bespoke per-tool
-// authorization (`@PublicTool`/`@ToolScopes`/`@ToolRoles`) reads `req.user`,
-// which the JWT middleware below populates.
+// token/well-known controllers (so it acts as the Authorization Server that
+// delegates to GitHub) and is kept in `imports`.
+//
+// The transport is pulled out into a shared const so the guarded HTTP controller
+// below can bind to the SAME instance via `McpHttpControllerFor(mcpTransport)`.
+// Stateless is the default, so there is nothing to configure here.
+const mcpTransport = new StreamableHttpTransport();
+
 const strategy = new McpStrategy({
   name: 'playground-mcp-server',
   version: '0.0.1',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [mcpTransport],
   allowUnauthenticatedAccess,
 });
+
+// Authenticate the MCP surface with the library's own guard instead of bespoke
+// middleware. `McpHttpControllerFor(mcpTransport)` makes this a real NestJS
+// controller that owns the `/mcp` route (and auto-disables the transport's
+// self-mount), so `McpAuthJwtGuard` runs once per request — validating the JWT
+// minted by McpAuthModule and enriching `req.user` with username/displayName/
+// name/scopes/roles that the tools read via `ctx.getRawRequest().user`.
+@Controller('mcp')
+@UseGuards(McpAuthJwtGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
 @Module({
   imports: [
@@ -80,51 +98,22 @@ const strategy = new McpStrategy({
       // },
     }),
   ],
-  // Capability classes are controllers now; the OAuth module supplies services.
-  controllers: [GreetingResource, GreetingTool, GreetingPrompt],
+  // The guarded MCP route + the @McpController() capability classes (RPC
+  // handlers, not HTTP routes). McpAuthModule (imported) supplies the services.
+  controllers: [
+    McpHttpController,
+    GreetingResource,
+    GreetingTool,
+    GreetingPrompt,
+  ],
+  providers: [
+    McpAuthJwtGuard,
+    // The guard reads `allowUnauthenticatedAccess` from the optional MCP_OPTIONS
+    // token. Provide it explicitly so the flag works through the guard.
+    { provide: 'MCP_OPTIONS', useValue: { allowUnauthenticatedAccess } },
+  ],
 })
 class AppModule {}
-
-// Only gate the MCP transport routes; the OAuth controller endpoints
-// (/auth/*, /.well-known/*) must stay open so the handshake can run.
-const MCP_ROUTE_PREFIXES = ['/mcp'];
-
-function mcpAuthMiddleware(req: any, res: any, next: () => void) {
-  const path: string = req.path ?? req.url ?? '';
-  const isMcpRoute = MCP_ROUTE_PREFIXES.some(
-    (prefix) =>
-      path === prefix ||
-      path.startsWith(`${prefix}?`) ||
-      path.startsWith(`${prefix}/`),
-  );
-  if (!isMcpRoute) {
-    return next();
-  }
-
-  const authHeader: string | undefined = req.headers?.authorization;
-  const token =
-    authHeader && authHeader.startsWith('Bearer ')
-      ? authHeader.slice('Bearer '.length)
-      : undefined;
-
-  if (!token) {
-    if (allowUnauthenticatedAccess) {
-      return next();
-    }
-    res.statusCode = 401;
-    res.end('Unauthorized');
-    return;
-  }
-
-  try {
-    // Validate the access token minted by McpAuthModule (same jwtSecret).
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    res.statusCode = 401;
-    res.end('Unauthorized');
-  }
-}
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -139,7 +128,6 @@ async function bootstrap() {
 
   strategy.setHttpAdapter(app.getHttpAdapter());
   app.connectMicroservice({ strategy });
-  app.use(mcpAuthMiddleware);
   await app.startAllMicroservices();
 
   await app.listen(3030);

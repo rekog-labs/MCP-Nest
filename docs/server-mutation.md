@@ -20,7 +20,7 @@ export const mcp = new McpStrategy({
   name: 'mutated-mcp-server',
   version: '0.0.1',
   serverMutator: customMutator,
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
 });
 ```
 
@@ -35,7 +35,7 @@ export const mcp = new McpStrategy({
   name: 'mutated-mcp-server',
   version: '0.0.1',
   serverMutator: sentryMutator,
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
 });
 ```
 
@@ -55,6 +55,6 @@ export const mcp = new McpStrategy({
   name: 'mutated-mcp-server',
   version: '0.0.1',
   serverMutator: combinedMutator,
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
 });
 ```

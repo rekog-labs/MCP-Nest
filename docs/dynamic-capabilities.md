@@ -59,7 +59,7 @@ import {
 export const mcp = new McpStrategy({
   name: 'my-server',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
 });
 
 @Module({
@@ -351,7 +351,7 @@ import {
 export const mcp = new McpStrategy({
   name: 'my-server',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
 });
 
 @Module({
@@ -406,6 +406,11 @@ instance that serves the HTTP endpoints. Capabilities registered there appear
 immediately in `tools/list`, `resources/list`, and `prompts/list` responses.
 
 ### Multi-Server Isolation
+
+> This section covers **dynamically registered** tools. For **decorator**
+> (`@Tool`) tools, isolation comes from named servers
+> (`@McpController({ server })` + `McpStrategy({ server })`) — see
+> [Multiple MCP Servers](./multiple-servers.md).
 
 When running multiple MCP servers in one application, construct one
 `McpStrategy` per server (each with its own transports/endpoints) and connect

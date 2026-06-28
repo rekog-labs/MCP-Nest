@@ -1,13 +1,13 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
-import { McpController, Tool } from '../src';
+import { McpController, Tool } from '@rekog/mcp-nest';
 import {
   createStreamableClient,
   McpStrategy,
   StreamableHttpTransport,
 } from './utils';
-import type { McpServerOptions } from '../src';
+import type { McpServerOptions } from '@rekog/mcp-nest';
 import { Ctx, Payload } from '@nestjs/microservices';
 
 @McpController()
@@ -72,7 +72,7 @@ describe('MCP Logging Configuration (e2e)', () => {
   describe('Default logging behavior', () => {
     it('should use default NestJS logging when logging option is undefined', async () => {
       const bootstrapped = await bootstrapWithLogging(undefined, [
-        new StreamableHttpTransport({ statelessMode: false }),
+        new StreamableHttpTransport({ statefulMode: true }),
       ]);
       app = bootstrapped.app;
       testPort = bootstrapped.port;
@@ -91,7 +91,7 @@ describe('MCP Logging Configuration (e2e)', () => {
   describe('Disabled logging', () => {
     it('should not log when logging is set to false', async () => {
       const bootstrapped = await bootstrapWithLogging(false, [
-        new StreamableHttpTransport({ statelessMode: false }),
+        new StreamableHttpTransport({ statefulMode: true }),
       ]);
       app = bootstrapped.app;
       testPort = bootstrapped.port;
@@ -114,7 +114,7 @@ describe('MCP Logging Configuration (e2e)', () => {
     it('should only log specified levels when logging.level is configured', async () => {
       const bootstrapped = await bootstrapWithLogging(
         { level: ['error', 'warn'] },
-        [new StreamableHttpTransport({ statelessMode: false })],
+        [new StreamableHttpTransport({ statefulMode: true })],
       );
       app = bootstrapped.app;
       testPort = bootstrapped.port;
@@ -135,7 +135,7 @@ describe('MCP Logging Configuration (e2e)', () => {
       // Test with all log levels
       const bootstrapped = await bootstrapWithLogging(
         { level: ['log', 'error', 'warn', 'debug', 'verbose'] },
-        [new StreamableHttpTransport({ statelessMode: false })],
+        [new StreamableHttpTransport({ statefulMode: true })],
       );
       app = bootstrapped.app;
       testPort = bootstrapped.port;
@@ -154,7 +154,7 @@ describe('MCP Logging Configuration (e2e)', () => {
   describe('Multiple transports with logging configuration', () => {
     it('should apply logging configuration to all transports', async () => {
       const bootstrapped = await bootstrapWithLogging({ level: ['error'] }, [
-        new StreamableHttpTransport({ statelessMode: false }),
+        new StreamableHttpTransport({ statefulMode: true }),
       ]);
       app = bootstrapped.app;
       testPort = bootstrapped.port;

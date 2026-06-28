@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
-import { McpController, Prompt } from '../src';
+import { McpController, Prompt } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { z } from 'zod';
 

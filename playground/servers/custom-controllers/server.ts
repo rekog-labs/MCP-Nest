@@ -1,44 +1,50 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { McpStrategy, StreamableHttpTransport } from '@rekog/mcp-nest';
-import { GreetingPrompt } from '../../resources/greeting.prompt';
-import { GreetingResource } from '../../resources/greeting.resource';
-import { GreetingTool } from '../../resources/greeting.tool';
-
-/**
- * Custom Endpoint Example
- *
- * The old "custom controllers" pattern (disabling transports and hand-writing a
- * controller around `McpStreamableHttpService`) is gone — transports now mount
- * their own routes on the Nest HTTP adapter. To customize the endpoint, just
- * configure the transport. Here we mount the Streamable HTTP transport on a
- * non-default `/mcp` route (set `endpoint` to whatever you need).
- */
-const strategy = new McpStrategy({
-  name: 'custom-controllers-server',
-  version: '1.0.0',
-  transports: [new StreamableHttpTransport({ endpoint: '/mcp' })],
-});
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { DemoTools } from './demo.tools';
+import { HttpLoggingMiddleware } from './http-layer';
+import { McpHttpController } from './mcp-http.controller';
+import { mcpStrategy } from './mcp.runtime';
 
 @Module({
-  controllers: [GreetingTool, GreetingResource, GreetingPrompt],
+  controllers: [McpHttpController, DemoTools],
 })
-class AppModule {}
+class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(HttpLoggingMiddleware).forRoutes(McpHttpController);
+  }
+}
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  const port = process.env.PORT || 3030;
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const port = Number(process.env.PORT ?? 3030);
 
-  strategy.setHttpAdapter(app.getHttpAdapter());
-  app.connectMicroservice({ strategy });
+  mcpStrategy.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy: mcpStrategy });
   await app.startAllMicroservices();
-
   await app.listen(port);
-  console.log(`MCP server is running on http://localhost:${port}`);
-  console.log('Available endpoints:');
-  console.log('- POST /mcp - Streamable HTTP (main endpoint)');
-  console.log('- GET /mcp - Streamable HTTP SSE stream');
-  console.log('- DELETE /mcp - Streamable HTTP session termination');
+
+  console.log('');
+  console.log('🧩 Two-layer pipeline MCP server is up');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log(`   MCP endpoint:  http://localhost:${port}/mcp`);
+  console.log('');
+  console.log('   Watch the logs:');
+  console.log('     [http-mw] / [http-interceptor]  → every transport request');
+  console.log('     [rpc-interceptor]               → once per tool call (+ tags result)');
+  console.log('     [rpc-filter]                    → when a tool throws (boom)');
+  console.log('     [http-filter]                   → on a header-triggered HTTP failure');
+  console.log('');
+  console.log('   Drive it:');
+  console.log('     npx ts-node-dev -r tsconfig-paths/register \\');
+  console.log('       playground/servers/custom-controllers/scripts/call-tools.ts');
+  console.log('');
+  console.log('   Trigger the HTTP exception filter (raw request):');
+  console.log(`     curl -s -XPOST http://localhost:${port}/mcp \\`);
+  console.log("       -H 'content-type: application/json' -H 'x-demo-fail: http' \\");
+  console.log('       -d \'{"jsonrpc":"2.0","id":1,"method":"ping"}\'');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('');
 }
 
 void bootstrap();

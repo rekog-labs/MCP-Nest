@@ -52,7 +52,8 @@ async function startServer(
   env: NodeJS.ProcessEnv = {},
 ): Promise<ChildProcess> {
   // When TS_NODE_PROJECT is set (smoke:local), pass through tsconfig-paths so
-  // the spawned ts-node resolves "@rekog/mcp-nest" to live ../src/index.ts.
+  // the spawned ts-node resolves "@rekog/mcp-nest" to live
+  // ../packages/mcp-nest/src/index.ts.
   // In CI (smoke), TS_NODE_PROJECT is unset and resolution falls through to
   // node_modules → the installed package.
   const tsNodeArgs = ['ts-node'];

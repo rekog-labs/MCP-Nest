@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { McpController, Tool } from '../src';
+import { McpController, Tool } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 

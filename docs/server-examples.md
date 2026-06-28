@@ -34,10 +34,8 @@ const mcp = new McpStrategy({
   name: 'playground-mcp-server',
   version: '0.0.1',
   transports: [
-    new StreamableHttpTransport({
-      enableJsonResponse: false,
-      statelessMode: false, // Enables session management
-    }),
+    // Stateless is the default; opt into session management with statefulMode.
+    new StreamableHttpTransport({ statefulMode: true }),
   ],
 });
 
@@ -85,18 +83,15 @@ Connect to: `http://localhost:3030/mcp`
 
 ## Stateless MCP Server
 
-Simpler setup without session management, good for REST-like usage:
+Simpler setup without session management, good for REST-like usage. This is the
+**default** mode — a bare `new StreamableHttpTransport()` is stateless and
+returns a JSON reply to a plain POST (no SSE stream to manage):
 
 ```typescript
 const mcp = new McpStrategy({
   name: 'playground-mcp-server',
   version: '0.0.1',
-  transports: [
-    new StreamableHttpTransport({
-      enableJsonResponse: true,
-      statelessMode: true, // No session management
-    }),
-  ],
+  transports: [new StreamableHttpTransport()],
 });
 
 @Module({
@@ -190,7 +185,7 @@ const mcp = new McpStrategy({
   name: 'multi-transport-server',
   version: '0.0.1',
   transports: [
-    new StreamableHttpTransport({ statelessMode: false }),
+    new StreamableHttpTransport(),
     // new StdioTransport(), // Uncomment to enable STDIO
   ],
 });
@@ -213,13 +208,19 @@ MCP HTTP routes are mounted on the HTTP adapter (not as Nest controllers), so au
 - **Authenticate** with Express middleware that sets `req.user` (and rejects with 401 when appropriate). The bespoke `ToolAuthorizationService` reads `req.user` to enforce `@PublicTool`, `@ToolScopes`, and `@ToolRoles`.
 - **Enforce** per-tool access with standard `@UseGuards()` on the `@McpController` class or method — these run inside the RPC pipeline. In a guard, read the context with `context.switchToRpc().getContext<McpContext>()` and `.getRawRequest()`.
 
+If you use the built-in OAuth authorization server (`McpAuthModule`), install the auth package alongside `@rekog/mcp-nest`:
+
+```bash
+npm install @rekog/mcp-nest-auth
+```
+
 ```typescript
 import { AuthMiddleware } from './auth.middleware';
 
 const mcp = new McpStrategy({
   name: 'secure-mcp-server',
   version: '0.0.1',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
 });
 
 @Module({
@@ -354,7 +355,7 @@ async function bootstrap() {
   const mcp = new McpStrategy({
     name: config.mcpName ?? 'async-mcp-server',
     version: config.mcpVersion ?? '0.0.1',
-    transports: [new StreamableHttpTransport({ statelessMode: false })],
+    transports: [new StreamableHttpTransport()],
   });
 
   @Module({
@@ -424,7 +425,7 @@ Completely disable MCP logging (recommended for STDIO servers, where stdout carr
 const mcp = new McpStrategy({
   name: 'quiet-mcp-server',
   version: '0.0.1',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
   logging: false, // Disables all MCP logging
 });
 ```
@@ -437,7 +438,7 @@ Only show specific log levels:
 const mcp = new McpStrategy({
   name: 'filtered-mcp-server',
   version: '0.0.1',
-  transports: [new StreamableHttpTransport({ statelessMode: false })],
+  transports: [new StreamableHttpTransport()],
   logging: {
     level: ['error', 'warn'], // Only show errors and warnings
   },

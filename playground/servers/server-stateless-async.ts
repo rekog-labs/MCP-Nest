@@ -34,12 +34,7 @@ async function bootstrap() {
   const strategy = new McpStrategy({
     name: config.name,
     version: config.version,
-    transports: [
-      new StreamableHttpTransport({
-        statelessMode: true,
-        enableJsonResponse: true,
-      }),
-    ],
+    transports: [new StreamableHttpTransport()],
   });
 
   @Module({

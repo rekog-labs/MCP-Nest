@@ -2,6 +2,7 @@ import type { McpRequestWithUser } from '@rekog/mcp-nest';
 import {
   McpContext,
   McpController,
+  McpRawRequest,
   PublicTool,
   ToolRoles,
   ToolScopes,
@@ -51,8 +52,7 @@ export class GreetingTool {
       openWorldHint: false,
     },
   })
-  async greetLoggedInUser(@Ctx() ctx: McpContext) {
-    const request = ctx.getRawRequest<McpRequestWithUser>();
+  async greetLoggedInUser(@McpRawRequest() request?: McpRequestWithUser) {
     // Try to extract user name from request (commonly request.user)
     let name;
     if (request?.user && typeof request.user === 'object') {
@@ -62,6 +62,7 @@ export class GreetingTool {
 
     if (!name) {
       return {
+        isError: true,
         content: [
           {
             type: 'text',
@@ -213,10 +214,10 @@ export class GreetingTool {
     name: 'greet-user-structured',
     description: 'Returns a structured greeting message with language metadata',
     parameters: z.object({
-      name: z.string().describe('The name of the person to greet'),
+      name: z.string().describe('The name of the person to greet').nonempty(),
       language: z
         .string()
-        .describe('Language code (e.g., "en", "es", "fr", "de")'),
+        .describe('Language code (e.g., "en", "es", "fr", "de")').nonempty(),
     }),
     outputSchema: z.object({
       greeting: z.string(),
@@ -304,9 +305,8 @@ export class GreetingTool {
   @ToolRoles(['admin'])
   async adminGreet(
     @Payload() { message }: { message: string },
-    @Ctx() ctx: McpContext,
+    @McpRawRequest() request?: McpRequestWithUser,
   ) {
-    const request = ctx.getRawRequest<McpRequestWithUser>();
     const userName = request?.user?.name || request?.user?.username || 'Admin';
     return {
       content: [
@@ -337,9 +337,8 @@ export class GreetingTool {
   @ToolRoles(['premium'])
   async premiumGreet(
     @Payload() { name, level }: { name: string; level: 'gold' | 'platinum' },
-    @Ctx() ctx: McpContext,
+    @McpRawRequest() request?: McpRequestWithUser,
   ) {
-    const request = ctx.getRawRequest<McpRequestWithUser>();
     const userName =
       request?.user?.name || request?.user?.username || 'Premium User';
     const premiumEmojis = { gold: '🏆', platinum: '💎' };
@@ -378,9 +377,8 @@ export class GreetingTool {
       target: string;
       action: 'approve' | 'deny' | 'escalate';
     },
-    @Ctx() ctx: McpContext,
+    @McpRawRequest() request?: McpRequestWithUser,
   ) {
-    const request = ctx.getRawRequest<McpRequestWithUser>();
     const userName =
       request?.user?.name || request?.user?.username || 'Super Admin';
     const actionMessages = {

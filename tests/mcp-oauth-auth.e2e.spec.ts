@@ -10,21 +10,21 @@ import {
   McpStrategy,
   StreamableHttpTransport,
   Tool,
-} from '../src';
+} from '@rekog/mcp-nest';
 import jwt from 'jsonwebtoken';
-import { McpAuthModule } from '../src/authz/mcp-oauth.module';
-import { JwtTokenService } from '../src/authz/services/jwt-token.service';
+import { McpAuthModule } from '@rekog/mcp-nest-auth';
+import { JwtTokenService } from '@rekog/mcp-nest-auth';
 import {
   OAuthProviderConfig,
   OAuthUserProfile,
-} from '../src/authz/providers/oauth-provider.interface';
+} from '@rekog/mcp-nest-auth';
 import type {
   IOAuthStore,
   OAuthClient,
   AuthorizationCode,
   ClientRegistrationDto,
-} from '../src/authz/stores/oauth-store.interface';
-import type { OAuthSession } from '../src/authz/providers/oauth-provider.interface';
+} from '@rekog/mcp-nest-auth';
+import type { OAuthSession } from '@rekog/mcp-nest-auth';
 import { createStreamableClient } from './utils';
 
 // Mock OAuth Provider for testing
@@ -222,7 +222,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
     const strategy = new McpStrategy({
       name: 'test-oauth-mcp-server',
       version: '0.0.1',
-      transports: [new StreamableHttpTransport({ statelessMode: false })],
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
     });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
