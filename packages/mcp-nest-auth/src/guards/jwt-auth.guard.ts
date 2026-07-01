@@ -7,13 +7,24 @@ import {
   Optional,
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { JwtPayload, JwtTokenService } from '../services/jwt-token.service';
 import type { IOAuthStore } from '../stores/oauth-store.interface';
 import type { McpServerOptions } from '@rekog/mcp-nest';
 
 export interface AuthenticatedRequest extends Request {
   user: JwtPayload;
+}
+
+/**
+ * The subset of the resolved OAuth module options the guard needs to build the
+ * RFC 9728 `WWW-Authenticate` challenge. Read from the `OAUTH_MODULE_OPTIONS`
+ * token the module already exposes — no extra configuration required.
+ */
+interface ResolvedOAuthOptions {
+  serverUrl?: string;
+  endpoints?: { wellKnownProtectedResourceMetadata?: string };
+  disableEndpoints?: { wellKnownProtectedResourceMetadata?: boolean };
 }
 
 @Injectable()
@@ -27,6 +38,9 @@ export class McpAuthJwtGuard implements CanActivate {
     @Optional()
     @Inject('MCP_OPTIONS')
     private readonly options?: Pick<McpServerOptions, 'allowUnauthenticatedAccess'>,
+    @Optional()
+    @Inject('OAUTH_MODULE_OPTIONS')
+    private readonly oauthOptions?: ResolvedOAuthOptions,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -44,6 +58,7 @@ export class McpAuthJwtGuard implements CanActivate {
         return true;
       } else {
         // Standard OAuth flow: Reject and trigger authorization
+        this.attachResourceMetadataChallenge(context);
         throw new UnauthorizedException('Access token required');
       }
     }
@@ -64,6 +79,7 @@ export class McpAuthJwtGuard implements CanActivate {
     const payload = jwtTokenService.validateToken(token);
 
     if (!payload) {
+      this.attachResourceMetadataChallenge(context);
       throw new UnauthorizedException('Invalid or expired access token');
     }
 
@@ -113,6 +129,42 @@ export class McpAuthJwtGuard implements CanActivate {
 
     request.user = enriched as JwtPayload;
     return true;
+  }
+
+  /**
+   * Set the RFC 9728 `WWW-Authenticate: Bearer resource_metadata="…"` challenge
+   * on a 401 so MCP clients can discover the authorization server from the
+   * response itself (instead of having to probe `.well-known` blindly).
+   *
+   * The metadata URL is derived from the module's already-configured
+   * `serverUrl` + protected-resource-metadata path — no extra option to set.
+   * Best-effort: never throws, and is skipped if the options or the
+   * protected-resource metadata endpoint aren't available.
+   */
+  private attachResourceMetadataChallenge(context: ExecutionContext): void {
+    try {
+      const opts =
+        this.oauthOptions ||
+        this.moduleRef.get<ResolvedOAuthOptions>('OAUTH_MODULE_OPTIONS', {
+          strict: false,
+        });
+
+      if (!opts?.serverUrl) return;
+      if (opts.disableEndpoints?.wellKnownProtectedResourceMetadata) return;
+
+      const path =
+        opts.endpoints?.wellKnownProtectedResourceMetadata ??
+        '/.well-known/oauth-protected-resource';
+      const metadataUrl = `${opts.serverUrl.replace(/\/$/, '')}${path}`;
+
+      const response = context.switchToHttp().getResponse<Response>();
+      response.setHeader(
+        'WWW-Authenticate',
+        `Bearer resource_metadata="${metadataUrl}"`,
+      );
+    } catch {
+      // Never let discovery-header wiring break the 401 itself.
+    }
   }
 
   private extractTokenFromHeader(request: Request): string | undefined {

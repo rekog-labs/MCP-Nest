@@ -12,6 +12,7 @@ This guide walks through different ways to set up MCP servers using mcp-nest wit
 - [Multiple Transports](#multiple-transport-types)
 - [Custom Endpoints](#custom-endpoints)
 - [Global Prefix Integration](#global-prefix-integration)
+- [Server Metadata](#server-metadata)
 
 ## Stateful MCP Server
 
@@ -432,6 +433,39 @@ async function bootstrap() {
 ```
 
 If you want the MCP routes under a prefix, set it explicitly on the transport constructors (e.g. `new StreamableHttpTransport({ endpoint: '/api/mcp' })`).
+
+## Server Metadata
+
+Beyond the required `name` and `version`, the `McpStrategy` constructor accepts optional metadata that is advertised to clients on `initialize`:
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `name` (required) | `string` | Server name (MCP `Implementation.name`). |
+| `version` (required) | `string` | Server version (MCP `Implementation.version`). |
+| `title` | `string` | Human-readable display name. |
+| `description` | `string` | Short description of what the server does. |
+| `websiteUrl` | `string` | URL of the website associated with the server. |
+| `icons` | `Icon[]` | Icons representing the server (MCP SDK `Icon`: `{ src, mimeType?, sizes?, theme? }`). |
+| `instructions` | `string` | Server instructions sent to clients on `initialize`. |
+| `capabilities` | `ServerCapabilities` | Extra MCP capabilities, merged with the auto-derived ones. |
+| `server` | `string` | Logical server name for multi-server isolation — binds only `@McpController({ server })` classes. Omit for the default server. |
+
+```typescript
+import { McpStrategy, StreamableHttpTransport } from '@rekog/mcp-nest';
+
+const mcp = new McpStrategy({
+  name: 'example-mcp-server',
+  version: '0.0.1',
+  title: 'Example MCP Server',
+  description: 'Greeting tools, resources, and prompts.',
+  websiteUrl: 'https://example.com',
+  instructions: 'Use greet-user for greetings. Prefer structured tools when available.',
+  icons: [
+    { src: 'https://example.com/icon.png', mimeType: 'image/png', sizes: ['48x48'] },
+  ],
+  transports: [new StreamableHttpTransport()],
+});
+```
 
 ## Logging Configuration
 

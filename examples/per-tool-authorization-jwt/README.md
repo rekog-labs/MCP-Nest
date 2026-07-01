@@ -23,10 +23,6 @@ This prints `export BASIC_USER=...`, `ADMIN_USER`, `PREMIUM_USER`,
 `SUPERADMIN_USER` — same shape as the doc's pre-minted tokens, signed with the
 guard's default `JWT_SECRET`.
 
-Note: to reproduce the doc's claimed access matrix for `SUPERADMIN_USER`,
-the token must include the `premium` role in addition to `super-admin` and
-`admin` (see report-section.md, Issue 1).
-
 ## Test with MCP Inspector
 
 ```bash

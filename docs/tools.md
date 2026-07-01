@@ -51,9 +51,61 @@ Tool methods are RPC handlers, so their parameters are bound with `@nestjs/micro
    - `getSession()` - `{ transport, stateless, sessionId }`
    - `getRawRequest()` - The original HTTP request object (Express/Fastify), providing access to headers, query parameters, authentication data, and other HTTP-specific information. This returns `undefined` when using STDIO transport.
 
-3. **`@McpRawRequest() req`**: Injects the raw transport request directly — the MCP analog of NestJS's `@Req()`. This is sugar for `ctx.getRawRequest()`; reach for it when the request is all you need from the context, so you don't have to take `@Ctx()` just to call `getRawRequest()`. Like `getRawRequest()`, it is `undefined` under STDIO. The decorator does not type the value — annotate the parameter with your framework's request type (e.g. `@McpRawRequest() req?: Request`).
+3. **`@McpRawRequest() req`**: Injects the raw transport request directly — the MCP analog of NestJS's `@Req()`. This is sugar for `ctx.getRawRequest()`; reach for it when the request is all you need from the context, so you don't have to take `@Ctx()` just to call `getRawRequest()`. Like `getRawRequest()`, it is `undefined` under STDIO. The decorator does not type the value — annotate the parameter with your framework's request type (e.g. `@McpRawRequest() req?: Request`). This is the **HTTP transport** request (headers, cookies, `req.user`) — not to be confused with `ctx.mcpRequest`, which is the MCP **protocol** message; see [Reading the JSON-RPC request](#reading-the-json-rpc-request-ctxmcprequest).
 
 > **Note:** When you use `@Ctx()` (or any other param decorator such as `@McpRawRequest()`), you must also annotate the data param with `@Payload()`. The old third positional `request` parameter is now read via `ctx.getRawRequest()` or injected with `@McpRawRequest()`.
+
+### Reading the JSON-RPC request (`ctx.mcpRequest`)
+
+`ctx.mcpRequest` is the parsed JSON-RPC request that triggered the handler — a `tools/call`, `resources/read`, or `prompts/get` request with its `method` and `params`. Use it to read protocol-level metadata that isn't part of your Zod-validated arguments, such as the client `_meta` (e.g. the `progressToken`).
+
+> **Not to be confused with `@McpRawRequest()`.** `ctx.mcpRequest` is the MCP **protocol** message (the JSON-RPC request — always present, even over STDIO). `@McpRawRequest()` / `ctx.getRawRequest()` is the **HTTP transport** request (the Express/Fastify object carrying headers, cookies, and `req.user` — `undefined` over STDIO).
+
+```typescript
+@Tool({
+  name: 'inspect-request',
+  description: 'Reads the parsed JSON-RPC request',
+  parameters: z.object({ input: z.string() }),
+})
+async inspectRequest(@Payload() { input }: { input: string }, @Ctx() ctx: McpContext) {
+  // e.g. { method: 'tools/call', params: { name, arguments, _meta } }
+  const method = ctx.mcpRequest.method;
+  const progressToken = ctx.mcpRequest.params?._meta?.progressToken;
+  return `method=${method}, progressToken=${progressToken ?? 'none'}`;
+}
+```
+
+### Server-side logging (`ctx.log`)
+
+`ctx.log` sends MCP logging messages to the client. It exposes `debug`, `info`, `warn`, and `error`, each taking a message and optional serializable data:
+
+```typescript
+@Tool({
+  name: 'log-demo',
+  description: 'Emits log messages while running',
+  parameters: z.object({ input: z.string() }),
+})
+async logDemo(@Payload() { input }: { input: string }, @Ctx() ctx: McpContext) {
+  ctx.log.info('Handling request', { input });
+  ctx.log.debug('Low-level detail');
+  ctx.log.warn('Heads up');
+  ctx.log.error('Something went wrong');
+  return `Processed: ${input}`;
+}
+```
+
+For the client to actually receive these messages, the strategy must **declare the logging capability** — otherwise the server never advertises it and the `notifications/message` frames are dropped:
+
+```typescript
+new McpStrategy({
+  name: 'my-server',
+  version: '1.0.0',
+  transports: [new StreamableHttpTransport({ statefulMode: true })],
+  capabilities: { logging: {} }, // required for ctx.log.* to reach the client
+});
+```
+
+Logging is also session-aware. On session-aware transports (stateful streamable HTTP and STDIO) the messages are pushed to the client — over the standing `GET` SSE stream, not the per-call `POST` response. On **stateless** streamable HTTP (the default `new StreamableHttpTransport()`), the server can't push to the client, so each `ctx.log.*` call is a no-op that emits a local NestJS warning instead — the same limitation applies to `ctx.reportProgress()`. (`warn` is sent at MCP level `warning`.)
 
 ### Tool Decorator Properties
 
@@ -68,8 +120,27 @@ The `@Tool()` decorator accepts a configuration object with the following proper
   - `destructiveHint`: Warns if the tool modifies or deletes data
   - `idempotentHint`: Indicates if repeated calls with same input produce same output
   - `openWorldHint`: Suggests if the tool's behavior is predictable or may vary
+- **`_meta`** (optional): Arbitrary metadata (`Record<string, any>`) passed straight through to the advertised tool definition. Your keys surface verbatim under `_meta` on the tool in `tools/list` and are not interpreted by the server. Note that the server merges its own keys into the same `_meta` object — every tool also carries a computed `securitySchemes` entry (derived from `@PublicTool`/`@ToolScopes`/`@ToolRoles`, or `[{ "type": "noauth" }]` when undecorated) — so `_meta` is your object plus those framework additions, not your object alone.
 
 For detailed type definitions, refer to the `McpContext` interface and `ToolOptions` type in the `@rekog/mcp-nest` package.
+
+### Tool with `_meta`
+
+```typescript
+@Tool({
+  name: 'greet-user-meta',
+  description: 'Greeting whose definition carries extra metadata',
+  parameters: z.object({ name: z.string() }),
+  // Arbitrary passthrough metadata; advertised verbatim as `_meta` in tools/list.
+  _meta: {
+    'example.com/category': 'greeting',
+    'example.com/version': 2,
+  },
+})
+async sayHelloMeta(@Payload() { name }: { name: string }) {
+  return `Hey, ${name}!`;
+}
+```
 
 ## Tool with Progress Reporting
 

@@ -11,10 +11,14 @@ import { ErrorTool } from './error.tool';
 import { FilteredService } from './filters';
 
 // Stateful so progress reporting and elicitation (session-aware) work.
+// `capabilities: { logging: {} }` is required for ctx.log.* to actually reach
+// the client — without it the server never advertises logging and the
+// notifications/message frames are dropped (see the `log-demo` tool).
 const mcp = new McpStrategy({
   name: 'try-docs-tools',
   version: '0.0.1',
   transports: [new StreamableHttpTransport({ statefulMode: true })],
+  capabilities: { logging: {} },
 });
 
 @Module({

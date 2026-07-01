@@ -34,6 +34,22 @@ bunx @modelcontextprotocol/inspector --cli $URL --transport http \
 bunx @modelcontextprotocol/inspector --cli $URL --transport http \
   --method tools/call --tool-name whoami
 
+# ctx.mcpRequest — reads the parsed JSON-RPC request (method + _meta)
+bunx @modelcontextprotocol/inspector --cli $URL --transport http \
+  --method tools/call --tool-name inspect-request --tool-arg input=hi
+
+# ctx.log — emits server-side log messages. They stream over the standing GET SSE
+# channel (not the tools/call response), and only when the strategy declares
+# `capabilities: { logging: {} }` (main.ts) — the CLI shows just the text result.
+bunx @modelcontextprotocol/inspector --cli $URL --transport http \
+  --method tools/call --tool-name log-demo --tool-arg input=hi
+
+# @Tool({ _meta }) — passthrough metadata visible on the tool in tools/list
+bunx @modelcontextprotocol/inspector --cli $URL --transport http \
+  --method tools/list | jq '.tools[] | select(.name=="greet-user-meta")._meta'
+bunx @modelcontextprotocol/inspector --cli $URL --transport http \
+  --method tools/call --tool-name greet-user-meta --tool-arg name=Alice
+
 # Tool guard denial (no req.user) -> "Forbidden resource", isError:true
 bunx @modelcontextprotocol/inspector --cli $URL --transport http \
   --method tools/call --tool-name admin-action --tool-arg target=server
@@ -57,6 +73,9 @@ bunx @modelcontextprotocol/inspector --cli $URL --transport http --method prompt
 | --- | --- | --- |
 | Basic tool, `@Payload`/`@Ctx`, `describe`→`inputSchema` | `greet-user` | ✅ matches doc |
 | `@McpRawRequest()` | `whoami` | ✅ |
+| `ctx.mcpRequest` (parsed JSON-RPC request) | `inspect-request` | ✅ |
+| `ctx.log` (server-side logging) | `log-demo` | ✅ logs stream over GET SSE (needs `capabilities: { logging: {} }`) |
+| `@Tool({ _meta })` passthrough | `greet-user-meta` | ✅ `_meta` on tool in `tools/list` |
 | Progress reporting | `process-data` | ✅ returns final text |
 | Output schema | `greet-user-structured` | ✅ `content` + `structuredContent` (see report) |
 | Elicitation | `greet-user-interactive` | registers; CLI can't drive elicitation (documented) |

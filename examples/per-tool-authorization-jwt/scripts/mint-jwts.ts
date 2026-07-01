@@ -42,7 +42,7 @@ const SUPERADMIN_USER = sign({
   displayName: 'Super Admin',
   scope: 'admin write delete read',
   scopes: ['admin', 'write', 'delete', 'read'],
-  roles: ['super-admin', 'admin'],
+  roles: ['super-admin', 'admin', 'premium'],
 });
 
 console.log(`export BASIC_USER=${BASIC_USER}`);

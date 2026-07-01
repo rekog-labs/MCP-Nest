@@ -9,6 +9,14 @@ import { GreetingPrompt } from './greeting.prompt';
 const mcp = new McpStrategy({
   name: 'example-mcp-server',
   version: '0.0.1',
+  // Optional server metadata advertised to clients on `initialize`.
+  title: 'Example MCP Server',
+  description: 'Greeting tools, resources, and prompts.',
+  websiteUrl: 'https://example.com',
+  instructions: 'Use greet-user for greetings. Prefer structured tools when available.',
+  icons: [
+    { src: 'https://example.com/icon.png', mimeType: 'image/png', sizes: ['48x48'] },
+  ],
   transports: [new StreamableHttpTransport()],
 });
 

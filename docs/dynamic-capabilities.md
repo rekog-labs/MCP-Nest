@@ -455,13 +455,14 @@ See [examples/dynamic-capabilities/](../examples/dynamic-capabilities/) for a co
 Run it with:
 
 ```bash
-cd examples/dynamic-capabilities && npm install && npm start
+cd examples/dynamic-capabilities && npm install && PORT=3005 npm start
 
-# Test Server 1 (static tools only)
-bunx @modelcontextprotocol/inspector --cli "http://localhost:3031/mcp" --transport http --method tools/list
+# Main endpoint: static (@McpController) + dynamic + external-module tools
+bunx @modelcontextprotocol/inspector --cli "http://localhost:3005/mcp" --transport http --method tools/list
 
-# Test Server 2 (static + dynamic tools)
-bunx @modelcontextprotocol/inspector --cli "http://localhost:3032/mcp" --transport http --method tools/list
+# Multi-server isolation: `server-a-tool` appears only on server A
+bunx @modelcontextprotocol/inspector --cli "http://localhost:3005/server-a/mcp" --transport http --method tools/list
+bunx @modelcontextprotocol/inspector --cli "http://localhost:3005/server-b/mcp" --transport http --method tools/list
 ```
 
 ## API Reference

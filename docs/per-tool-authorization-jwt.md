@@ -129,8 +129,6 @@ Start the example server (it already wires up the guard above and the sample
 tools in [my-tools.ts](../examples/per-tool-authorization-jwt/src/my-tools.ts)):
 
 ```bash
-export ALLOW_UNAUTHENTICATED_ACCESS=true
-
 cd examples/per-tool-authorization-jwt && npm install && PORT=3012 npm start
 ```
 

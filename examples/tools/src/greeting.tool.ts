@@ -126,6 +126,54 @@ export class GreetingTool {
     return `user-agent: ${ua}`;
   }
 
+  // --- Reading the JSON-RPC request (tools.md "ctx.mcpRequest") ---
+  @Tool({
+    name: 'inspect-request',
+    description: 'Reads the parsed JSON-RPC request',
+    parameters: z.object({ input: z.string() }),
+  })
+  async inspectRequest(
+    @Payload() { input }: { input: string },
+    @Ctx() ctx: McpContext,
+  ) {
+    // e.g. { method: 'tools/call', params: { name, arguments, _meta } }
+    const method = ctx.mcpRequest.method;
+    const progressToken = ctx.mcpRequest.params?._meta?.progressToken;
+    return `input=${input}, method=${method}, progressToken=${progressToken ?? 'none'}`;
+  }
+
+  // --- Server-side logging (tools.md "ctx.log") ---
+  @Tool({
+    name: 'log-demo',
+    description: 'Emits log messages while running',
+    parameters: z.object({ input: z.string() }),
+  })
+  async logDemo(
+    @Payload() { input }: { input: string },
+    @Ctx() ctx: McpContext,
+  ) {
+    ctx.log.info('Handling request', { input });
+    ctx.log.debug('Low-level detail');
+    ctx.log.warn('Heads up');
+    ctx.log.error('Something went wrong');
+    return `Processed: ${input}`;
+  }
+
+  // --- Tool with `_meta` (tools.md "Tool with _meta") ---
+  @Tool({
+    name: 'greet-user-meta',
+    description: 'Greeting whose definition carries extra metadata',
+    parameters: z.object({ name: z.string() }),
+    // Arbitrary passthrough metadata; advertised verbatim as `_meta` in tools/list.
+    _meta: {
+      'example.com/category': 'greeting',
+      'example.com/version': 2,
+    },
+  })
+  async sayHelloMeta(@Payload() { name }: { name: string }) {
+    return `Hey, ${name}!`;
+  }
+
   // --- Tool Guards ---
   @Tool({
     name: 'admin-action',
