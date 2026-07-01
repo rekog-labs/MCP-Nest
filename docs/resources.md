@@ -131,16 +131,18 @@ getReadme(@Payload() { uri }: { uri: string }) {
 
 ### 1. Start the Server
 
-Run the playground server:
+Run the example server:
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateful.ts
+cd examples/resources && npm install && npm start
 ```
+
+Server listens on `http://localhost:3000/mcp`.
 
 ### 2. List Available Resources
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/list
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/list
 ```
 
 Expected output:
@@ -161,7 +163,7 @@ Expected output:
 ### 3. Read a Specific Resource
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/read --uri "mcp://languages/informal-greetings"
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/read --uri "mcp://languages/informal-greetings"
 ```
 
 Expected output:
@@ -186,11 +188,11 @@ For interactive testing, use the MCP Inspector UI:
 npx @modelcontextprotocol/inspector@0.16.2
 ```
 
-Connect to `http://localhost:3030/mcp` and browse the resources to see your data.
+Connect to `http://localhost:3000/mcp` and browse the resources to see your data.
 
 ## Example Location
 
-See the complete example at: `playground/resources/greeting.resource.ts`
+See the complete example at: `examples/resources/src/greeting.resource.ts`
 
 ## Related
 

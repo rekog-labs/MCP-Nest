@@ -29,9 +29,12 @@ export interface BootstrapMcpConfig {
   allowUnauthenticatedAccess?: boolean;
   serverMutator?: (server: any) => any;
   /**
-   * Hook to configure the app (e.g. register auth middleware via `app.use(...)`)
-   * after the microservice is connected but BEFORE `startAllMicroservices()` /
-   * `listen()`, so middleware sits ahead of the MCP routes in the stack.
+   * Hook to configure the app after the microservice is connected but BEFORE
+   * `startAllMicroservices()` / `listen()`. Use it for app-level setup such as
+   * `app.enableCors(...)` or `app.use(cookieParser())`. Authentication should
+   * NOT go here — mount the MCP route as an `McpHttpControllerFor` controller
+   * and protect it with a `@UseGuards()` guard (passed via `controllers` /
+   * `providers`) instead.
    */
   configure?: (app: INestApplication) => void | Promise<void>;
 }

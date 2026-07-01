@@ -276,9 +276,6 @@ export function createMcpOAuthController(
             .tokenEndpointAuthMethodsSupported,
         scopes_supported:
           this.options.authorizationServerMetadata.scopesSupported,
-        revocation_endpoint: normalizeEndpoint(
-          `${this.serverUrl}/${endpoints?.revoke}`,
-        ),
         code_challenge_methods_supported:
           this.options.authorizationServerMetadata
             .codeChallengeMethodsSupported,

@@ -58,8 +58,9 @@ npm install @rekog/mcp-nest-auth
 ```
 
 ```typescript
-import { Module } from '@nestjs/common';
+import { Controller, Module, UseGuards } from '@nestjs/common';
 import {
+  McpHttpControllerFor,
   McpStrategy,
   StreamableHttpTransport,
 } from '@rekog/mcp-nest';
@@ -68,13 +69,26 @@ import {
   AzureADOAuthProvider,
 } from '@rekog/mcp-nest-auth';
 import { MyTools } from './my-tools'; // your @McpController() classes
+// A NestJS guard that validates the Bearer JWT (via the module's
+// JwtTokenService), rejects missing/invalid tokens with 401, and sets
+// `req.user`. See the Azure AD OAuth Provider guide for its implementation.
+import { McpAuthGuard } from './mcp-auth.guard';
+
+const mcpTransport = new StreamableHttpTransport();
 
 // MCP runs as a microservice strategy — there is no McpModule.
 export const mcp = new McpStrategy({
   name: 'My MCP Server with Azure AD',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport()],
+  transports: [mcpTransport],
 });
+
+// Mount the MCP route as a real Nest controller so `McpAuthGuard` runs on every
+// transport request; the OAuth endpoints stay open because only this controller
+// is guarded.
+@Controller('mcp')
+@UseGuards(McpAuthGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
 @Module({
   imports: [
@@ -94,21 +108,21 @@ export const mcp = new McpStrategy({
       apiPrefix: 'auth',
     }),
   ],
-  controllers: [MyTools],
+  controllers: [McpHttpController, MyTools],
+  providers: [McpAuthGuard],
 })
 export class AppModule {}
 ```
 
-Wire the strategy into your bootstrap and protect the MCP routes with
-middleware that validates the Bearer JWT (see the
+Wire the strategy into your bootstrap; the `McpAuthGuard` on the MCP controller
+above validates the Bearer JWT and sets `req.user` (see the
 [Azure AD OAuth Provider](azure-ad-oauth-provider.md) guide for the full
-`main.ts` example):
+`main.ts` and the guard's implementation):
 
 ```typescript
 const app = await NestFactory.create(AppModule);
 mcp.setHttpAdapter(app.getHttpAdapter());
 app.connectMicroservice({ strategy: mcp });
-// app.use(...) to validate the token and set req.user on /mcp
 await app.startAllMicroservices();
 await app.listen(3000);
 ```

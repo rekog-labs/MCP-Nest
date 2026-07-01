@@ -1,9 +1,18 @@
-import { INestApplication } from '@nestjs/common';
-import { z } from 'zod';
+import {
+  CanActivate,
+  Controller,
+  ExecutionContext,
+  Injectable,
+  INestApplication,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { Ctx, Payload } from '@nestjs/microservices';
 import {
   McpContext,
   McpController,
+  McpHttpControllerFor,
+  StreamableHttpTransport,
   Tool,
   PublicTool,
   ToolScopes,
@@ -12,59 +21,67 @@ import {
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 /**
- * Authentication is now Express middleware (replacing the old transport-level
- * guard). It allows unauthenticated requests through (calling `next()` without
- * a user) and enriches `req.user` when a recognised token is present. Per-tool
- * authorization (@PublicTool/@ToolScopes/@ToolRoles + freemium
- * allowUnauthenticatedAccess) is still enforced by the ToolAuthorizationService
- * reading the user off the raw request. Freemium mode is keyed off
- * `allowUnauthenticatedAccess` alone.
+ * Authentication is a NestJS guard on the MCP route. The guard reads the bearer token and
+ * attaches `req.user`. Because this server runs in freemium mode
+ * (`allowUnauthenticatedAccess: true`), the guard lets tokenless requests through
+ * with no user; per-tool authorization (@PublicTool/@ToolScopes/@ToolRoles) then
+ * decides what an anonymous or authenticated caller may see and call.
  */
-const authMiddleware = (req: any, _res: any, next: () => void) => {
-  const authHeader = req.headers?.authorization;
+const ALLOW_UNAUTHENTICATED_ACCESS = true;
 
-  if (!authHeader) {
-    // Allow request through without user context.
-    // Per-tool authorization will decide if this is OK.
-    return next();
-  }
+function resolveUser(authHeader?: string): Record<string, unknown> | undefined {
+  if (!authHeader) return undefined;
 
   if (authHeader.includes('admin-token')) {
-    req.user = {
+    return {
       sub: 'admin123',
       name: 'Admin User',
       scope: 'admin write read', // Space-delimited as per OAuth 2.0 spec
       scopes: ['admin', 'write', 'read'], // Also as array for convenience
       roles: ['admin', 'user'],
     };
-    return next();
   }
 
   if (authHeader.includes('basic-token')) {
-    req.user = {
+    return {
       sub: 'user123',
       name: 'Basic User',
       scope: 'read',
       scopes: ['read'],
       roles: ['user'],
     };
-    return next();
   }
 
   if (authHeader.includes('premium-token')) {
-    req.user = {
+    return {
       sub: 'premium123',
       name: 'Premium User',
       scope: 'read premium',
       scopes: ['read', 'premium'],
       roles: ['user'],
     };
-    return next();
   }
 
-  // Unknown token — allow through with no user; per-tool auth will gate it.
-  next();
-};
+  return undefined; // unknown token — treated as anonymous
+}
+
+@Injectable()
+class AuthGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest<{
+      headers: Record<string, string | undefined>;
+      user?: unknown;
+    }>();
+    req.user = resolveUser(req.headers.authorization);
+
+    // Standard mode would reject a tokenless request here; in freemium mode we
+    // let it through and let per-tool authorization gate each tool.
+    if (!req.user && !ALLOW_UNAUTHENTICATED_ACCESS) {
+      throw new UnauthorizedException('Access token required');
+    }
+    return true;
+  }
+}
 
 @McpController()
 export class PerToolAuthTools {
@@ -183,6 +200,16 @@ export class PerToolAuthTools {
   }
 }
 
+// Mount the MCP route as a real Nest controller so the guard runs at the HTTP
+// layer on every transport request (initialize, tools/list, tools/call). Reading
+// `transport.httpHandlers` inside McpHttpControllerFor auto-disables the
+// transport's own self-mount.
+const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
+
+@Controller('mcp')
+@UseGuards(AuthGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
+
 describe('E2E: Per-Tool Authorization', () => {
   let app: INestApplication;
   let testPort: number;
@@ -190,11 +217,10 @@ describe('E2E: Per-Tool Authorization', () => {
   beforeAll(async () => {
     const bootstrapped = await bootstrapMcpApp({
       name: 'test-per-tool-auth-server',
-      controllers: [PerToolAuthTools],
-      allowUnauthenticatedAccess: true, // Enable freemium mode for testing @PublicTool() tools
-      configure: (nestApp) => {
-        nestApp.use(authMiddleware);
-      },
+      controllers: [PerToolAuthTools, McpHttpController],
+      providers: [AuthGuard],
+      transports: [mcpTransport],
+      allowUnauthenticatedAccess: true, // Freemium mode for @PublicTool() tools
     });
     app = bootstrapped.app;
     testPort = bootstrapped.port;

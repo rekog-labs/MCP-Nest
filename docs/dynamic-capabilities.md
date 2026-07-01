@@ -22,7 +22,7 @@ Dynamic capabilities work alongside decorator-based capabilities. Registering wi
   - [Mixed Mode: Static + Dynamic](#mixed-mode-static--dynamic)
   - [Registration from an External Module](#registration-from-an-external-module)
     - [Multi-Server Isolation](#multi-server-isolation)
-  - [Playground Example](#playground-example)
+  - [Examples](#examples)
   - [API Reference](#api-reference)
 
 ## Quick Start
@@ -145,7 +145,7 @@ export class DatabaseToolsService implements OnModuleInit {
 
 Dynamic tools support the same authorization metadata as decorator-based tools.
 The handler receives the raw HTTP request as its third argument, where the
-authentication middleware sets `request.user` (see
+authentication guard on the MCP controller sets `request.user` (see
 [Per-Tool Authorization](per-tool-authorization.md)):
 
 ```typescript
@@ -448,14 +448,14 @@ Connect both with `app.connectMicroservice({ strategy: mcpServerA })` and
 `app.connectMicroservice({ strategy: mcpServerB })`. `server-a-tool` will appear
 only in `/server-a/mcp` tool listings — `/server-b/mcp` remains unaffected.
 
-## Playground Example
+## Examples
 
-See [playground/servers/servers-with-dynamic-tools.ts](../playground/servers/servers-with-dynamic-tools.ts) for a complete working example.
+See [examples/dynamic-capabilities/](../examples/dynamic-capabilities/) for a complete working example — the runnable entry point is `src/main.ts`, and the dynamic registration logic lives in `src/dynamic-capabilities.service.ts`.
 
 Run it with:
 
 ```bash
-npx ts-node-dev --respawn ./playground/servers/servers-with-dynamic-tools.ts
+cd examples/dynamic-capabilities && npm install && npm start
 
 # Test Server 1 (static tools only)
 bunx @modelcontextprotocol/inspector --cli "http://localhost:3031/mcp" --transport http --method tools/list

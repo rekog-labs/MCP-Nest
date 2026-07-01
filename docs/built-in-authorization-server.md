@@ -35,11 +35,13 @@ The code of the deployed project is in this GitHub repository: [rekog-labs/mcp-n
 ## Setting up a new project
 
 The `McpAuthModule` still provides the OAuth 2.1 controllers exactly as before.
-MCP itself runs as a `McpStrategy` microservice, and the MCP transport routes
-are protected with Express middleware that validates the Bearer JWT (reusing the
-module's `JwtTokenService`) and sets `req.user`. Per-tool access is then enforced
-with standard NestJS `@UseGuards()` on `@McpController` classes/methods and/or
-the `@PublicTool()`/`@ToolScopes()`/`@ToolRoles()` decorators.
+MCP itself runs as a `McpStrategy` microservice. You mount the MCP transport
+route as a real Nest controller (via `McpHttpControllerFor`) and protect it with
+the built-in `McpAuthJwtGuard` — a NestJS guard that validates the Bearer JWT
+(reusing the module's `JwtTokenService`), rejects missing/invalid tokens with
+`401`, and sets `req.user`. Per-tool access is then enforced with standard
+NestJS `@UseGuards()` on `@McpController` classes/methods and/or the
+`@PublicTool()`/`@ToolScopes()`/`@ToolRoles()` decorators.
 
 The built-in authorization server lives in a separate package. Install it alongside `@rekog/mcp-nest`:
 
@@ -48,25 +50,43 @@ npm install @rekog/mcp-nest-auth
 ```
 
 ```typescript
-import { Module } from '@nestjs/common';
+import { Controller, Module, UseGuards } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 // Or if you are using CommonJS:
 // import * as cookieParser from 'cookie-parser';
-import { McpStrategy, StreamableHttpTransport } from '@rekog/mcp-nest';
+import {
+  McpHttpControllerFor,
+  McpStrategy,
+  StreamableHttpTransport,
+} from '@rekog/mcp-nest';
 import {
   McpAuthModule,
+  McpAuthJwtGuard,
   GitHubOAuthProvider,
-  JwtTokenService,
 } from '@rekog/mcp-nest-auth';
 import { GreetingTool } from './greeting.tool';
+
+// Shared transport instance so the guarded controller below binds to the SAME
+// transport. Referencing it in McpHttpControllerFor auto-disables the
+// transport's own self-mount, so there is no double route.
+const mcpTransport = new StreamableHttpTransport();
 
 const mcp = new McpStrategy({
   name: 'secure-mcp-server',
   version: '1.0.0',
-  transports: [new StreamableHttpTransport()],
+  transports: [mcpTransport],
 });
+
+// Mount the MCP route as a real Nest controller and protect it with the
+// built-in `McpAuthJwtGuard`. The guard validates the Bearer JWT (via the
+// module's JwtTokenService), rejects missing/invalid tokens with 401, and sets
+// `req.user`. The OAuth endpoints (/auth/*, /.well-known/*) stay open — only
+// this controller is guarded — so the handshake can still run.
+@Controller('mcp')
+@UseGuards(McpAuthJwtGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
 @Module({
   imports: [
@@ -80,14 +100,15 @@ const mcp = new McpStrategy({
       apiPrefix: 'auth',
     }),
   ],
-  controllers: [GreetingTool], // your @McpController() classes
+  controllers: [McpHttpController, GreetingTool], // + your @McpController() classes
+  providers: [McpAuthJwtGuard],
 })
 class AppModule {}
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Required for OAuth session management
+  // Required for OAuth session management (this is NOT authentication).
   app.use(cookieParser());
 
   // Enable CORS for client applications
@@ -98,28 +119,6 @@ async function bootstrap() {
 
   mcp.setHttpAdapter(app.getHttpAdapter());
   app.connectMicroservice({ strategy: mcp });
-
-  // Protect only the MCP transport routes; leave the OAuth endpoints
-  // (/auth/*, /.well-known/*) open so the handshake can run.
-  const jwt = app.get(JwtTokenService);
-  const mcpRoutes = ['/mcp'];
-  app.use((req: any, res: any, next: () => void) => {
-    const path: string = req.path ?? req.url ?? '';
-    const isMcpRoute = mcpRoutes.some(
-      (p) => path === p || path.startsWith(`${p}?`) || path.startsWith(`${p}/`),
-    );
-    if (!isMcpRoute) return next();
-
-    const auth: string | undefined = req.headers?.authorization;
-    const token = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
-    if (!token) { res.statusCode = 401; res.end('Unauthorized'); return; }
-
-    const payload = jwt.validateToken(token);
-    if (!payload) { res.statusCode = 401; res.end('Unauthorized'); return; }
-
-    req.user = payload;
-    next();
-  });
 
   await app.startAllMicroservices(); // BEFORE listen()
   await app.listen(3030);
@@ -137,7 +136,7 @@ npm install --save-dev @types/cookie-parser
 
 ## Reading the Authenticated User
 
-The middleware (or guard) above validates the token and sets `req.user`. Inside a
+The `McpAuthJwtGuard` above validates the token and sets `req.user`. Inside a
 tool, inject it directly with `@McpUser()` — the auth-aware param decorator that
 projects `req.user` (sugar over `@McpRawRequest()` + `.user`):
 
@@ -204,7 +203,6 @@ Pass a field name to project a single property, e.g. `@McpUser('email') email?: 
     authorize: '/authorize',
     callback: '/callback',
     token: '/token',
-    revoke: '/revoke',
   }
 }
 ```
@@ -353,11 +351,12 @@ When `apiPrefix` is set to `'auth'`, the following endpoints are available:
 
 ### OAuth Flow Endpoints
 
-- **POST** `/register` - Dynamic client registration (RFC 7591)
-- **GET** `/authorize` - Authorization endpoint
-- **GET** `/callback` - OAuth callback endpoint
-- **POST** `/token` - Token endpoint
-- **POST** `/revoke` - Token revocation
+These are served under the configured `apiPrefix` (shown here with `apiPrefix: 'auth'`); the two `/.well-known/*` endpoints above remain at the root.
+
+- **POST** `/auth/register` - Dynamic client registration (RFC 7591)
+- **GET** `/auth/authorize` - Authorization endpoint
+- **GET** `/auth/callback` - OAuth callback endpoint
+- **POST** `/auth/token` - Token endpoint
 
 ## Environment Variables
 

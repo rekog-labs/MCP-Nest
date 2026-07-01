@@ -29,7 +29,7 @@
   "include": [
     "packages/**/*",
     "tests/**/*",
-    "playground/**/*"
+    "examples/**/*"
   ],
   "exclude": [
     "node_modules",

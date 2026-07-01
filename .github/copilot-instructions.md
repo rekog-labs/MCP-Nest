@@ -67,9 +67,11 @@ npm run lint               # ESLint with --fix
 ```
 
 ### Running Examples
+Each project under `examples/` is self-contained — run one on its own:
 ```bash
-npm run start:playground   # Stateful server example
-npm run start:fastify      # Fastify adapter example
+cd examples/<project>      # e.g. examples/server-examples
+npm install
+npm start
 ```
 
 ### Testing Transport Types
@@ -116,7 +118,7 @@ Request context flows through to tools via dependency injection.
 - `src/mcp/decorators/` - Tool/Resource/Prompt decorators
 - `src/mcp/services/handlers/` - Protocol request handlers
 - `src/mcp/transport/` - Transport implementations
-- `playground/` - Working examples
+- `examples/` - Working examples
 - `tests/` - Comprehensive E2E test suite
 
 ### Error Handling Patterns

@@ -1,4 +1,5 @@
 import {
+  Controller,
   ExecutionContext,
   Injectable,
   INestApplication,
@@ -9,7 +10,13 @@ import { Reflector } from '@nestjs/core';
 import { z } from 'zod';
 import { Payload } from '@nestjs/microservices';
 import { CanActivate } from '@nestjs/common';
-import { McpContext, McpController, Tool, PublicTool } from '@rekog/mcp-nest';
+import {
+  McpContext,
+  McpController,
+  McpHttpControllerFor,
+  Tool,
+  PublicTool,
+} from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
   createStreamableClient,
@@ -29,9 +36,9 @@ import {
  *   - the user via `ctx.switchToRpc().getContext().getRawRequest().user`
  *   - the tool arguments via `ctx.switchToRpc().getData()`
  *
- * Authentication itself is Express middleware that parses the Authorization
- * header and sets `req.user`, allowing unauthenticated requests through so the
- * per-tool guards decide access.
+ * Authentication itself is a NestJS guard (`IdentityGuard`) on the MCP route
+ * that parses the Authorization header and sets `req.user`, admitting every
+ * request (even tokenless ones) so the per-tool guards decide access.
  */
 
 function getUser(context: ExecutionContext): any {
@@ -131,40 +138,45 @@ class ThrowingGuard implements CanActivate {
   }
 }
 
-const authMiddleware = (req: any, _res: any, next: () => void) => {
-  const authHeader = req.headers?.authorization;
+/**
+ * Identity-only guard: resolves `req.user` from the Authorization header and
+ * always admits the request (including tokenless ones). Access control is
+ * delegated to the per-tool `@UseGuards()` above.
+ */
+@Injectable()
+class IdentityGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest<{
+      headers: Record<string, string | undefined>;
+      user?: unknown;
+    }>();
+    const authHeader = req.headers?.authorization;
 
-  if (!authHeader) {
-    return next();
+    if (!authHeader) {
+      return true;
+    }
+
+    if (authHeader.includes('admin-token')) {
+      req.user = {
+        id: 'admin-1',
+        role: 'admin',
+        name: 'Admin',
+        asyncAllowed: true,
+      };
+    } else if (authHeader.includes('user-token')) {
+      req.user = { id: 'user-1', role: 'user', name: 'Regular User' };
+    } else if (authHeader.includes('async-token')) {
+      req.user = {
+        id: 'async-1',
+        role: 'viewer',
+        name: 'Async User',
+        asyncAllowed: true,
+      };
+    }
+
+    return true;
   }
-
-  if (authHeader.includes('admin-token')) {
-    req.user = {
-      id: 'admin-1',
-      role: 'admin',
-      name: 'Admin',
-      asyncAllowed: true,
-    };
-    return next();
-  }
-
-  if (authHeader.includes('user-token')) {
-    req.user = { id: 'user-1', role: 'user', name: 'Regular User' };
-    return next();
-  }
-
-  if (authHeader.includes('async-token')) {
-    req.user = {
-      id: 'async-1',
-      role: 'viewer',
-      name: 'Async User',
-      asyncAllowed: true,
-    };
-    return next();
-  }
-
-  next();
-};
+}
 
 @McpController()
 @Injectable()
@@ -274,11 +286,19 @@ class GuardedTools {
   }
 }
 
+// Mount the MCP route as a real controller so `IdentityGuard` runs at the HTTP
+// layer and sets `req.user` before the per-tool @UseGuards run.
+const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
+
+@Controller('mcp')
+@UseGuards(IdentityGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
+
 describe('E2E: Tool Guards via native @UseGuards()', () => {
   describe.each([
     {
       transportName: 'Streamable HTTP (stateful)',
-      makeTransports: () => [new StreamableHttpTransport({ statefulMode: true })],
+      makeTransports: () => [mcpTransport],
       createClient: (port: number, headers?: Record<string, string>) =>
         createStreamableClient(
           port,
@@ -292,7 +312,7 @@ describe('E2E: Tool Guards via native @UseGuards()', () => {
     beforeAll(async () => {
       const bootstrapped = await bootstrapMcpApp({
         name: 'test-tool-guards-server',
-        controllers: [GuardedTools],
+        controllers: [GuardedTools, McpHttpController],
         providers: [
           AdminGuard,
           AuthenticatedGuard,
@@ -300,15 +320,13 @@ describe('E2E: Tool Guards via native @UseGuards()', () => {
           ReflectorGuard,
           OwnershipGuard,
           ThrowingGuard,
+          IdentityGuard,
         ],
         transports: makeTransports(),
-        // No `allowUnauthenticatedAccess`: gating here is done purely by native
-        // @UseGuards at call time, so the per-tool ToolAuthorizationService
-        // (which only acts on @PublicTool/@ToolScopes/@ToolRoles) stays out of
-        // the way.
-        configure: (nestApp) => {
-          nestApp.use(authMiddleware);
-        },
+        // No `allowUnauthenticatedAccess`: identity comes from IdentityGuard on
+        // the MCP controller, and gating is done purely by native @UseGuards at
+        // call time, so the per-tool ToolAuthorizationService (which only acts
+        // on @PublicTool/@ToolScopes/@ToolRoles) stays out of the way.
       });
       app = bootstrapped.app;
       testPort = bootstrapped.port;

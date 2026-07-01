@@ -5,8 +5,7 @@
   "license": "MIT",
   "private": true,
   "workspaces": [
-    "packages/*",
-    "playground"
+    "packages/*"
   ],
   "repository": {
     "type": "git",
@@ -15,17 +14,10 @@
   "scripts": {
     "build": "npm run build -w @rekog/mcp-nest && npm run build -w @rekog/mcp-nest-auth",
     "prepare": "npm run build",
-    "smoke": "npm -w playground run smoke:local",
-    "start:playground": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-stateful.ts",
-    "start:fastify": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-stateful-fastify.ts",
-    "start:multi-server": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/multi-server-example/main.ts",
-    "start:supabase-auth": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/supabase-mcp-auth/main.ts",
-    "start:external-auth": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/external-mcp-auth/main.ts",
-    "start:custom-controllers": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/custom-controllers/server.ts",
     "test": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts')",
     "test:watch": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts') --watch",
     "lint": "eslint \"{packages,apps,libs,tests}/**/*.ts\" --fix",
-    "format": "prettier --write \"packages/**/*.ts\" \"playground/**/*.ts\" \"tests/**/*.ts\""
+    "format": "prettier --write \"packages/**/*.ts\" \"tests/**/*.ts\""
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",

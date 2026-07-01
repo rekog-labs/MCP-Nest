@@ -238,16 +238,17 @@ the NestJS pipeline (no guards/pipes/interceptors).
 
 ## 6. Authentication & authorization
 
-Because MCP HTTP routes are mounted on the adapter (not as Nest controllers),
-Nest controller/module guards no longer gate them at the HTTP layer. There is
-also **no `guards` option on `McpStrategy`** (and no fake "AuthGate" idiom) — it
-has been removed.
+There is **no `guards` option on `McpStrategy`** (and no fake "AuthGate" idiom) —
+it has been removed. Instead, mount the MCP transport route as a real Nest
+controller (via `McpHttpControllerFor`) so standard Nest guards gate it at the
+HTTP layer on every transport request.
 
-- **Authenticate** with Express middleware that sets `req.user` (and rejects with
-  401 when appropriate). The built-in `ToolAuthorizationService` reads `req.user`
-  to filter `tools/list` and gate `tools/call` against `@PublicTool`,
-  `@ToolScopes`, and `@ToolRoles` (plus the `allowUnauthenticatedAccess`
-  freemium flag).
+- **Authenticate** with a NestJS guard on the MCP controller
+  (`@UseGuards(YourGuard)`) that sets `req.user` (and throws
+  `UnauthorizedException` when appropriate). The built-in
+  `ToolAuthorizationService` reads `req.user` to filter `tools/list` and gate
+  `tools/call` against `@PublicTool`, `@ToolScopes`, and `@ToolRoles` (plus the
+  `allowUnauthenticatedAccess` freemium flag).
 - **Enforce** per-tool access with standard `@UseGuards()` on the
   `@McpController` class or method — these run inside the RPC pipeline at call
   time. In a guard, use `context.switchToRpc().getContext<McpContext>()` and

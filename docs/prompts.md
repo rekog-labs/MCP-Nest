@@ -47,9 +47,11 @@ A prompt returns an object with:
 
 ## Message Roles
 
-Messages can have different roles:
+Messages can have two roles either `'user'` or `'assistant'`
 
 ```typescript
+import { McpController, Prompt, PromptResult } from '@rekog/mcp-nest';
+
 @Prompt({
   name: 'code-review-guide',
   description: 'Instructions for reviewing code',
@@ -58,12 +60,12 @@ Messages can have different roles:
     focusArea: z.string(),
   }),
 })
-getCodeReviewPrompt(@Payload() { codeLanguage, focusArea }: { codeLanguage: string; focusArea: string }) {
+getCodeReviewPrompt(@Payload() { codeLanguage, focusArea }: { codeLanguage: string; focusArea: string }): PromptResult {
   return {
     description: 'Guide for conducting thorough code reviews',
     messages: [
       {
-        role: 'system',
+        role: 'assistant',
         content: {
           type: 'text',
           text: `You are an expert ${codeLanguage} code reviewer.`,
@@ -80,6 +82,8 @@ getCodeReviewPrompt(@Payload() { codeLanguage, focusArea }: { codeLanguage: stri
   };
 }
 ```
+
+`PromptResult` is the SDK's `GetPromptResult`; use `Promise<PromptResult>` for `async` handlers.
 
 ## Multi-turn Conversation Prompts
 
@@ -99,7 +103,7 @@ getInterviewGuide(@Payload() { role, experience }: { role: string; experience: s
     description: `Interview guide for ${role} position`,
     messages: [
       {
-        role: 'system',
+        role: 'assistant',
         content: {
           type: 'text',
           text: 'You are conducting a technical interview. Be thorough but encouraging.',
@@ -116,14 +120,14 @@ getInterviewGuide(@Payload() { role, experience }: { role: string; experience: s
         role: 'user',
         content: {
           type: 'text',
-          text: 'Yes, that's correct. I'm excited to discuss the role.',
+          text: "Yes, that's correct. I'm excited to discuss the role.",
         },
       },
       {
         role: 'assistant',
         content: {
           type: 'text',
-          text: 'Great! Let's start with some technical questions relevant to your experience level.',
+          text: "Great! Let's start with some technical questions relevant to your experience level.",
         },
       },
     ],
@@ -186,7 +190,7 @@ getTaskPlannerPrompt(@Payload() { task, complexity }: { task: string; complexity
     description: `Task planning for ${complexity} task`,
     messages: [
       {
-        role: 'system',
+        role: 'assistant',
         content: {
           type: 'text',
           text: 'You are a project planning expert.',
@@ -208,16 +212,18 @@ getTaskPlannerPrompt(@Payload() { task, complexity }: { task: string; complexity
 
 ### 1. Start the Server
 
-Run the playground server:
+Run the example server:
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateful.ts
+cd examples/prompts && npm install && npm start
 ```
+
+This serves the MCP endpoint at `http://localhost:3000/mcp`.
 
 ### 2. List Available Prompts
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method prompts/list
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method prompts/list
 ```
 
 Expected output:
@@ -227,7 +233,19 @@ Expected output:
   "prompts": [
     {
       "name": "multilingual-greeting-guide",
-      "description": "Simple instruction for greeting users in their native languages"
+      "description": "Simple instruction for greeting users in their native languages",
+      "arguments": [
+        {
+          "name": "name",
+          "description": "The name of the person to greet",
+          "required": true
+        },
+        {
+          "name": "language",
+          "description": "The language to use for the greeting",
+          "required": true
+        }
+      ]
     }
   ]
 }
@@ -236,7 +254,7 @@ Expected output:
 ### 3. Get a Prompt Template
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method prompts/get --prompt-name multilingual-greeting-guide --prompt-args name=Alice --prompt-args language=es
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method prompts/get --prompt-name multilingual-greeting-guide --prompt-args name=Alice --prompt-args language=es
 ```
 
 Expected output:
@@ -264,8 +282,8 @@ For interactive testing, use the MCP Inspector UI:
 npx @modelcontextprotocol/inspector@0.16.2
 ```
 
-Connect to `http://localhost:3030/mcp` and browse the prompts to test with different parameters.
+Connect to `http://localhost:3000/mcp` and browse the prompts to test with different parameters.
 
 ## Example Location
 
-See the complete example at: `playground/resources/greeting.prompt.ts`
+See the complete example at: `examples/prompts/src/greeting.prompt.ts`

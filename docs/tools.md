@@ -169,7 +169,8 @@ NestJS's `@UseFilters` and `@Catch` decorators work out of the box for tools, re
 ### Creating an Exception Filter
 
 ```typescript
-import { Catch, ExceptionFilter } from '@nestjs/common';
+import { Catch, RpcExceptionFilter } from '@nestjs/common';
+import { Observable, throwError } from 'rxjs';
 
 class CustomError extends Error {
   constructor(
@@ -181,19 +182,28 @@ class CustomError extends Error {
 }
 
 @Catch(CustomError)
-class CustomErrorFilter implements ExceptionFilter {
-  catch(exception: CustomError) {
-    return `[${exception.code}] ${exception.message}`;
+class CustomErrorFilter implements RpcExceptionFilter {
+  catch(exception: CustomError): Observable<never> {
+    // Throw (don't return) so the message is surfaced as an `isError` result.
+    return throwError(() => ({
+      status: 'error',
+      message: `[${exception.code}] ${exception.message}`,
+    }));
   }
 }
 
 @Catch()
-class CatchAllFilter implements ExceptionFilter {
-  catch(exception: Error) {
-    return `Unexpected error: ${exception.message}`;
+class CatchAllFilter implements RpcExceptionFilter {
+  catch(exception: Error): Observable<never> {
+    return throwError(() => ({
+      status: 'error',
+      message: `Unexpected error: ${exception.message}`,
+    }));
   }
 }
 ```
+
+> **Throw, don't return.** MCP handlers run in NestJS's RPC pipeline, so filters implement `RpcExceptionFilter` and signal failure by **throwing** (`throwError(...)`). A filter that instead *returns* a plain value tells NestJS that value **is the successful response** — for a tool it becomes a normal result with **no `isError`**, so the error silently masquerades as success. This mirrors the library's own `McpExceptionFilter`.
 
 ### Using Filters with Tools, Resources, and Prompts
 
@@ -243,10 +253,12 @@ class MyService {
 
 ### How Errors Are Returned
 
-The filter's return value is handled differently based on the capability type:
+Because the filters above **throw** the error (rather than returning a value), the surfaced message is handled based on the capability type:
 
-- **Tools**: Errors are returned as `{ content: [{ type: 'text', text: filterResult }], isError: true }`
-- **Resources & Prompts**: Errors are thrown as MCP internal errors (code `-32603`) with the filter result in the message
+- **Tools**: returned as `{ content: [{ type: 'text', text: filterMessage }], isError: true }`
+- **Resources & Prompts**: thrown as MCP internal errors (code `-32603`) with the message in the error
+
+> A tool-only filter may alternatively **return** a complete result object — `return { content: [{ type: 'text', text: '...' }], isError: true }` — which is respected verbatim. This does **not** work for resources/prompts (wrong result shape), so throwing is the portable choice.
 
 ### Filter Precedence
 
@@ -260,16 +272,16 @@ A catch-all filter (`@Catch()` with no arguments) will catch any exception that 
 
 ### 1. Start the Server
 
-Run the playground server:
+Run the example server:
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateful.ts
+cd examples/tools && npm install && npm start
 ```
 
 ### 2. List Available Tools
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method tools/list
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method tools/list
 ```
 
 Expected output:
@@ -304,7 +316,7 @@ Expected output:
 **Basic tool call:**
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method tools/call --tool-name greet-user --tool-arg name=Alice --tool-arg language=es
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method tools/call --tool-name greet-user --tool-arg name=Alice --tool-arg language=es
 ```
 
 Expected output:
@@ -325,7 +337,7 @@ Expected output:
 Interactive tool calls, use elicitation to get additional input from users. The **MCP Inspector CLI currently doesn't support elicitation**, but as soon as this [GitHub issue](https://github.com/modelcontextprotocol/inspector/issues/524) is resolved, you can test it with the command below. **In the meantime, you can test it using the MCP Inspector UI.**
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method tools/call --tool-name greet-user-interactive --tool-arg name=Bob
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method tools/call --tool-name greet-user-interactive --tool-arg name=Bob
 ```
 
 Elicited input:
@@ -350,7 +362,7 @@ Expected output:
 **Structured tool call (with output schema):**
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method tools/call --tool-name greet-user-structured --tool-arg name=Charlie --tool-arg language=fr
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method tools/call --tool-name greet-user-structured --tool-arg name=Charlie --tool-arg language=fr
 ```
 
 Expected output:
@@ -360,13 +372,13 @@ Expected output:
   "content": [
     {
       "type": "text",
-      "text": "{\n  \"greeting\": \"Salut, Charlie!\",\n  \"language\": \"fr\",\n  \"languageName\": \"French\"\n}"
+      "text": "{\n  \"greeting\": \"Hey, Charlie!\",\n  \"language\": \"fr\",\n  \"languageName\": \"English\"\n}"
     }
   ],
   "structuredContent": {
-    "greeting": "Salut, Charlie!",
+    "greeting": "Hey, Charlie!",
     "language": "fr",
-    "languageName": "French"
+    "languageName": "English"
   }
 }
 ```
@@ -379,7 +391,7 @@ For interactive testing with progress updates, use the MCP Inspector UI:
 npx @modelcontextprotocol/inspector@0.16.2
 ```
 
-Connect to `http://localhost:3030/mcp` to test your tools interactively and see progress reporting in real-time.
+Connect to `http://localhost:3000/mcp` to test your tools interactively and see progress reporting in real-time.
 
 ## Tool Guards
 
@@ -431,4 +443,4 @@ Guards that rely on an HTTP request are not usable with STDIO transport (`ctx.ge
 
 ## Example Location
 
-See the complete example at: `playground/resources/greeting.tool.ts`
+See the complete example at: `examples/tools/src/greeting.tool.ts`

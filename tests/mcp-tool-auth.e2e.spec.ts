@@ -1,39 +1,62 @@
-import { INestApplication, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  Controller,
+  ExecutionContext,
+  INestApplication,
+  Injectable,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { Ctx, Payload } from '@nestjs/microservices';
-import { McpContext, McpController, McpRawRequest, Tool } from '@rekog/mcp-nest';
+import {
+  McpContext,
+  McpController,
+  McpHttpControllerFor,
+  McpRawRequest,
+  StreamableHttpTransport,
+  Tool,
+} from '@rekog/mcp-nest';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 /**
- * AUTHENTICATION for HTTP transports is now Express middleware, not a module
- * guard. The middleware inspects the Authorization header, populates
- * `req.user` on success, and replies 401 on failure — gating the MCP routes
- * the same way the old `guards: [MockAuthGuard]` did. Tools read the
- * authenticated user by injecting the request with `@McpRawRequest()` and
- * reading `req.user`.
+ * AUTHENTICATION for HTTP transports is a NestJS guard on the MCP route, not
+ * module-level config. The guard inspects the Authorization header, populates
+ * `req.user` on success, and throws `UnauthorizedException` (401) on failure —
+ * gating the MCP routes the same way the old `guards: [MockAuthGuard]` did.
+ * Because the MCP endpoint is mounted as a real controller (via
+ * `McpHttpControllerFor`), the guard runs on every transport request. Tools
+ * read the authenticated user by injecting the request with `@McpRawRequest()`
+ * and reading `req.user`.
  */
-const authMiddleware = (req: any, res: any, next: () => void) => {
-  const authorization = req.headers?.authorization;
-  if (authorization && authorization.includes('token-xyz')) {
-    req.user = {
-      id: 'user123',
-      name: 'Test User',
-      orgMemberships: [
-        {
-          orgId: 'org123',
-          organization: {
-            name: 'Auth Test Org',
+@Injectable()
+class AuthGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest<{
+      headers: Record<string, string | undefined>;
+      user?: unknown;
+    }>();
+    const authorization = req.headers?.authorization;
+    if (authorization && authorization.includes('token-xyz')) {
+      req.user = {
+        id: 'user123',
+        name: 'Test User',
+        orgMemberships: [
+          {
+            orgId: 'org123',
+            organization: {
+              name: 'Auth Test Org',
+            },
           },
-        },
-      ],
-    };
-    return next();
+        ],
+      };
+      return true;
+    }
+    throw new UnauthorizedException('Unauthorized');
   }
-  res.statusCode = 401;
-  res.end('Unauthorized');
-};
+}
 
 // Mock user repository
 @Injectable()
@@ -98,6 +121,14 @@ export class AuthGreetingTool {
   }
 }
 
+// Mount the MCP route as a real Nest controller so the guard runs at the HTTP
+// layer on every transport request (initialize, tools/list, tools/call).
+const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
+
+@Controller('mcp')
+@UseGuards(AuthGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
+
 describe('E2E: MCP Server Tool with Authentication', () => {
   let app: INestApplication;
   let testPort: number;
@@ -105,11 +136,9 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   beforeAll(async () => {
     const bootstrapped = await bootstrapMcpApp({
       name: 'test-auth-mcp-server',
-      controllers: [AuthGreetingTool],
-      providers: [MockUserRepository],
-      configure: (nestApp) => {
-        nestApp.use(authMiddleware);
-      },
+      controllers: [AuthGreetingTool, McpHttpController],
+      providers: [MockUserRepository, AuthGuard],
+      transports: [mcpTransport],
     });
     app = bootstrapped.app;
     testPort = bootstrapped.port;

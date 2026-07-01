@@ -64,13 +64,17 @@ uriTemplate: 'mcp://users/{userId}/posts/{postId}'
 // Extracts: { userId: '123', postId: '456' }
 ```
 
-### Optional Parameters
+### Wildcard / Catch-all Parameters
 
 ```typescript
 uriTemplate: 'mcp://files/{path*}'
 // Matches: mcp://files/docs/readme.md
 // Extracts: { path: 'docs/readme.md' }
 ```
+
+`{path*}` is a catch-all that captures one or more path segments (not an optional
+parameter). At least one segment is still required — the bare parent URI
+`mcp://files` does not match and resolves to `Unknown resource`.
 
 Register the class in a module's `controllers` array (not `providers`) so NestJS scans it when the strategy is connected. See [Server Examples](server-examples.md) for the full bootstrap.
 
@@ -236,16 +240,16 @@ async getRecord(@Payload() { uri, table, id }: { uri: string; table: string; id:
 
 ### 1. Start the Server
 
-Run the playground server:
+Run the example server:
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateful.ts
+cd examples/resource-templates && npm install && npm start
 ```
 
 ### 2. List Available Resource Templates
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/templates/list
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/templates/list
 ```
 
 Expected output:
@@ -268,27 +272,7 @@ Expected output:
 **Test with a known user:**
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/read --uri "mcp://users/carlos"
-```
-
-Expected output:
-
-```json
-{
-  "contents": [
-    {
-      "uri": "mcp://users/alice",
-      "mimeType": "application/json",
-      "text": "{\n  \"name\": \"alice\",\n  \"language\": \"en\"\n}"
-    }
-  ]
-}
-```
-
-**Test with another user:**
-
-```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/read --uri "mcp://users/carlos"
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/read --uri "mcp://users/carlos"
 ```
 
 Expected output:
@@ -305,10 +289,30 @@ Expected output:
 }
 ```
 
+**Test with another user:**
+
+```bash
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/read --uri "mcp://users/yuki"
+```
+
+Expected output:
+
+```json
+{
+  "contents": [
+    {
+      "uri": "mcp://users/yuki",
+      "mimeType": "application/json",
+      "text": "{\n  \"name\": \"yuki\",\n  \"language\": \"ja\"\n}"
+    }
+  ]
+}
+```
+
 **Test with unknown user (fallback behavior):**
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/read --uri "mcp://users/unknown"
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/read --uri "mcp://users/unknown"
 ```
 
 Expected output:
@@ -333,11 +337,11 @@ For interactive testing, use the MCP Inspector UI:
 npx @modelcontextprotocol/inspector@0.16.2
 ```
 
-Connect to `http://localhost:3030/mcp` and try accessing different URIs to test your templates.
+Connect to `http://localhost:3000/mcp` and try accessing different URIs to test your templates.
 
 ## Example Location
 
-See the complete example at: `playground/resources/greeting.resource.ts`
+See the complete example at: `examples/resource-templates/src/greeting.resource.ts`
 
 ## Related
 

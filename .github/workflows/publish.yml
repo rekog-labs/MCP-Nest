@@ -110,18 +110,14 @@ jobs:
             fi
           done
 
-      - name: Stage playground against published artifacts
+      - name: Install and smoke-test the published package
+        working-directory: examples/server-examples
         env:
           V: ${{ steps.ver.outputs.version }}
         run: |
-          cp -r playground /tmp/smoke
-          cd /tmp/smoke
-          # Point both workspace file: references at the published registry versions
-          npm pkg set \
-            "dependencies.@rekog/mcp-nest=$V" \
-            "dependencies.@rekog/mcp-nest-auth=$V"
+          # server-examples is a self-contained project that depends only on
+          # @rekog/mcp-nest (no auth). Pin it to the just-published version so
+          # the smoke exercises the exact artifact that was released.
+          npm pkg set "dependencies.@rekog/mcp-nest=$V"
           npm install --no-audit --no-fund
-
-      - name: Run smoke
-        working-directory: /tmp/smoke
-        run: npm run smoke
+          npm run smoke

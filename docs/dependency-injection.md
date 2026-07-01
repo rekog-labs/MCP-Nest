@@ -38,7 +38,19 @@ export class GreetingTool {
 
 ### Request-scoped behavior
 
-In a request-scoped capability, `@Inject(REQUEST)` resolves to the **RPC request context**, not the raw HTTP request. To read HTTP headers, the authenticated user, etc., inject the raw request with `@McpRawRequest()`:
+In a request-scoped capability you may be tempted to use `@Inject(REQUEST)`, but
+it does **not** hand you the MCP context directly. It resolves to a NestJS
+`RequestContextHost` wrapper (an `ArgumentsHost`-style object); the actual
+`McpContext` is one call away via `.getContext()`. Because of that extra step,
+`@Inject(REQUEST) ctx: McpContext` is wrong — `ctx.getRawRequest()` would throw
+`TypeError: ctx.getRawRequest is not a function`.
+
+Don't reach through the wrapper. Use the parameter decorators instead:
+
+* `@Ctx() ctx: McpContext` — the MCP context (the same object `.getContext()`
+  would return).
+* `@McpRawRequest() req?: Request` — the raw HTTP request, for headers, the
+  authenticated user, etc.
 
 ```typescript
 async sayHello(@Payload() { name }: { name: string }, @McpRawRequest() req?: Request) {

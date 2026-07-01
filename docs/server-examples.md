@@ -1,12 +1,12 @@
 # Server Examples
 
-This guide walks through different ways to set up MCP servers using mcp-nest with various transport types and configurations. Each pattern below links to its explanation in this document and to a runnable example in the playground:
+This guide walks through different ways to set up MCP servers using mcp-nest with various transport types and configurations. Each pattern below links to its explanation in this document and to a runnable example in the examples directory:
 
-- [Stateful MCP Server](#stateful-mcp-server) — [`server-stateful.ts`](../playground/servers/server-stateful.ts)
-- [Stateless MCP Server](#stateless-mcp-server) — [`server-stateless.ts`](../playground/servers/server-stateless.ts)
-- [STDIO MCP Server](#stdio-server) — [`stdio.ts`](../playground/servers/stdio.ts)
-- [Fastify Adapter](#fastify-server) — [`server-stateful-fastify.ts`](../playground/servers/server-stateful-fastify.ts)
-- [OAuth Authentication](#server-with-authentication) — [`server-oauth.ts`](../playground/servers/server-oauth.ts)
+- [Stateful MCP Server](#stateful-mcp-server) — [`main-stateful.ts`](../examples/server-examples/src/main-stateful.ts)
+- [Stateless MCP Server](#stateless-mcp-server) — [`main-stateless.ts`](../examples/server-examples/src/main-stateless.ts)
+- [STDIO MCP Server](#stdio-server) — [`main-stdio.ts`](../examples/server-examples/src/main-stdio.ts)
+- [Fastify Adapter](#fastify-server) — [`main-fastify.ts`](../examples/server-examples/src/main-fastify.ts)
+- [OAuth Authentication](#server-with-authentication) — [`per-tool-authorization-oauth/`](../examples/per-tool-authorization-oauth/)
 - [Custom Request Handling](#custom-request-handling)
 - [Async Configuration](#async-configuration)
 - [Multiple Transports](#multiple-transport-types)
@@ -31,7 +31,7 @@ import { GreetingPrompt } from './greeting.prompt';
 
 // The strategy is the whole configuration — there is no McpModule.
 const mcp = new McpStrategy({
-  name: 'playground-mcp-server',
+  name: 'example-mcp-server',
   version: '0.0.1',
   transports: [
     // Stateless is the default; opt into session management with statefulMode.
@@ -70,7 +70,8 @@ void bootstrap();
 **Run:**
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateful.ts
+cd examples/server-examples && npm install
+PORT=3010 npx ts-node-dev --respawn src/main-stateful.ts
 ```
 
 **Test:**
@@ -79,7 +80,7 @@ npx ts-node-dev --respawn playground/servers/server-stateful.ts
 npx @modelcontextprotocol/inspector@0.16.2
 ```
 
-Connect to: `http://localhost:3030/mcp`
+Connect to: `http://localhost:3010/mcp`
 
 ## Stateless MCP Server
 
@@ -89,7 +90,7 @@ returns a JSON reply to a plain POST (no SSE stream to manage):
 
 ```typescript
 const mcp = new McpStrategy({
-  name: 'playground-mcp-server',
+  name: 'example-mcp-server',
   version: '0.0.1',
   transports: [new StreamableHttpTransport()],
 });
@@ -111,7 +112,8 @@ class AppModule {}
 **Run:**
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateless.ts
+cd examples/server-examples && npm install
+PORT=3010 npx ts-node-dev --respawn src/main-stateless.ts
 ```
 
 ## STDIO Server
@@ -127,7 +129,7 @@ import { GreetingResource } from './greeting.resource';
 import { GreetingPrompt } from './greeting.prompt';
 
 const mcp = new McpStrategy({
-  name: 'playground-stdio-server',
+  name: 'example-stdio-server',
   version: '0.0.1',
   transports: [new StdioTransport()],
   logging: false, // stdout is reserved for the protocol
@@ -153,18 +155,19 @@ void bootstrap();
 **Run:**
 
 ```bash
-npx ts-node-dev --respawn playground/servers/stdio.ts
+cd examples/server-examples && npm install
+npx ts-node src/main-stdio.ts
 ```
 
 **Test with MCP Client:**
-After building, configure in your MCP client:
+Configure in your MCP client to run the entry file directly with `ts-node`:
 
 ```json
 {
   "mcpServers": {
     "greeting": {
-      "command": "node",
-      "args": ["dist/playground/servers/stdio.js"]
+      "command": "npx",
+      "args": ["ts-node", "examples/server-examples/src/main-stdio.ts"]
     }
   }
 }
@@ -203,10 +206,10 @@ class AppModule {}
 
 ## Server with Authentication
 
-MCP HTTP routes are mounted on the HTTP adapter (not as Nest controllers), so authentication has two parts:
+Mount the MCP transport route as a real Nest controller (via `McpHttpControllerFor`) so authentication runs as a standard NestJS guard. Authentication then has two parts:
 
-- **Authenticate** with Express middleware that sets `req.user` (and rejects with 401 when appropriate). The bespoke `ToolAuthorizationService` reads `req.user` to enforce `@PublicTool`, `@ToolScopes`, and `@ToolRoles`.
-- **Enforce** per-tool access with standard `@UseGuards()` on the `@McpController` class or method — these run inside the RPC pipeline. In a guard, read the context with `context.switchToRpc().getContext<McpContext>()` and `.getRawRequest()`.
+- **Authenticate** with a NestJS guard on the MCP controller (`@UseGuards(YourGuard)`) that sets `req.user` (and throws `UnauthorizedException` when appropriate). Because the guard is on a real controller, it runs at the HTTP layer on every transport request. The bespoke `ToolAuthorizationService` reads `req.user` to enforce `@PublicTool`, `@ToolScopes`, and `@ToolRoles`.
+- **Enforce** per-tool access with standard `@UseGuards()` on the `@McpController` class or method — these run inside the RPC pipeline at call time. In such a guard, read the context with `context.switchToRpc().getContext<McpContext>()` and `.getRawRequest()`.
 
 If you use the built-in OAuth authorization server (`McpAuthModule`), install the auth package alongside `@rekog/mcp-nest`:
 
@@ -215,24 +218,34 @@ npm install @rekog/mcp-nest-auth
 ```
 
 ```typescript
-import { AuthMiddleware } from './auth.middleware';
+import { Controller, UseGuards } from '@nestjs/common';
+import { McpHttpControllerFor } from '@rekog/mcp-nest';
+import { AuthGuard } from './auth.guard';
+
+// Shared transport instance so the guarded controller binds to the SAME
+// transport; referencing it here auto-disables the transport's self-mount.
+const mcpTransport = new StreamableHttpTransport();
 
 const mcp = new McpStrategy({
   name: 'secure-mcp-server',
   version: '0.0.1',
-  transports: [new StreamableHttpTransport()],
+  transports: [mcpTransport],
 });
 
+// The MCP route as a real Nest controller, so `AuthGuard` authenticates every
+// transport request (initialize, tools/list, tools/call) at the HTTP layer.
+@Controller('mcp')
+@UseGuards(AuthGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
+
 @Module({
-  controllers: [GreetingTool],
-  providers: [{ provide: MCP_STRATEGY, useValue: mcp }],
+  controllers: [McpHttpController, GreetingTool],
+  providers: [AuthGuard, { provide: MCP_STRATEGY, useValue: mcp }],
 })
 class AppModule {}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  // Authenticate before the MCP transports handle the request.
-  app.use(new AuthMiddleware().use);
   mcp.setHttpAdapter(app.getHttpAdapter());
   app.connectMicroservice({ strategy: mcp });
   await app.startAllMicroservices();
@@ -286,7 +299,8 @@ async function bootstrap() {
 **Run:**
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateful-fastify.ts
+cd examples/server-examples && npm install
+PORT=3010 npx ts-node src/main-fastify.ts
 ```
 
 ## Testing Your Servers
@@ -309,12 +323,16 @@ npx ts-node-dev --respawn playground/servers/server-stateful-fastify.ts
 # List available tools
 curl -X POST http://localhost:3030/mcp \
   -H "Content-Type: application/json" \
-  -d '{"method": "tools/list"}'
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
 
 # Execute a tool
 curl -X POST http://localhost:3030/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
     "method": "tools/call",
     "params": {
       "name": "greet-user",
@@ -341,6 +359,8 @@ export class GreetingTool {
 ```
 
 In a guard/interceptor, read the MCP context with `context.switchToRpc().getContext<McpContext>()` and the raw HTTP request via `.getRawRequest()`.
+
+There are actually **two layers** where request-handling pieces attach — the HTTP route (`McpHttpControllerFor`) and the RPC capability class (`@McpController`) — and they act on different things (every transport request vs. one tool call). For the full treatment (the granularity ladder, why middleware is HTTP-only, and using `McpExceptionFilter` to surface a tool's real error), see [Custom Request Handling: the two-layer pipeline](custom-controllers.md) and the runnable [`custom-controllers`](../examples/custom-controllers/) example.
 
 To customize endpoint paths, set them on the transport constructors (see [Custom Endpoints](#custom-endpoints)). If you need to mount additional routes, add normal Nest controllers to the module's `controllers` array alongside your `@McpController` classes — they share the same HTTP adapter.
 
@@ -482,6 +502,7 @@ logging: false, // Reduce noise in test output
 
 ## Related
 
+- [Custom Request Handling](custom-controllers.md) - The two-layer pipeline: middleware, interceptors, exception filters, `McpExceptionFilter`
 - [Tools](tools.md) - Define executable functions
 - [Resources](resources.md) - Provide data sources
 - [Prompts](prompts.md) - Create instruction templates

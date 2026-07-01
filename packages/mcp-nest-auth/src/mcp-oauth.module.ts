@@ -41,7 +41,6 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
     authorize: '/authorize',
     callback: '/callback',
     token: '/token',
-    revoke: '/revoke',
   },
   disableEndpoints: {
     wellKnownAuthorizationServerMetadata: false,
@@ -243,6 +242,15 @@ export class McpAuthModule {
       // Ensure jwtIssuer defaults to serverUrl if not provided
       jwtIssuer:
         options.jwtIssuer || options.serverUrl || DEFAULT_OPTIONS.jwtIssuer,
+      // Ensure the advertised resource defaults to `${serverUrl}/mcp` if not
+      // provided, instead of the hard-coded localhost:3000 default. Otherwise a
+      // server on a non-default serverUrl would advertise a resource pointing at
+      // port 3000 in its protected-resource metadata and minted tokens.
+      resource:
+        options.resource ||
+        (options.serverUrl
+          ? normalizeEndpoint(`${options.serverUrl}/mcp`)
+          : DEFAULT_OPTIONS.resource),
       cookieSecure:
         options.cookieSecure || process.env.NODE_ENV === 'production',
       // Merge protectedResourceMetadata with defaults
@@ -372,7 +380,6 @@ function prepareEndpoints(
       defaultEndpoints.wellKnownProtectedResourceMetadata,
     callback: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.callback}`),
     token: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.token}`),
-    revoke: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.revoke}`),
     authorize: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.authorize}`),
     register: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.register}`),
   } as OAuthEndpointConfiguration;

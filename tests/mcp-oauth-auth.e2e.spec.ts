@@ -1,4 +1,9 @@
-import { INestApplication, Injectable } from '@nestjs/common';
+import {
+  Controller,
+  INestApplication,
+  Injectable,
+  UseGuards,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { randomBytes, createHash } from 'crypto';
@@ -7,13 +12,13 @@ import { Ctx, Payload } from '@nestjs/microservices';
 import {
   McpContext,
   McpController,
+  McpHttpControllerFor,
   McpStrategy,
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
 import jwt from 'jsonwebtoken';
-import { McpAuthModule } from '@rekog/mcp-nest-auth';
-import { JwtTokenService } from '@rekog/mcp-nest-auth';
+import { McpAuthJwtGuard, McpAuthModule } from '@rekog/mcp-nest-auth';
 import {
   OAuthProviderConfig,
   OAuthUserProfile,
@@ -185,6 +190,16 @@ export class TestProtectedTool {
   }
 }
 
+// The MCP transport route mounted as a real Nest controller. `McpAuthJwtGuard`
+// (from the auth package) validates the Bearer JWT via the module's
+// JwtTokenService, rejects missing/invalid tokens with 401, and sets `req.user`
+// on success — replacing the old `app.use(...)` middleware.
+const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
+
+@Controller('mcp')
+@UseGuards(McpAuthJwtGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
+
 describe('E2E: McpAuthModule OAuth Flow', () => {
   let app: INestApplication;
   let testPort: number;
@@ -214,15 +229,15 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
     mockStore = new MockOAuthStore();
 
     // The OAuth 2.1 module still provides its normal Nest controllers
-    // (register/authorize/token/well-known). The MCP transport is now protected
-    // by Express middleware that validates the Bearer JWT (reusing the authz
-    // JwtTokenService) and sets `req.user`, replacing the old
-    // `guards: [McpAuthJwtGuard]`. Missing/invalid tokens get a 401, which the
-    // MCP client surfaces as a connection error.
+    // (register/authorize/token/well-known). The MCP transport is protected by
+    // `McpAuthJwtGuard` on the mounted `McpHttpController` above: it validates
+    // the Bearer JWT (reusing the authz JwtTokenService) and sets `req.user`.
+    // Missing/invalid tokens get a 401, which the MCP client surfaces as a
+    // connection error.
     const strategy = new McpStrategy({
       name: 'test-oauth-mcp-server',
       version: '0.0.1',
-      transports: [new StreamableHttpTransport({ statefulMode: true })],
+      transports: [mcpTransport],
     });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -241,48 +256,17 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
           },
         }),
       ],
-      controllers: [TestProtectedTool],
+      controllers: [TestProtectedTool, McpHttpController],
+      providers: [McpAuthJwtGuard],
     }).compile();
 
     app = moduleFixture.createNestApplication();
     strategy.setHttpAdapter(app.getHttpAdapter());
     app.connectMicroservice({ strategy });
 
-    const jwtTokenService = app.get(JwtTokenService);
-    // Only gate the MCP transport routes; the OAuth controller endpoints
-    // (/auth/*, /.well-known/*) must stay open so the handshake can run.
-    const mcpRoutePrefixes = ['/mcp'];
-    app.use((req: any, res: any, next: () => void) => {
-      const path: string = req.path ?? req.url ?? '';
-      const isMcpRoute = mcpRoutePrefixes.some(
-        (prefix) => path === prefix || path.startsWith(`${prefix}?`) || path.startsWith(`${prefix}/`),
-      );
-      if (!isMcpRoute) {
-        return next();
-      }
-
-      const authHeader: string | undefined = req.headers?.authorization;
-      const token =
-        authHeader && authHeader.startsWith('Bearer ')
-          ? authHeader.slice('Bearer '.length)
-          : undefined;
-
-      if (!token) {
-        res.statusCode = 401;
-        res.end('Unauthorized');
-        return;
-      }
-
-      const payload = jwtTokenService.validateToken(token);
-      if (!payload) {
-        res.statusCode = 401;
-        res.end('Unauthorized');
-        return;
-      }
-
-      req.user = payload;
-      next();
-    });
+    // The OAuth controller endpoints (/auth/*, /.well-known/*) stay open so the
+    // handshake can run; only the mounted /mcp controller is guarded by
+    // McpAuthJwtGuard.
 
     await app.startAllMicroservices();
     await app.listen(0);

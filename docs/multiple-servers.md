@@ -11,8 +11,8 @@ privileged `admin` server). Each server stays small and focused: a client that
 connects to `/weather/mcp` sees only the weather tools.
 
 > A complete, runnable version of everything below lives in
-> [`playground/servers/multi-server-example`](../playground/servers/multi-server-example).
-> Run it with `npm run start:multi-server`.
+> [`examples/multiple-servers`](../examples/multiple-servers).
+> Run it with `cd examples/multiple-servers && npm install && npm start`.
 
 ## How isolation works — named servers
 
@@ -180,9 +180,8 @@ await app.startAllMicroservices(); // BEFORE listen()
 await app.listen(3000);
 ```
 
-Now `/weather/mcp` advertises `get-weather` / `list-cities`, and `/travel/mcp`
-advertises `recommend-destination` / `weather-at-destination` — each server sees
-only its own domain.
+Now `/weather/mcp` advertises `get-weather`, and `/travel/mcp` advertises
+`weather-at-destination` — each server sees only its own domain.
 
 ## Dynamic registration is per-server too
 
@@ -202,8 +201,8 @@ tools per server. See [Dynamic Capabilities → Multi-Server Isolation](./dynami
   the MCP methods declared on the class itself, not ones inherited from a base
   class. Declare (or override) MCP methods on the controller you tag.
 - **Authentication is a separate concern.** Named servers isolate *which tools*
-  each endpoint exposes, not *who* may call them. Layer `@UseGuards()` and/or
-  auth middleware per server as needed — see
+  each endpoint exposes, not *who* may call them. Layer `@UseGuards()` per
+  server as needed — see
   [Per-Tool Authorization](./per-tool-authorization.md) and the auth section of
   the [migration guide](./migration-to-strategy.md#6-authentication--authorization).
 

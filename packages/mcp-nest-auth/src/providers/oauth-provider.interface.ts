@@ -41,7 +41,6 @@ export interface OAuthEndpointConfiguration {
   authorize?: string; // Default: '/authorize'
   callback?: string; // Default: '/callback'
   token?: string; // Default: '/token'
-  revoke?: string; // Default: '/revoke'
 }
 
 export interface OAuthEndpointDisableOptions {

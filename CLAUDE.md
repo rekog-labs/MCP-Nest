@@ -18,12 +18,14 @@ npm run lint               # ESLint with automatic fixes
 npm run format             # Prettier formatting for src and tests
 ```
 
-### Running Playground Examples
+### Running Examples
+Each project under `examples/` is a self-contained npm project. Run one on its own:
 ```bash
-npm run start:playground   # Default stateful server (Express)
-npm run start:fastify      # Fastify adapter server
-npm run test:fastify       # Test Fastify client connection
+cd examples/<project>       # e.g. examples/tools, examples/server-examples
+npm install
+npm start                   # serves the MCP endpoint (default http://localhost:3000/mcp)
 ```
+See `examples/README.md` for the full list of projects and per-project run/test commands.
 
 ### Single Test Execution
 ```bash
@@ -196,7 +198,7 @@ McpAuthModule supports multiple storage backends:
 - `packages/mcp-nest/src/mcp/transport/` - Transport implementations (SSE, Streamable HTTP, STDIO)
 - `packages/mcp-nest-auth/src/providers/` - OAuth providers (GitHub, Google, custom interface)
 - `packages/mcp-nest-auth/src/stores/` - Storage backends (memory, TypeORM, custom interface)
-- `playground/` - Working examples and demo servers
+- `examples/` - Working examples and demo servers
 - `tests/` - Comprehensive E2E test suite covering all transports
 - `docs/` - Complete documentation for all features
 

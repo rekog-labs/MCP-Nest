@@ -153,10 +153,10 @@ the protocol).
 - **[External Authorization Server](docs/external-authorization-server/README.md)** - Securing your MCP server with an external authorization server (Keycloak, Auth0, etc)
 - **[Server examples](docs/server-examples.md)** - MCP servers examples (Streamable HTTP, HTTP, and STDIO) and with Fastify support
 
-## Playground
+## Examples
 
-The `playground` directory contains working examples for all features.
-Refer to [`playground/README.md`](playground/README.md) for details.
+The `examples` directory contains working examples for all features.
+Refer to [`examples/README.md`](examples/README.md) for details.
 
 <!-- Badges -->
 [ci-url]: https://github.com/rekog-labs/MCP-Nest/actions/workflows/pipeline.yml
