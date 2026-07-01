@@ -1,6 +1,6 @@
 {
   "name": "@rekog/mcp-nest-auth",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "description": "OAuth 2.1 authorization server for @rekog/mcp-nest — MCP-authorization-spec compliant, federates to GitHub/Google/Azure AD",
   "main": "dist/index.js",
   "license": "MIT",
@@ -42,8 +42,10 @@
     }
   },
   "dependencies": {
-    "@nestjs/config": "^4.0.3",
+    "@nestjs/config": "^4.0.4",
+    "@types/jsonwebtoken": "^9.0.10",
     "cookie-parser": "^1.4.7",
+    "jsonwebtoken": "^9.0.3",
     "passport": "^0.7.0",
     "passport-azure-ad-oauth2": "^0.0.4",
     "passport-github": "^1.1.0",
