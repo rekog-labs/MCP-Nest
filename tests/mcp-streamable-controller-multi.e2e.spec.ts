@@ -1,6 +1,5 @@
 import { Controller, INestApplication, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 import {
   MCP_HTTP_HANDLER,
