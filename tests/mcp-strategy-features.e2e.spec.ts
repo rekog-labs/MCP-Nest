@@ -72,7 +72,9 @@ class Capabilities {
     mimeType: 'text/plain',
     uriTemplate: 'mcp://greeting/{userName}',
   })
-  greetingTemplate(@Payload() { uri, userName }: { uri: string; userName: string }) {
+  greetingTemplate(
+    @Payload() { uri, userName }: { uri: string; userName: string },
+  ) {
     return {
       contents: [{ uri, mimeType: 'text/plain', text: `Hello ${userName}` }],
     };

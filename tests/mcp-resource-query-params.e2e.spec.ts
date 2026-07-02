@@ -13,13 +13,7 @@ export class QueryParamResource {
   })
   async getPizzaCarousel(
     @Payload()
-    {
-      uri,
-      pizzaTopping,
-    }: {
-      uri: string;
-      pizzaTopping?: string;
-    },
+    { uri, pizzaTopping }: { uri: string; pizzaTopping?: string },
   ) {
     return {
       contents: [
@@ -43,15 +37,7 @@ export class QueryParamResource {
   })
   async getPizzaListMulti(
     @Payload()
-    {
-      uri,
-      topping,
-      size,
-    }: {
-      uri: string;
-      topping?: string;
-      size?: string;
-    },
+    { uri, topping, size }: { uri: string; topping?: string; size?: string },
   ) {
     return {
       contents: [

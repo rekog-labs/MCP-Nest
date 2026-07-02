@@ -98,7 +98,15 @@ export class GreetingToolResource {
   })
   async sayHelloMultiplePathsDynamic(
     @Payload()
-    { uri, userId, userName }: { uri: string; userId: string; userName: string },
+    {
+      uri,
+      userId,
+      userName,
+    }: {
+      uri: string;
+      userId: string;
+      userName: string;
+    },
   ) {
     return {
       contents: [

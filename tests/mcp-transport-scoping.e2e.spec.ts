@@ -11,7 +11,11 @@ import {
 
 @McpController()
 class MixedController {
-  @Tool({ name: 'mcp-tool', description: 'an mcp tool', parameters: z.object({}) })
+  @Tool({
+    name: 'mcp-tool',
+    description: 'an mcp tool',
+    parameters: z.object({}),
+  })
   mcpTool() {
     return { content: [{ type: 'text', text: 'ok' }] };
   }

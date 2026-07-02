@@ -38,7 +38,8 @@ export class WildcardResource {
     uriTemplate: 'mcp://repo/{owner}/{path*}',
   })
   async getRepoFile(
-    @Payload() { uri, owner, path }: { uri: string; owner: string; path: string },
+    @Payload()
+    { uri, owner, path }: { uri: string; owner: string; path: string },
   ) {
     return {
       contents: [

@@ -43,10 +43,7 @@ export interface McpControllerOptions extends ControllerOptions {
  * Note: `Object.getOwnPropertyNames` only sees methods declared on this class,
  * not ones inherited from a base class.
  */
-function retagMcpMethodsTransport(
-  target: Function,
-  transportId: symbol,
-): void {
+function retagMcpMethodsTransport(target: Function, transportId: symbol): void {
   const proto = (target as { prototype?: Record<string, unknown> }).prototype;
   if (!proto) return;
   for (const key of Object.getOwnPropertyNames(proto)) {

@@ -281,7 +281,9 @@ class GuardedTools {
     @Payload() { ownerId, title }: { ownerId: string; title: string },
   ) {
     return {
-      content: [{ type: 'text', text: `Updated: ${title} (owner: ${ownerId})` }],
+      content: [
+        { type: 'text', text: `Updated: ${title} (owner: ${ownerId})` },
+      ],
     };
   }
 }

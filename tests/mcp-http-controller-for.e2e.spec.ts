@@ -63,7 +63,10 @@ class WeatherTool {
 @UseGuards(HeaderGuard)
 class WeatherMcpController extends McpHttpControllerFor(weatherTransport) {}
 
-@Module({ controllers: [WeatherMcpController, WeatherTool], providers: [HeaderGuard] })
+@Module({
+  controllers: [WeatherMcpController, WeatherTool],
+  providers: [HeaderGuard],
+})
 class WeatherModule {}
 
 // --- travel (open) ---
@@ -77,7 +80,11 @@ const travelStrategy = new McpStrategy({
 
 @McpController({ server: 'travel' })
 class TravelTool {
-  @Tool({ name: 'recommend-destination', description: 't', parameters: z.object({}) })
+  @Tool({
+    name: 'recommend-destination',
+    description: 't',
+    parameters: z.object({}),
+  })
   recommend() {
     return { content: [{ type: 'text', text: 'Lisbon' }] };
   }

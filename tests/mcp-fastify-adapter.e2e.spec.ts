@@ -163,9 +163,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
 
     // On Fastify, getHttpServer().address() may be null; derive the port from
     // the underlying Node server instance instead.
-    const fastifyServer = fastifyApp
-      .getHttpAdapter()
-      .getInstance().server;
+    const fastifyServer = fastifyApp.getHttpAdapter().getInstance().server;
     fastifyPort = (fastifyServer.address() as import('net').AddressInfo).port;
   });
 

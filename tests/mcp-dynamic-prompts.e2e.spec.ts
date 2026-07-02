@@ -1,6 +1,16 @@
-import { INestApplication, Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import {
+  INestApplication,
+  Inject,
+  Injectable,
+  OnModuleInit,
+} from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
-import { MCP_STRATEGY, McpController, McpStrategy, Prompt } from '@rekog/mcp-nest';
+import {
+  MCP_STRATEGY,
+  McpController,
+  McpStrategy,
+  Prompt,
+} from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { z } from 'zod';
 
@@ -251,7 +261,10 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
         handler: async () => ({
           description: 'Prompt for server 1',
           messages: [
-            { role: 'user', content: { type: 'text', text: 'server 1 prompt' } },
+            {
+              role: 'user',
+              content: { type: 'text', text: 'server 1 prompt' },
+            },
           ],
         }),
       });
@@ -268,7 +281,10 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
         handler: async () => ({
           description: 'Prompt for server 2',
           messages: [
-            { role: 'user', content: { type: 'text', text: 'server 2 prompt' } },
+            {
+              role: 'user',
+              content: { type: 'text', text: 'server 2 prompt' },
+            },
           ],
         }),
       });

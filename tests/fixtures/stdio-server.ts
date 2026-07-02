@@ -2,7 +2,12 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
-import { McpController, McpStrategy, StdioTransport, Tool } from '@rekog/mcp-nest';
+import {
+  McpController,
+  McpStrategy,
+  StdioTransport,
+  Tool,
+} from '@rekog/mcp-nest';
 
 @McpController()
 class StdioGreeting {

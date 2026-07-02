@@ -3,7 +3,12 @@ import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { INestApplication, Injectable, Scope } from '@nestjs/common';
 import { Ctx, Payload, RpcException } from '@nestjs/microservices';
 import { z } from 'zod';
-import { McpContext, McpController, McpRawRequest, Tool } from '@rekog/mcp-nest';
+import {
+  McpContext,
+  McpController,
+  McpRawRequest,
+  Tool,
+} from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
   createStreamableClient,
@@ -31,14 +36,20 @@ export class GreetingTool {
     description: 'A sample tool that gets the user by name',
     parameters: z.object({ name: z.string().default('World') }),
   })
-  async sayHello(@Payload() { name }: { name: string }, @Ctx() context: McpContext) {
+  async sayHello(
+    @Payload() { name }: { name: string },
+    @Ctx() context: McpContext,
+  ) {
     if (!context.mcpServer) throw new Error('mcpServer is not defined');
     if (!context.mcpRequest) throw new Error('mcpRequest is not defined');
 
     const user = await this.userRepository.findByName(name);
     for (let i = 0; i < 5; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      await context.reportProgress({ progress: (i + 1) * 20, total: 100 } as Progress);
+      await context.reportProgress({
+        progress: (i + 1) * 20,
+        total: 100,
+      } as Progress);
     }
     return { content: [{ type: 'text', text: `Hello, ${user.name}!` }] };
   }
@@ -67,12 +78,18 @@ export class GreetingTool {
     name: 'hello-world-with-annotations',
     description: 'A sample tool with annotations',
     parameters: z.object({ name: z.string().default('World') }),
-    annotations: { title: 'Say Hello', readOnlyHint: true, openWorldHint: false },
+    annotations: {
+      title: 'Say Hello',
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
   })
   async sayHelloWithAnnotations(@Payload() { name }: { name: string }) {
     const user = await this.userRepository.findByName(name);
     return {
-      content: [{ type: 'text', text: `Hello with annotations, ${user.name}!` }],
+      content: [
+        { type: 'text', text: `Hello with annotations, ${user.name}!` },
+      ],
     };
   }
 
@@ -85,7 +102,9 @@ export class GreetingTool {
   async sayHelloWithMeta(@Payload() { name }: { name: string }) {
     const user = await this.userRepository.findByName(name);
     return {
-      content: [{ type: 'text', text: `Hello with annotations, ${user.name}!` }],
+      content: [
+        { type: 'text', text: `Hello with annotations, ${user.name}!` },
+      ],
     };
   }
 }
@@ -100,11 +119,17 @@ export class GreetingToolRequestScoped {
     description: 'A sample request-scoped tool that gets the user by name',
     parameters: z.object({ name: z.string().default('World') }),
   })
-  async sayHello(@Payload() { name }: { name: string }, @Ctx() context: McpContext) {
+  async sayHello(
+    @Payload() { name }: { name: string },
+    @Ctx() context: McpContext,
+  ) {
     const user = await this.userRepository.findByName(name);
     for (let i = 0; i < 5; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      await context.reportProgress({ progress: (i + 1) * 20, total: 100 } as Progress);
+      await context.reportProgress({
+        progress: (i + 1) * 20,
+        total: 100,
+      } as Progress);
     }
     return { content: [{ type: 'text', text: `Hello, ${user.name}!` }] };
   }
@@ -120,7 +145,10 @@ export class HeaderTool {
   getRequest(@McpRawRequest() raw?: { headers?: Record<string, string> }) {
     return {
       content: [
-        { type: 'text', text: raw?.headers?.['any-header'] ?? 'No header found' },
+        {
+          type: 'text',
+          text: raw?.headers?.['any-header'] ?? 'No header found',
+        },
       ],
     };
   }
@@ -135,7 +163,9 @@ class OutputSchemaTool {
     outputSchema: z.object({ result: z.string().describe('Example result') }),
   })
   async execute(@Payload() { input }: { input: string }) {
-    return { content: [{ type: 'text', text: JSON.stringify({ result: input }) }] };
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ result: input }) }],
+    };
   }
 }
 
@@ -165,7 +195,11 @@ class ValidationTestTool {
   })
   async execute(
     @Payload()
-    { requiredString, requiredNumber, optionalParam }: {
+    {
+      requiredString,
+      requiredNumber,
+      optionalParam,
+    }: {
       requiredString: string;
       requiredNumber: number;
       optionalParam?: string;
@@ -253,7 +287,9 @@ export class GreetingToolWithElicitation {
       }
       return { content: [{ type: 'text', text: `Hello, ${fullName}!` }] };
     } catch (error) {
-      return { content: [{ type: 'text', text: `Error: ${(error as Error).message}` }] };
+      return {
+        content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
+      };
     }
   }
 }
@@ -316,10 +352,18 @@ describe('E2E: MCP ToolServer', () => {
         const client = await clientCreator(port);
         try {
           const tools = await client.listTools();
-          expect(tools.tools.find((t) => t.name === 'hello-world')).toBeDefined();
-          expect(tools.tools.find((t) => t.name === 'hello-world-scoped')).toBeDefined();
-          expect(tools.tools.find((t) => t.name === 'get-request-scoped')).toBeDefined();
-          expect(tools.tools.find((t) => t.name === 'output-schema-tool')).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'hello-world'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'hello-world-scoped'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'get-request-scoped'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'output-schema-tool'),
+          ).toBeDefined();
         } finally {
           await client.close();
         }
@@ -329,9 +373,13 @@ describe('E2E: MCP ToolServer', () => {
         const client = await clientCreator(port);
         try {
           const tools = await client.listTools();
-          const outputSchemaTool = tools.tools.find((t) => t.name === 'output-schema-tool');
+          const outputSchemaTool = tools.tools.find(
+            (t) => t.name === 'output-schema-tool',
+          );
           expect(outputSchemaTool?.outputSchema).toBeDefined();
-          expect(outputSchemaTool?.outputSchema).toHaveProperty('properties.result');
+          expect(outputSchemaTool?.outputSchema).toHaveProperty(
+            'properties.result',
+          );
         } finally {
           await client.close();
         }
@@ -368,7 +416,9 @@ describe('E2E: MCP ToolServer', () => {
         const client = await clientCreator(port);
         try {
           const tools = await client.listTools();
-          const metaTool = tools.tools.find((t) => t.name === 'hello-world-with-meta');
+          const metaTool = tools.tools.find(
+            (t) => t.name === 'hello-world-with-meta',
+          );
           expect(metaTool!._meta?.title).toBe('Say Hello');
         } finally {
           await client.close();
@@ -442,7 +492,9 @@ describe('E2E: MCP ToolServer', () => {
             arguments: {} as any,
           });
           expect(result.isError).not.toBe(true);
-          expect(result.content[0].text).toContain('Hello, Repository User Name World!');
+          expect(result.content[0].text).toContain(
+            'Hello, Repository User Name World!',
+          );
         } finally {
           await client.close();
         }
@@ -535,7 +587,9 @@ describe('E2E: MCP ToolServer', () => {
             name: 'not-mcp-structured-greeting',
             arguments: { name: 'TestUser' },
           });
-          expect(result.structuredContent).toEqual({ greeting: 'Hello, TestUser!' });
+          expect(result.structuredContent).toEqual({
+            greeting: 'Hello, TestUser!',
+          });
           // A text content[] block is always emitted alongside structuredContent.
           expect(Array.isArray(result.content)).toBe(true);
           expect(result.content[0].type).toBe('text');
@@ -548,7 +602,10 @@ describe('E2E: MCP ToolServer', () => {
       it('should throw an MCP error if result does not match outputSchema', async () => {
         const client = await clientCreator(port);
         try {
-          await client.callTool({ name: 'invalid-output-schema-tool', arguments: {} });
+          await client.callTool({
+            name: 'invalid-output-schema-tool',
+            arguments: {},
+          });
           expect(true).toBe(false);
         } catch (error: any) {
           expect(error.message).toContain('Tool result does not match');
@@ -586,7 +643,9 @@ describe('E2E: MCP ToolServer', () => {
             name: 'hello-world-elicitation',
             arguments: { name: 'TestUser' },
           });
-          expect(result.content[0].text).toContain('Hello, TestUser TestSurname!');
+          expect(result.content[0].text).toContain(
+            'Hello, TestUser TestSurname!',
+          );
         } finally {
           await client.close();
         }
@@ -594,7 +653,9 @@ describe('E2E: MCP ToolServer', () => {
 
       it('should handle declined elicitation gracefully', async () => {
         const client = await clientCreator(statefulServerPort);
-        client.setRequestHandler(ElicitRequestSchema, () => ({ action: 'decline' }));
+        client.setRequestHandler(ElicitRequestSchema, () => ({
+          action: 'decline',
+        }));
         try {
           const result: any = await client.callTool({
             name: 'hello-world-elicitation',
@@ -608,7 +669,9 @@ describe('E2E: MCP ToolServer', () => {
 
       it('should handle cancelled elicitation gracefully', async () => {
         const client = await clientCreator(statefulServerPort);
-        client.setRequestHandler(ElicitRequestSchema, () => ({ action: 'cancel' }));
+        client.setRequestHandler(ElicitRequestSchema, () => ({
+          action: 'cancel',
+        }));
         try {
           const result: any = await client.callTool({
             name: 'hello-world-elicitation',
@@ -643,5 +706,10 @@ describe('E2E: MCP ToolServer', () => {
   });
 
   runClientTests('streamable http', createStreamableClient, 'streamable-value');
-  runClientTests('streamable http', createStreamableClient, 'stateless-value', true);
+  runClientTests(
+    'streamable http',
+    createStreamableClient,
+    'stateless-value',
+    true,
+  );
 });

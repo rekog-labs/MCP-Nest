@@ -78,7 +78,11 @@ class CatchAllResourceFilter implements RpcExceptionFilter {
     const message = exception instanceof Error ? exception.message : 'unknown';
     return of({
       contents: [
-        { uri: uri ?? '', mimeType: 'text/plain', text: `[CatchAll] ${message}` },
+        {
+          uri: uri ?? '',
+          mimeType: 'text/plain',
+          text: `[CatchAll] ${message}`,
+        },
       ],
     });
   }
@@ -210,9 +214,7 @@ class TestPrompts {
   })
   async successPrompt() {
     return {
-      messages: [
-        { role: 'assistant', content: { type: 'text', text: 'OK' } },
-      ],
+      messages: [{ role: 'assistant', content: { type: 'text', text: 'OK' } }],
     };
   }
 }

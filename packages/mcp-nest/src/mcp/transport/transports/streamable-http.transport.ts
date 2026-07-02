@@ -101,8 +101,7 @@ export class StreamableHttpTransport implements McpTransport {
     this.endpointExplicit = options.endpoint !== undefined;
     this.statefulMode = options.statefulMode ?? false;
     // Default follows the session mode: JSON in stateless, SSE in stateful.
-    this.enableJsonResponse =
-      options.enableJsonResponse ?? !this.statefulMode;
+    this.enableJsonResponse = options.enableJsonResponse ?? !this.statefulMode;
     this.sessionIdGenerator =
       options.sessionIdGenerator ?? (() => randomUUID());
     this.mountOption = options.mount;

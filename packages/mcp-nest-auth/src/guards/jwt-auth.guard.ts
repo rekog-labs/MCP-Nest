@@ -37,7 +37,10 @@ export class McpAuthJwtGuard implements CanActivate {
     private readonly moduleRef: ModuleRef,
     @Optional()
     @Inject('MCP_OPTIONS')
-    private readonly options?: Pick<McpServerOptions, 'allowUnauthenticatedAccess'>,
+    private readonly options?: Pick<
+      McpServerOptions,
+      'allowUnauthenticatedAccess'
+    >,
     @Optional()
     @Inject('OAUTH_MODULE_OPTIONS')
     private readonly oauthOptions?: ResolvedOAuthOptions,

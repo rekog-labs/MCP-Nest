@@ -39,7 +39,11 @@ const weatherStrategy = new McpStrategy({
 
 @McpController({ server: 'weather' })
 class WeatherTool {
-  @Tool({ name: 'get-weather', description: 'weather', parameters: z.object({}) })
+  @Tool({
+    name: 'get-weather',
+    description: 'weather',
+    parameters: z.object({}),
+  })
   get() {
     return { content: [{ type: 'text', text: 'sunny' }] };
   }

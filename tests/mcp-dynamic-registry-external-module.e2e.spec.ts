@@ -1,4 +1,9 @@
-import { INestApplication, Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import {
+  INestApplication,
+  Inject,
+  Injectable,
+  OnModuleInit,
+} from '@nestjs/common';
 import { MCP_STRATEGY, McpStrategy } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { z } from 'zod';

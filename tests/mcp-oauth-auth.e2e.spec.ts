@@ -19,10 +19,7 @@ import {
 } from '@rekog/mcp-nest';
 import jwt from 'jsonwebtoken';
 import { McpAuthJwtGuard, McpAuthModule } from '@rekog/mcp-nest-auth';
-import {
-  OAuthProviderConfig,
-  OAuthUserProfile,
-} from '@rekog/mcp-nest-auth';
+import { OAuthProviderConfig, OAuthUserProfile } from '@rekog/mcp-nest-auth';
 import type {
   IOAuthStore,
   OAuthClient,
