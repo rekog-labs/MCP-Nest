@@ -81,7 +81,7 @@ export class JwtTokenService {
 
     const accessToken = jwt.sign(accessTokenPayload, this.jwtSecret, {
       algorithm: 'HS256',
-      expiresIn: this.accessTokenExpiresIn,
+      expiresIn: this.accessTokenExpiresIn as jwt.SignOptions['expiresIn'],
     });
 
     let refreshToken: string | undefined = undefined;
@@ -101,7 +101,7 @@ export class JwtTokenService {
       }
       refreshToken = jwt.sign(refreshTokenPayload, this.jwtSecret, {
         algorithm: 'HS256',
-        expiresIn: this.refreshTokenExpiresIn,
+        expiresIn: this.refreshTokenExpiresIn as jwt.SignOptions['expiresIn'],
       });
     }
 
