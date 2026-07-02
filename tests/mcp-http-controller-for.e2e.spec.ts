@@ -8,7 +8,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 import {
   McpController,
