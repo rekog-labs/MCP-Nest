@@ -1,6 +1,6 @@
 {
   "name": "@rekog/mcp-nest-auth",
-  "version": "2.0.0-alpha.2",
+  "version": "2.0.0-alpha.3",
   "description": "OAuth 2.1 authorization server for @rekog/mcp-nest — MCP-authorization-spec compliant, federates to GitHub/Google/Azure AD",
   "main": "dist/index.js",
   "license": "MIT",
