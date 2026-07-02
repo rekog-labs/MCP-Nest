@@ -1,4 +1,4 @@
-# Migrating to the MCP Strategy API
+# Migrating to MCP-Nest v2
 
 MCP-Nest is now built on a **NestJS microservices custom transport strategy**
 instead of an `McpModule.forRoot(options)` module that generated HTTP controllers.
