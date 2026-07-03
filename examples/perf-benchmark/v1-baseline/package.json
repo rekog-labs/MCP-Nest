@@ -1,0 +1,35 @@
+{
+  "name": "v1-baseline",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "ts-node --transpile-only src/v1-stateless.ts"
+  },
+  "dependencies": {
+    "@rekog/mcp-nest": "1.9.10",
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11",
+    "@nestjs/platform-express": "^11",
+    "@nestjs/config": "^4.0.3",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/passport": "^11.0.5",
+    "@nestjs/typeorm": "^11.0.0",
+    "@modelcontextprotocol/sdk": "^1.10.0",
+    "typeorm": "^0.3.25",
+    "passport": "^0.7.0",
+    "passport-github": "^1.1.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-azure-ad-oauth2": "^0.0.4",
+    "express": "^4.21.2",
+    "cookie-parser": "^1.4.7",
+    "multer": "^2.0.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.0",
+    "@types/node": "^20.0.0"
+  }
+}
