@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { SERVERS, getServer } from './servers.config';
+import { getServer } from './servers.config';
 import { SCENARIOS, CONCURRENCIES, WARMUP_SEC, DURATION_SEC } from './scenarios';
 import { runSmokeCheck } from './smoke-check';
 import { startServer, resolveServerPids } from './process-utils';
