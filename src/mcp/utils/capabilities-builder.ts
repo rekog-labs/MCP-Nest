@@ -39,5 +39,10 @@ export function buildMcpCapabilities(
     };
   }
 
+  // The execution context always exposes `context.log.*`, which emits
+  // `notifications/message`. Per the MCP spec, a server that emits log message
+  // notifications MUST declare the `logging` capability.
+  capabilities.logging = capabilities.logging || {};
+
   return capabilities;
 }
