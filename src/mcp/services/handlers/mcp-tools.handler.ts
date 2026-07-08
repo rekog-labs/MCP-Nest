@@ -351,6 +351,9 @@ export class McpToolsHandler extends McpHandlerBase {
                   return `${location}${issue.message}`;
                 })
                 .join('; ');
+              this.logger.warn(
+                `Tool "${request.params.name}" validation failed: ${issues}`,
+              );
               return {
                 content: [
                   {
