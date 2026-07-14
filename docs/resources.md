@@ -1,16 +1,16 @@
 # Resources
 
-Resources are static or dynamic data sources that AI agents can read. They're like read-only files or databases that tools can reference. In mcp-nest, resources are defined using the `@Resource()` decorator.
+Resources are static or dynamic data sources that AI agents can read. They're like read-only files or databases that tools can reference. In mcp-nest, resources are defined using the `@Resource()` decorator on `@McpController()` methods.
 
 ## Basic Resource
 
 A static resource with a fixed URI:
 
 ```typescript
-import { Injectable, Scope } from '@nestjs/common';
-import { Resource } from '@rekog/mcp-nest';
+import { McpController, Resource } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 
-@Injectable({ scope: Scope.REQUEST })
+@McpController()
 export class GreetingResource {
   @Resource({
     name: 'languages-informal-greetings',
@@ -18,7 +18,7 @@ export class GreetingResource {
     mimeType: 'application/json',
     uri: 'mcp://languages/informal-greetings',
   })
-  getLanguagesInformalGreetings({ uri }) {
+  getLanguagesInformalGreetings(@Payload() { uri }: { uri: string }) {
     const languages = {
       en: 'Hey',
       es: 'Qué tal',
@@ -51,12 +51,14 @@ export class GreetingResource {
 - **mimeType**: Content type (e.g., `application/json`, `text/plain`, `text/markdown`)
 - **uri**: Unique identifier using `mcp://` scheme
 
+Register the class in a module's `controllers` array (not `providers`) so NestJS scans it when the strategy is connected. See [Server Examples](server-examples.md) for the full bootstrap. For request-scoped behavior, read headers/user via `ctx.getRawRequest()`.
+
 ## Method Signature
 
 Resource methods receive:
 
-- An object with the `uri` parameter
-- Additional context if needed
+- `@Payload()` — an object with the `uri` parameter
+- `@Ctx() ctx: McpContext` — the MCP execution context, if needed (use `ctx.getRawRequest()` for the raw HTTP request)
 
 They must return:
 
@@ -74,7 +76,7 @@ They must return:
   mimeType: 'application/json',
   uri: 'mcp://config/app',
 })
-getConfig({ uri }) {
+getConfig(@Payload() { uri }: { uri: string }) {
   return {
     contents: [{
       uri,
@@ -94,7 +96,7 @@ getConfig({ uri }) {
   mimeType: 'text/plain',
   uri: 'mcp://help/usage',
 })
-getHelp({ uri }) {
+getHelp(@Payload() { uri }: { uri: string }) {
   return {
     contents: [{
       uri,
@@ -114,7 +116,7 @@ getHelp({ uri }) {
   mimeType: 'text/markdown',
   uri: 'mcp://docs/readme',
 })
-getReadme({ uri }) {
+getReadme(@Payload() { uri }: { uri: string }) {
   return {
     contents: [{
       uri,
@@ -129,16 +131,18 @@ getReadme({ uri }) {
 
 ### 1. Start the Server
 
-Run the playground server:
+Run the example server:
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateful.ts
+cd examples/resources && npm install && npm start
 ```
+
+Server listens on `http://localhost:3000/mcp`.
 
 ### 2. List Available Resources
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/list
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/list
 ```
 
 Expected output:
@@ -159,7 +163,7 @@ Expected output:
 ### 3. Read a Specific Resource
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/read --uri "mcp://languages/informal-greetings"
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/read --uri "mcp://languages/informal-greetings"
 ```
 
 Expected output:
@@ -184,11 +188,11 @@ For interactive testing, use the MCP Inspector UI:
 npx @modelcontextprotocol/inspector@0.16.2
 ```
 
-Connect to `http://localhost:3030/mcp` and browse the resources to see your data.
+Connect to `http://localhost:3000/mcp` and browse the resources to see your data.
 
 ## Example Location
 
-See the complete example at: `playground/resources/greeting.resource.ts`
+See the complete example at: `examples/resources/src/greeting.resource.ts`
 
 ## Related
 

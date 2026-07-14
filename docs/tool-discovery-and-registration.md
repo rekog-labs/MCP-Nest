@@ -2,60 +2,84 @@
 
 ## Tool Discovery Overview
 
-Tools are discovered automatically during application bootstrap via the `McpRegistryDiscoveryService`:
+There are two ways to expose capabilities on an `McpStrategy`:
 
-1. **Automatic discovery**: Tools in the module where `McpModule.forRoot()` is defined are discovered automatically.
-2. **Manual registration**: Tools in other modules can be registered using `McpModule.forFeature()`.
+1. **Automatic discovery (decorator-based)** — `@Tool`, `@Resource`, `@ResourceTemplate`, and `@Prompt` methods on `@McpController()` classes are discovered automatically. These run through the full NestJS RPC pipeline (guards, pipes, interceptors, exception filters).
+2. **Dynamic registration (runtime)** — register capabilities programmatically on the strategy via `strategy.registerTool()` / `registerResource()` / `registerPrompt()`. See the [Dynamic Capabilities Guide](dynamic-capabilities.md). Dynamic handlers are invoked directly and bypass the RPC pipeline.
 
 ## Automatic Discovery
 
-When you define `McpModule.forRoot()` in a module, all `@Tool`, `@Resource`, `@ResourceTemplate`, and `@Prompt` decorated methods in that module's providers and controllers are automatically discovered.
+NestJS only scans classes in a module's `controllers` array for microservice
+handlers. So capability classes must use `@McpController()` (which composes
+`@Controller()`) and be listed in some module's `controllers` array. When the
+strategy is connected via `app.connectMicroservice({ strategy })`, NestJS binds
+every decorated handler into the strategy; on `startAllMicroservices()` the
+strategy reads each handler's MCP metadata directly off the decorated method.
 
 ```typescript
+import { Module } from '@nestjs/common';
+import { McpController, Tool } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
+import { z } from 'zod';
+
+@McpController()
+export class MyTools {
+  @Tool({
+    name: 'my-tool',
+    description: 'A discovered tool',
+    parameters: z.object({ input: z.string() }),
+  })
+  myTool(@Payload() { input }: { input: string }) {
+    return { content: [{ type: 'text', text: input }] };
+  }
+}
+
 @Module({
-  imports: [McpModule.forRoot({ name: 'my-server', version: '1.0.0' })],
-  providers: [MyToolsService], // Tools discovered automatically
+  controllers: [MyTools], // Tools discovered automatically
 })
 export class AppModule {}
 ```
 
-## Manual Registration with forFeature()
+There is **no `McpModule.forRoot()`** and **no `McpModule.forFeature()`** — the
+strategy is the entire configuration, and discovery is driven purely by which
+`@McpController` classes appear in a module's `controllers`.
 
-Use `McpModule.forFeature()` to register tools from a separate module to a specific MCP server.
+## Grouping Tools via Feature Modules
 
-**Syntax:**
-```typescript
-McpModule.forFeature([ProviderClass, ...], 'server-name')
-```
+To register tools defined in a separate module, declare them as `controllers`
+in a feature module and import that module wherever the strategy's app module
+lives. NestJS scans the `controllers` of every module in the graph, so any
+`@McpController` reachable from the connected microservice is discovered.
 
-**Example:**
+**Feature module with tools:**
 
-Feature module with tools:
 ```typescript
 @Module({
-  imports: [
-    McpModule.forFeature([AnalyticsTools], 'admin-server'),
-  ],
-  providers: [AnalyticsTools, AnalyticsService],
-  exports: [AnalyticsTools],
+  controllers: [AnalyticsTools],
+  providers: [AnalyticsService], // injected by AnalyticsTools
 })
 export class AnalyticsFeatureModule {}
 ```
 
-Main module:
+**Main module:**
+
 ```typescript
 @Module({
-  imports: [
-    McpModule.forRoot({ name: 'admin-server', version: '1.0.0' }),
-    AnalyticsFeatureModule, // forFeature registration imported here
-  ],
+  imports: [AnalyticsFeatureModule], // its @McpController is discovered
+  controllers: [CoreTools],
 })
 export class AppModule {}
 ```
 
 **Key points:**
-- The `server-name` must match the `name` in `McpModule.forRoot()`
-- The provider class must be declared in the feature module's `providers` array
-- Tool discovery happens at application bootstrap via reflection
-- Multiple feature modules can register to the same or different MCP servers
-- The same tool class can be registered to multiple servers by calling `forFeature()` separately
+
+- Capability classes must be decorated with `@McpController()` and listed in a
+  module's `controllers` array (directly or via an imported module).
+- Any dependencies a controller injects must be available as `providers`.
+- Discovery happens when the microservice is connected and started. By default
+  (unnamed `@McpController()` + plain `McpStrategy()`) all discovered handlers
+  bind to the connected strategy.
+- For multiple isolated MCP servers in one app, use **named servers**: tag a
+  controller with `@McpController({ server: 'x' })` and it binds only to a
+  matching `McpStrategy({ server: 'x' })`. See
+  [Multiple MCP Servers](./multiple-servers.md).
