@@ -14,6 +14,8 @@ export class StdioTransport implements McpTransport {
 
   private server?: McpServer;
   private transport?: StdioServerTransport;
+  /** Prevent a stdio-only Node process from exiting during async Nest bootstrap. */
+  private readonly bootstrapKeepAlive = setInterval(() => undefined, 2 ** 31 - 1);
 
   async start(ctx: McpTransportContext): Promise<void> {
     this.server = ctx.createServer();
@@ -23,10 +25,12 @@ export class StdioTransport implements McpTransport {
     });
     this.transport = new StdioServerTransport();
     await this.server.connect(this.transport);
+    clearInterval(this.bootstrapKeepAlive);
     ctx.logger.log('MCP stdio transport started');
   }
 
   async close(): Promise<void> {
+    clearInterval(this.bootstrapKeepAlive);
     await this.transport?.close();
     await this.server?.close();
     this.transport = undefined;

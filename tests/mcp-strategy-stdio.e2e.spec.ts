@@ -8,7 +8,10 @@ describe('E2E: McpStrategy stdio transport', () => {
     });
 
     const tools = await client.listTools();
-    expect(tools.tools.find((t) => t.name === 'hello')).toBeDefined();
+    expect(tools.tools.map((tool) => tool.name).sort()).toEqual([
+      'goodbye',
+      'hello',
+    ]);
 
     const res = (await client.callTool({
       name: 'hello',

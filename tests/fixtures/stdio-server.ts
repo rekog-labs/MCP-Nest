@@ -19,6 +19,15 @@ class StdioGreeting {
   hello(@Payload() { name }: { name: string }) {
     return { content: [{ type: 'text', text: `Hello ${name}` }] };
   }
+
+  @Tool({
+    name: 'goodbye',
+    description: 'Says goodbye',
+    parameters: z.object({}),
+  })
+  goodbye() {
+    return { content: [{ type: 'text', text: 'Goodbye' }] };
+  }
 }
 
 // stdout is reserved for the MCP protocol over stdio, so all logging is disabled.

@@ -153,6 +153,14 @@ async function bootstrap() {
 void bootstrap();
 ```
 
+`@Tool`, `@Resource`, and `@Prompt` classes must also be decorated with
+`@McpController()` and listed in `controllers`, as in the example above. In v2
+they are Nest microservice message handlers; registering them as `providers`
+(the v1 pattern) starts successfully but leaves `tools/list` empty.
+
+Start the entry point directly with Node/`ts-node`. Do not use a watcher or a
+launcher that writes to stdout: stdout is exclusively the MCP protocol stream.
+
 **Run:**
 
 ```bash

@@ -262,6 +262,10 @@ new StdioTransport();
 - STDIO is session-aware now, so it supports progress and logging. Disable
   logging on stdio servers (`logging: false` + `{ logger: false }`) since stdout
   carries the protocol.
+- Create stdio servers with `NestFactory.createMicroservice(..., { strategy })`.
+  MCP capability classes need `@McpController()` and belong in a module's
+  `controllers` array; v1-style `providers` are not discovered, so `tools/list`
+  will be empty.
 
 ### Streamable HTTP is stateless by default (renamed `statelessMode` → `statefulMode`)
 
