@@ -1,6 +1,6 @@
 # Built-in Authorization Server
 
-The `McpAuthModule` provides a complete OAuth 2.1 compliant Identity Provider (IdP) implementation for securing MCP servers. It fully implements the [MCP Authorization specification (2025-06-18)](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) and includes built-in support for popular OAuth providers like [GitHub](../packages/mcp-nest-auth/src/providers/github.provider.ts) and [Google](../packages/mcp-nest-auth/src/providers/google.provider.ts).
+The `McpAuthModule` provides a complete OAuth 2.1 compliant Identity Provider (IdP) implementation for securing MCP servers. It fully implements the [MCP Authorization specification (2025-06-18)](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) and includes built-in support for popular OAuth providers like [GitHub](../src/authz/providers/github.provider.ts) and [Google](../src/authz/providers/google.provider.ts).
 
 ## Features
 
@@ -34,59 +34,22 @@ The code of the deployed project is in this GitHub repository: [rekog-labs/mcp-n
 
 ## Setting up a new project
 
-The `McpAuthModule` still provides the OAuth 2.1 controllers exactly as before.
-MCP itself runs as a `McpStrategy` microservice. You mount the MCP transport
-route as a real Nest controller (via `McpHttpControllerFor`) and protect it with
-the built-in `McpAuthJwtGuard` — a NestJS guard that validates the Bearer JWT
-(reusing the module's `JwtTokenService`), rejects missing/invalid tokens with
-`401`, and sets `req.user`. Per-tool access is then enforced with standard
-NestJS `@UseGuards()` on `@McpController` classes/methods and/or the
-`@PublicTool()`/`@ToolScopes()`/`@ToolRoles()` decorators.
-
-The built-in authorization server lives in a separate package. Install it alongside `@rekog/mcp-nest`:
-
-```bash
-npm install @rekog/mcp-nest-auth
-```
+Complete working example from the playground:
 
 ```typescript
-import { Controller, Module, UseGuards } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 // Or if you are using CommonJS:
 // import * as cookieParser from 'cookie-parser';
-import {
-  McpHttpControllerFor,
-  McpStrategy,
-  StreamableHttpTransport,
-} from '@rekog/mcp-nest';
+import { randomUUID } from 'crypto';
 import {
   McpAuthModule,
-  McpAuthJwtGuard,
+  McpModule,
   GitHubOAuthProvider,
-} from '@rekog/mcp-nest-auth';
-import { GreetingTool } from './greeting.tool';
-
-// Shared transport instance so the guarded controller below binds to the SAME
-// transport. Referencing it in McpHttpControllerFor auto-disables the
-// transport's own self-mount, so there is no double route.
-const mcpTransport = new StreamableHttpTransport();
-
-const mcp = new McpStrategy({
-  name: 'secure-mcp-server',
-  version: '1.0.0',
-  transports: [mcpTransport],
-});
-
-// Mount the MCP route as a real Nest controller and protect it with the
-// built-in `McpAuthJwtGuard`. The guard validates the Bearer JWT (via the
-// module's JwtTokenService), rejects missing/invalid tokens with 401, and sets
-// `req.user`. The OAuth endpoints (/auth/*, /.well-known/*) stay open — only
-// this controller is guarded — so the handshake can still run.
-@Controller('mcp')
-@UseGuards(McpAuthJwtGuard)
-class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
+  McpAuthJwtGuard
+} from '@rekog/mcp-nest';
 
 @Module({
   imports: [
@@ -99,8 +62,17 @@ class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
       serverUrl: 'http://localhost:3030',
       apiPrefix: 'auth',
     }),
+    McpModule.forRoot({
+      name: 'secure-mcp-server',
+      version: '1.0.0',
+      streamableHttp: {
+        enableJsonResponse: false,
+        sessionIdGenerator: () => randomUUID(),
+        statelessMode: false,
+      },
+      guards: [McpAuthJwtGuard],
+    }),
   ],
-  controllers: [McpHttpController, GreetingTool], // + your @McpController() classes
   providers: [McpAuthJwtGuard],
 })
 class AppModule {}
@@ -108,7 +80,7 @@ class AppModule {}
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Required for OAuth session management (this is NOT authentication).
+  // Required for OAuth session management
   app.use(cookieParser());
 
   // Enable CORS for client applications
@@ -117,10 +89,6 @@ async function bootstrap() {
     credentials: true,
   });
 
-  mcp.setHttpAdapter(app.getHttpAdapter());
-  app.connectMicroservice({ strategy: mcp });
-
-  await app.startAllMicroservices(); // BEFORE listen()
   await app.listen(3030);
   console.log('Secure MCP Server running on http://localhost:3030');
 }
@@ -134,38 +102,13 @@ npm install --save cookie-parser
 npm install --save-dev @types/cookie-parser
 ```
 
-## Reading the Authenticated User
-
-The `McpAuthJwtGuard` above validates the token and sets `req.user`. Inside a
-tool, inject it directly with `@McpUser()` — the auth-aware param decorator that
-projects `req.user` (sugar over `@McpRawRequest()` + `.user`):
-
-```typescript
-import { McpController, Tool } from '@rekog/mcp-nest';
-import { McpUser, McpUserPayload } from '@rekog/mcp-nest-auth';
-
-@McpController()
-export class GreetingTool {
-  @Tool({ name: 'whoami', description: 'Return the authenticated user' })
-  whoami(@McpUser() user?: McpUserPayload) {
-    return {
-      content: [
-        { type: 'text', text: `Hello, ${user?.displayName ?? 'anonymous'}!` },
-      ],
-    };
-  }
-}
-```
-
-Pass a field name to project a single property, e.g. `@McpUser('email') email?: string`.
-
 ## Configuration Options
 
 ### Required Options
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `provider` | [`OAuthProviderConfig`](../packages/mcp-nest-auth/src/providers/oauth-provider.interface.ts) | OAuth provider configuration ([GitHubOAuthProvider](../packages/mcp-nest-auth/src/providers/github.provider.ts), [GoogleOAuthProvider](../packages/mcp-nest-auth/src/providers/google.provider.ts), or custom) |
+| `provider` | [`OAuthProviderConfig`](../src/authz/providers/oauth-provider.interface.ts) | OAuth provider configuration ([GitHubOAuthProvider](../src/authz/providers/github.provider.ts), [GoogleOAuthProvider](../src/authz/providers/google.provider.ts), or custom) |
 | `clientId` | `string` | OAuth client ID from your provider |
 | `clientSecret` | `string` | OAuth client secret from your provider |
 | `jwtSecret` | `string` | JWT signing secret (minimum 32 characters) |
@@ -187,7 +130,7 @@ Pass a field name to project a single property, e.g. `@McpUser('email') email?: 
 | `authCodeExpiresIn` | `number` | `10 * 60 * 1000` | Authorization code timeout (10 minutes) |
 | `endpoints` | `object` | See below | Custom endpoint paths |
 | `disableEndpoints` | `{ wellKnownAuthorizationServerMetadata?: boolean; wellKnownProtectedResourceMetadata?: boolean }` | `{ wellKnownAuthorizationServerMetadata: false, wellKnownProtectedResourceMetadata: false }` | Disable specific discovery endpoints without changing their paths |
-| `storeConfiguration` | [`IOAuthStore`](../packages/mcp-nest-auth/src/stores/oauth-store.interface.ts) | In-memory | Storage backend configuration |
+| `storeConfiguration` | [`IOAuthStore`](../src/authz/stores/oauth-store.interface.ts) | In-memory | Storage backend configuration |
 
 ### Endpoint Configuration
 
@@ -203,6 +146,7 @@ Pass a field name to project a single property, e.g. `@McpUser('email') email?: 
     authorize: '/authorize',
     callback: '/callback',
     token: '/token',
+    revoke: '/revoke',
   }
 }
 ```
@@ -263,10 +207,10 @@ Supported TypeORM databases: PostgreSQL, MySQL, SQLite, SQL Server, Oracle, and 
 
 ### Custom Store
 
-Implement your own storage backend. See: [IOAuthStore interface](../packages/mcp-nest-auth/src/stores/oauth-store.interface.ts)
+Implement your own storage backend. See: [IOAuthStore interface](../src/authz/stores/oauth-store.interface.ts)
 
 ```typescript
-import { IOAuthStore } from '@rekog/mcp-nest-auth';
+import { IOAuthStore } from '@rekog/mcp-nest';
 
 class CustomStore implements IOAuthStore {
   // Implement required methods
@@ -285,10 +229,10 @@ McpAuthModule.forRoot({
 
 ### GitHub Provider
 
-See: [GitHubOAuthProvider](../packages/mcp-nest-auth/src/providers/github.provider.ts)
+See: [GitHubOAuthProvider](../src/authz/providers/github.provider.ts)
 
 ```typescript
-import { GitHubOAuthProvider } from '@rekog/mcp-nest-auth';
+import { GitHubOAuthProvider } from '@rekog/mcp-nest';
 
 // GitHub App setup required:
 // 1. Create GitHub App at https://github.com/settings/apps
@@ -305,10 +249,10 @@ McpAuthModule.forRoot({
 
 ### Google Provider
 
-See: [GoogleOAuthProvider](../packages/mcp-nest-auth/src/providers/google.provider.ts)
+See: [GoogleOAuthProvider](../src/authz/providers/google.provider.ts)
 
 ```typescript
-import { GoogleOAuthProvider } from '@rekog/mcp-nest-auth';
+import { GoogleOAuthProvider } from '@rekog/mcp-nest';
 
 // Google Cloud Console setup required:
 // 1. Create OAuth 2.0 Client ID at https://console.cloud.google.com/apis/credentials
@@ -325,10 +269,10 @@ McpAuthModule.forRoot({
 
 ### Custom Provider
 
-Create your own OAuth provider. See: [OAuthProviderConfig](../packages/mcp-nest-auth/src/providers/oauth-provider.interface.ts):
+Create your own OAuth provider. See: [OAuthProviderConfig](../src/authz/providers/oauth-provider.interface.ts):
 
 ```typescript
-import { OAuthProviderConfig } from '@rekog/mcp-nest-auth'; //
+import { OAuthProviderConfig } from '@rekog/mcp-nest'; //
 
 export const CustomOAuthProvider: OAuthProviderConfig = {
   name: 'custom',
@@ -351,12 +295,11 @@ When `apiPrefix` is set to `'auth'`, the following endpoints are available:
 
 ### OAuth Flow Endpoints
 
-These are served under the configured `apiPrefix` (shown here with `apiPrefix: 'auth'`); the two `/.well-known/*` endpoints above remain at the root.
-
-- **POST** `/auth/register` - Dynamic client registration (RFC 7591)
-- **GET** `/auth/authorize` - Authorization endpoint
-- **GET** `/auth/callback` - OAuth callback endpoint
-- **POST** `/auth/token` - Token endpoint
+- **POST** `/register` - Dynamic client registration (RFC 7591)
+- **GET** `/authorize` - Authorization endpoint
+- **GET** `/callback` - OAuth callback endpoint
+- **POST** `/token` - Token endpoint
+- **POST** `/revoke` - Token revocation
 
 ## Environment Variables
 

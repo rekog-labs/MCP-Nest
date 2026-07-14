@@ -86,14 +86,8 @@ Copy these values for your application configuration:
 
 ### Basic Configuration
 
-The Azure AD provider ships with the built-in authorization server package. Install it alongside `@rekog/mcp-nest`:
-
-```bash
-npm install @rekog/mcp-nest-auth
-```
-
 ```typescript
-import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest-auth';
+import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest';
 
 @Module({
   imports: [
@@ -123,7 +117,7 @@ import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest-auth';
 export class AppModule {}
 ```
 
-> **Note**: Using the TypeORM store requires installing `@nestjs/typeorm`, `typeorm`, and a sqlite driver such as `sqlite3` (or `better-sqlite3` with `type: 'better-sqlite3'`).
+> **Note**: Using the TypeORM store requires installing `@nestjs/typeorm` and `typeorm`.
 
 ### Environment Variables
 
@@ -173,67 +167,18 @@ McpAuthModule.forRoot({
 
 ```typescript
 import { NestFactory } from '@nestjs/core';
-import {
-  CanActivate,
-  Controller,
-  ExecutionContext,
-  Injectable,
-  Module,
-  UnauthorizedException,
-  UseGuards,
-} from '@nestjs/common';
-import type { Request } from 'express';
-import {
-  McpHttpControllerFor,
-  McpStrategy,
-  StreamableHttpTransport,
-} from '@rekog/mcp-nest';
-import {
-  McpAuthModule,
-  AzureADOAuthProvider,
-  JwtTokenService,
-} from '@rekog/mcp-nest-auth';
-import { MyTools } from './my-tools'; // your @McpController() classes
-
-// Hand-rolled guard: validate the Bearer JWT on the MCP route (via the module's
-// JwtTokenService), reject missing/invalid tokens with 401, and set `req.user`.
-@Injectable()
-class McpAuthGuard implements CanActivate {
-  constructor(private readonly jwt: JwtTokenService) {}
-
-  canActivate(context: ExecutionContext): boolean {
-    const req = context
-      .switchToHttp()
-      .getRequest<Request & { user?: unknown }>();
-    const auth = req.headers.authorization;
-    const token = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
-    if (!token) throw new UnauthorizedException('Unauthorized');
-
-    const payload = this.jwt.validateToken(token);
-    if (!payload) throw new UnauthorizedException('Unauthorized');
-
-    req.user = payload;
-    return true;
-  }
-}
-
-const mcpTransport = new StreamableHttpTransport();
-
-const mcp = new McpStrategy({
-  name: 'Azure AD MCP Server',
-  version: '1.0.0',
-  transports: [mcpTransport],
-});
-
-// Mount the MCP route as a real Nest controller so `McpAuthGuard` runs on every
-// transport request. The OAuth endpoints (/auth/*, /.well-known/*) stay open
-// because only this controller is guarded.
-@Controller('mcp')
-@UseGuards(McpAuthGuard)
-class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
+import { Module } from '@nestjs/common';
+import { McpModule } from '@rekog/mcp-nest';
+import { McpTransportType } from '@rekog/mcp-nest/interfaces';
+import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest/authz';
 
 @Module({
   imports: [
+    McpModule.forRoot({
+      name: 'Azure AD MCP Server',
+      version: '1.0.0',
+      transport: [McpTransportType.SSE, McpTransportType.STREAMABLE_HTTP],
+    }),
     McpAuthModule.forRoot({
       provider: AzureADOAuthProvider,
       clientId: process.env.AZURE_AD_CLIENT_ID!,
@@ -251,21 +196,14 @@ class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
       apiPrefix: 'auth',
     }),
   ],
-  controllers: [McpHttpController, MyTools],
-  providers: [McpAuthGuard],
 })
 export class AppModule {}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({ origin: true, credentials: true });
-
-  mcp.setHttpAdapter(app.getHttpAdapter());
-  app.connectMicroservice({ strategy: mcp });
-
-  await app.startAllMicroservices(); // BEFORE listen()
   await app.listen(3000);
-
+  
   console.log('🚀 Server running on http://localhost:3000');
   console.log('🔐 Login at http://localhost:3000/auth/authorize?response_type=code&client_id=your-client-id&redirect_uri=http://localhost:3000/auth/callback');
 }
@@ -318,7 +256,7 @@ The provider handles various Azure AD profile formats:
 | MCP Field | Azure AD Sources (in priority order) |
 |-----------|--------------------------------------|
 | `id` | `id`, `oid` |
-| `username` | `preferred_username`, `userPrincipalName`, `mail`, `email` |
+| `username` | `userPrincipalName`, `mail`, `email`, `preferred_username` |
 | `email` | `mail`, `userPrincipalName`, `email` |
 | `displayName` | `displayName`, `name` |
 | `avatarUrl` | `photo` (Microsoft Graph photo endpoint) |
@@ -368,7 +306,7 @@ For applications requiring access to Microsoft Graph APIs beyond basic profile:
 ### Unit Tests
 
 ```typescript
-import { AzureADOAuthProvider } from '@rekog/mcp-nest-auth';
+import { AzureADOAuthProvider } from '@rekog/mcp-nest/authz';
 
 describe('Azure AD Provider', () => {
   it('should map profile correctly', () => {
@@ -515,32 +453,20 @@ const multiTenantProvider = {
 
 ### Custom Token Validation
 
-Add custom validation inside the `McpAuthGuard` that gates the MCP route — after
-the token is validated and `req.user` is populated, apply your own checks:
+Implement custom token validation logic:
 
 ```typescript
+import { JwtAuthGuard } from '@rekog/mcp-nest/authz';
+
 @Injectable()
-class McpAuthGuard implements CanActivate {
-  constructor(private readonly jwt: JwtTokenService) {}
-
-  canActivate(context: ExecutionContext): boolean {
-    const req = context
-      .switchToHttp()
-      .getRequest<Request & { user?: unknown }>();
-    const auth = req.headers.authorization;
-    const token = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
-    if (!token) throw new UnauthorizedException('Unauthorized');
-
-    const payload = this.jwt.validateToken(token);
-    if (!payload) throw new UnauthorizedException('Unauthorized');
-
+export class CustomJwtGuard extends JwtAuthGuard {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isValid = await super.canActivate(context);
+    if (!isValid) return false;
+    
     // Custom validation logic
-    if (!payload.email?.endsWith('@alloweddomain.com')) {
-      throw new ForbiddenException('Forbidden');
-    }
-
-    req.user = payload;
-    return true;
+    const user = context.switchToHttp().getRequest().user;
+    return user.email.endsWith('@alloweddomain.com');
   }
 }
 ```

@@ -1,3 +1,0 @@
-# Runtime SQLite db (+ -wal/-shm) and logs, re-seeded from init_data.json on each boot
-*
-!.gitignore

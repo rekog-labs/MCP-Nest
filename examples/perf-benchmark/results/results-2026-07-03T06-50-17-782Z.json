@@ -1,0 +1,491 @@
+{
+  "meta": {
+    "nodeVersion": "v22.22.1",
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": "AMD Ryzen 9 7950X 16-Core Processor x32",
+    "mcpNestV2Version": "2.0.0-alpha.4",
+    "mcpNestV1Version": "1.9.10",
+    "generatedAt": "2026-07-03T06:50:17.782Z"
+  },
+  "smokeCheck": [
+    {
+      "serverId": "v2-stateless",
+      "supportsBareCall": true,
+      "driverUsed": "autocannon"
+    },
+    {
+      "serverId": "v2-stateful",
+      "supportsBareCall": false,
+      "driverUsed": "sdk-client-loop",
+      "note": "expected: stateful server rejects bare calls without a session (HTTP 400: {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Bad Request: Mcp-Session-Id header is required\"},\"id\":null})"
+    },
+    {
+      "serverId": "raw-sdk-stateless",
+      "supportsBareCall": true,
+      "driverUsed": "autocannon"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "supportsBareCall": true,
+      "driverUsed": "autocannon"
+    },
+    {
+      "serverId": "v1-stateless",
+      "supportsBareCall": true,
+      "driverUsed": "autocannon"
+    }
+  ],
+  "runs": [
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S1-echo",
+      "driver": "autocannon",
+      "concurrency": 1,
+      "durationSec": 15,
+      "requests": {
+        "total": 44453,
+        "average": 2964.07,
+        "p50": 3001,
+        "p90": 3081,
+        "p99": 3085,
+        "max": 3085
+      },
+      "latencyMs": {
+        "average": 0.02,
+        "p50": 0,
+        "p90": 0,
+        "p99": 1,
+        "max": 4
+      },
+      "throughputBytesPerSec": 758801.07,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 426.41796875,
+      "rssAfterMB": 418.3359375,
+      "rssPeakMB": 426.41796875,
+      "cpuPercentAvg": 120.33333333333333,
+      "startedAt": "2026-07-03T06:45:18.363Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S1-echo",
+      "driver": "autocannon",
+      "concurrency": 10,
+      "durationSec": 15,
+      "requests": {
+        "total": 46495,
+        "average": 3100.2,
+        "p50": 3103,
+        "p90": 3133,
+        "p99": 3153,
+        "max": 3153
+      },
+      "latencyMs": {
+        "average": 2.82,
+        "p50": 3,
+        "p90": 4,
+        "p99": 4,
+        "max": 17
+      },
+      "throughputBytesPerSec": 793651.2,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 418.3359375,
+      "rssAfterMB": 419.0859375,
+      "rssPeakMB": 419.0859375,
+      "cpuPercentAvg": 120.86666666666666,
+      "startedAt": "2026-07-03T06:45:38.372Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S1-echo",
+      "driver": "autocannon",
+      "concurrency": 100,
+      "durationSec": 15,
+      "requests": {
+        "total": 43555,
+        "average": 2904.47,
+        "p50": 2893,
+        "p90": 2955,
+        "p99": 2983,
+        "max": 2982
+      },
+      "latencyMs": {
+        "average": 33.9,
+        "p50": 33,
+        "p90": 36,
+        "p99": 46,
+        "max": 1749
+      },
+      "throughputBytesPerSec": 743543.47,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 463.5859375,
+      "rssAfterMB": 469.3359375,
+      "rssPeakMB": 469.3359375,
+      "cpuPercentAvg": 122.4,
+      "startedAt": "2026-07-03T06:45:58.384Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S2-list-n5",
+      "driver": "autocannon",
+      "concurrency": 1,
+      "durationSec": 15,
+      "requests": {
+        "total": 30746,
+        "average": 2049.87,
+        "p50": 2071,
+        "p90": 2113,
+        "p99": 2117,
+        "max": 2116
+      },
+      "latencyMs": {
+        "average": 0.03,
+        "p50": 0,
+        "p90": 0,
+        "p99": 1,
+        "max": 3
+      },
+      "throughputBytesPerSec": 6952960,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 390.4140625,
+      "rssAfterMB": 385.65625,
+      "rssPeakMB": 390.4140625,
+      "cpuPercentAvg": 112.20689655172414,
+      "startedAt": "2026-07-03T06:46:19.255Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S2-list-n5",
+      "driver": "autocannon",
+      "concurrency": 10,
+      "durationSec": 15,
+      "requests": {
+        "total": 31363,
+        "average": 2091.27,
+        "p50": 2093,
+        "p90": 2123,
+        "p99": 2127,
+        "max": 2126
+      },
+      "latencyMs": {
+        "average": 4.3,
+        "p50": 4,
+        "p90": 5,
+        "p99": 6,
+        "max": 31
+      },
+      "throughputBytesPerSec": 7091677.87,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 393.15625,
+      "rssAfterMB": 393.40625,
+      "rssPeakMB": 393.40625,
+      "cpuPercentAvg": 112.13333333333334,
+      "startedAt": "2026-07-03T06:46:39.260Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S2-list-n5",
+      "driver": "autocannon",
+      "concurrency": 100,
+      "durationSec": 15,
+      "requests": {
+        "total": 29997,
+        "average": 1999.94,
+        "p50": 1996,
+        "p90": 2061,
+        "p99": 2069,
+        "max": 2068
+      },
+      "latencyMs": {
+        "average": 49.43,
+        "p50": 48,
+        "p90": 52,
+        "p99": 65,
+        "max": 2546
+      },
+      "throughputBytesPerSec": 6782566.4,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 434.40625,
+      "rssAfterMB": 434.40625,
+      "rssPeakMB": 434.40625,
+      "cpuPercentAvg": 113.86666666666666,
+      "startedAt": "2026-07-03T06:46:59.271Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S2-list-n50",
+      "driver": "autocannon",
+      "concurrency": 1,
+      "durationSec": 15,
+      "requests": {
+        "total": 8095,
+        "average": 539.67,
+        "p50": 543,
+        "p90": 555,
+        "p99": 561,
+        "max": 561
+      },
+      "latencyMs": {
+        "average": 1.21,
+        "p50": 1,
+        "p90": 2,
+        "p99": 2,
+        "max": 6
+      },
+      "throughputBytesPerSec": 19843754.67,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 287.6015625,
+      "rssAfterMB": 336.72265625,
+      "rssPeakMB": 336.72265625,
+      "cpuPercentAvg": 108,
+      "startedAt": "2026-07-03T06:47:20.395Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S2-list-n50",
+      "driver": "autocannon",
+      "concurrency": 10,
+      "durationSec": 15,
+      "requests": {
+        "total": 8349,
+        "average": 556.6,
+        "p50": 555,
+        "p90": 568,
+        "p99": 568,
+        "max": 568
+      },
+      "latencyMs": {
+        "average": 17.47,
+        "p50": 17,
+        "p90": 18,
+        "p99": 26,
+        "max": 107
+      },
+      "throughputBytesPerSec": 20464162.14,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 424.72265625,
+      "rssAfterMB": 424.72265625,
+      "rssPeakMB": 424.72265625,
+      "cpuPercentAvg": 106.82758620689656,
+      "startedAt": "2026-07-03T06:47:40.400Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S2-list-n50",
+      "driver": "autocannon",
+      "concurrency": 100,
+      "durationSec": 15,
+      "requests": {
+        "total": 8353,
+        "average": 556.87,
+        "p50": 561,
+        "p90": 571,
+        "p99": 575,
+        "max": 575
+      },
+      "latencyMs": {
+        "average": 178.03,
+        "p50": 159,
+        "p90": 183,
+        "p99": 431,
+        "max": 9098
+      },
+      "throughputBytesPerSec": 20475084.8,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 424.72265625,
+      "rssAfterMB": 445.72265625,
+      "rssPeakMB": 445.72265625,
+      "cpuPercentAvg": 104.73333333333333,
+      "startedAt": "2026-07-03T06:48:00.414Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S3-payload-10kb",
+      "driver": "autocannon",
+      "concurrency": 1,
+      "durationSec": 15,
+      "requests": {
+        "total": 39288,
+        "average": 2619.67,
+        "p50": 2641,
+        "p90": 2667,
+        "p99": 2697,
+        "max": 2696
+      },
+      "latencyMs": {
+        "average": 0.03,
+        "p50": 0,
+        "p90": 0,
+        "p99": 1,
+        "max": 3
+      },
+      "throughputBytesPerSec": 27487436.8,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 427.05078125,
+      "rssAfterMB": 419.0390625,
+      "rssPeakMB": 427.30078125,
+      "cpuPercentAvg": 119.17241379310344,
+      "startedAt": "2026-07-03T06:48:21.542Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S3-payload-10kb",
+      "driver": "autocannon",
+      "concurrency": 10,
+      "durationSec": 15,
+      "requests": {
+        "total": 41019,
+        "average": 2734.87,
+        "p50": 2759,
+        "p90": 2785,
+        "p99": 2793,
+        "max": 2792
+      },
+      "latencyMs": {
+        "average": 3.24,
+        "p50": 3,
+        "p90": 4,
+        "p99": 6,
+        "max": 18
+      },
+      "throughputBytesPerSec": 28697668.27,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 422.7890625,
+      "rssAfterMB": 423.0390625,
+      "rssPeakMB": 423.0390625,
+      "cpuPercentAvg": 120.41379310344827,
+      "startedAt": "2026-07-03T06:48:41.548Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S3-payload-10kb",
+      "driver": "autocannon",
+      "concurrency": 100,
+      "durationSec": 15,
+      "requests": {
+        "total": 38663,
+        "average": 2578.07,
+        "p50": 2593,
+        "p90": 2651,
+        "p99": 2653,
+        "max": 2653
+      },
+      "latencyMs": {
+        "average": 38.26,
+        "p50": 37,
+        "p90": 40,
+        "p99": 50,
+        "max": 2012
+      },
+      "throughputBytesPerSec": 27049437.87,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 485.7890625,
+      "rssAfterMB": 495.0390625,
+      "rssPeakMB": 495.0390625,
+      "cpuPercentAvg": 121.46666666666667,
+      "startedAt": "2026-07-03T06:49:01.560Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S3-payload-100kb",
+      "driver": "autocannon",
+      "concurrency": 1,
+      "durationSec": 15,
+      "requests": {
+        "total": 22830,
+        "average": 1522,
+        "p50": 1535,
+        "p90": 1555,
+        "p99": 1563,
+        "max": 1563
+      },
+      "latencyMs": {
+        "average": 0.07,
+        "p50": 0,
+        "p90": 0,
+        "p99": 1,
+        "max": 3
+      },
+      "throughputBytesPerSec": 156233454.94,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 447.96484375,
+      "rssAfterMB": 443.62890625,
+      "rssPeakMB": 450.21484375,
+      "cpuPercentAvg": 118.33333333333333,
+      "startedAt": "2026-07-03T06:49:22.693Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S3-payload-100kb",
+      "driver": "autocannon",
+      "concurrency": 10,
+      "durationSec": 15,
+      "requests": {
+        "total": 22412,
+        "average": 1494.14,
+        "p50": 1494,
+        "p90": 1511,
+        "p99": 1512,
+        "max": 1512
+      },
+      "latencyMs": {
+        "average": 6.12,
+        "p50": 6,
+        "p90": 7,
+        "p99": 12,
+        "max": 38
+      },
+      "throughputBytesPerSec": 153393561.6,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 499.12890625,
+      "rssAfterMB": 510.37890625,
+      "rssPeakMB": 510.37890625,
+      "cpuPercentAvg": 119,
+      "startedAt": "2026-07-03T06:49:42.702Z"
+    },
+    {
+      "serverId": "raw-sdk-nest",
+      "scenarioId": "S3-payload-100kb",
+      "driver": "autocannon",
+      "concurrency": 100,
+      "durationSec": 15,
+      "requests": {
+        "total": 21506,
+        "average": 1433.74,
+        "p50": 1440,
+        "p90": 1451,
+        "p99": 1453,
+        "max": 1453
+      },
+      "latencyMs": {
+        "average": 69.13,
+        "p50": 68,
+        "p90": 71,
+        "p99": 78,
+        "max": 3550
+      },
+      "throughputBytesPerSec": 147172010.67,
+      "errors": 0,
+      "non2xx": 0,
+      "rssBeforeMB": 684.87890625,
+      "rssAfterMB": 685.12890625,
+      "rssPeakMB": 685.12890625,
+      "cpuPercentAvg": 121.86666666666666,
+      "startedAt": "2026-07-03T06:50:02.718Z"
+    }
+  ]
+}

@@ -1,34 +1,68 @@
 {
-  "name": "mcp-nest-workspace",
-  "version": "2.0.0-alpha.0",
-  "description": "Workspace root for @rekog/mcp-nest and @rekog/mcp-nest-auth",
+  "name": "@rekog/mcp-nest",
+  "version": "1.9.7-alpha.0",
+  "description": "NestJS module for creating Model Context Protocol (MCP) servers",
+  "main": "dist/index.js",
   "license": "MIT",
-  "private": true,
-  "workspaces": [
-    "packages/*"
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
   ],
+  "workspaces": [
+    "playground"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/rekog-labs/MCP-Nest"
   },
   "scripts": {
-    "build": "npm run build -w @rekog/mcp-nest && npm run build -w @rekog/mcp-nest-auth",
+    "build": "tsc -p tsconfig.build.json --sourceMap --inlineSources",
     "prepare": "npm run build",
-    "test": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts')",
-    "test:watch": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts') --watch",
-    "lint": "eslint \"{packages,apps,libs,tests}/**/*.ts\" --fix",
-    "format": "prettier --write \"packages/**/*.ts\" \"tests/**/*.ts\""
+    "smoke": "npm -w playground run smoke:local",
+    "start:playground": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-stateful.ts",
+    "start:fastify": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/server-fastify.ts",
+    "start:multi-server": "TS_NODE_PROJECT=tsconfig.playground.json ts-node-dev --respawn -r tsconfig-paths/register playground/servers/multi-server-example/main.ts",
+    "test": "bun test src tests",
+    "test:watch": "bun test src tests --watch",
+    "lint": "eslint \"{src,apps,libs,tests}/**/*.ts\" --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"playground/**/*.ts\" \"tests/**/*.ts\""
+  },
+  "peerDependencies": {
+    "@modelcontextprotocol/sdk": ">=1.10.0",
+    "@nestjs/common": ">=9.0.0",
+    "@nestjs/core": ">=9.0.0",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/passport": "^11.0.5",
+    "@nestjs/platform-fastify": "^11.1.5",
+    "@nestjs/typeorm": ">=9.0.0",
+    "express": ">=4.0.0",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": ">=0.3.25",
+    "zod": "^4.3.5"
+  },
+  "peerDependenciesMeta": {
+    "@nestjs/platform-fastify": {
+      "optional": true
+    },
+    "@nestjs/typeorm": {
+      "optional": true
+    },
+    "typeorm": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
     "@eslint/js": "^9.39.2",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@nestjs/common": "^11.1.14",
-    "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.1.14",
-    "@nestjs/jwt": "^11.0.0",
-    "@nestjs/microservices": "^11.1.14",
-    "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.14",
     "@nestjs/platform-fastify": "^11.1.14",
     "@nestjs/testing": "^11.1.14",
@@ -36,36 +70,33 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",
     "@types/jest": "^29.5.14",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.19.7",
     "@types/passport-github": "^1.1.13",
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/supertest": "^6.0.3",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.15.1",
-    "cookie-parser": "^1.4.7",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "express": "^5.2.1",
     "jest": "^29.7.0",
-    "jsonwebtoken": "^9.0.3",
-    "multer": "^2.0.2",
-    "passport": "^0.7.0",
-    "passport-azure-ad-oauth2": "^0.0.4",
-    "passport-github": "^1.1.0",
-    "passport-google-oauth20": "^2.0.0",
-    "path-to-regexp": "^8.3.0",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.6",
     "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",
     "typeorm": "^1.0.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.1",
-    "zod": "^4.3.5"
+    "typescript-eslint": "^8.56.1"
+  },
+  "dependencies": {
+    "@nestjs/config": "^4.0.3",
+    "cookie-parser": "^1.4.7",
+    "multer": "^2.0.2",
+    "passport": "^0.7.0",
+    "passport-azure-ad-oauth2": "^0.0.4",
+    "passport-github": "^1.1.0",
+    "passport-google-oauth20": "^2.0.0",
+    "path-to-regexp": "^8.3.0",
+    "rxjs": "^7.8.2"
   },
   "overrides": {
     "qs": "^6.14.1",

@@ -17,8 +17,7 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 
 ## Features
 
-- 🧩 **[NestJS Microservice Strategy](docs/migration-to-strategy.md)**: MCP runs as a `CustomTransportStrategy`, so tools/resources/prompts are real `@MessagePattern` handlers — **guards, pipes, interceptors, and exception filters apply to them natively**
-- 🚀 **[Multi-Transport Support](docs/server-examples.md#multiple-transport-types)**: Streamable HTTP and STDIO — selected via the `transports` array
+- 🚀 **[Multi-Transport Support](docs/server-examples.md#multiple-transport-types)**: HTTP+SSE, Streamable HTTP, and STDIO
 - 🔧 **[Tools](docs/tools.md)**: Expose NestJS methods as MCP tools with automatic discovery and Zod validation
   - 🛠️ **[Elicitation](docs/tools.md#interactive-tool-calls)**: Interactive tool calls with user input elicitation
   - 🌐 **[HTTP Request Access](docs/tools.md#understanding-tool-method-parameters)**: Full access to request context within MCP handlers
@@ -47,13 +46,7 @@ npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod@^4
 
 ### Optional dependencies
 
-The built-in authorization server now lives in a separate package. If you use it, install it alongside `@rekog/mcp-nest`:
-
-```bash
-npm install @rekog/mcp-nest-auth
-```
-
-If you additionally use the TypeORM store for the authorization server, install the following optional peer dependencies as well:
+If you use the built-in authorization server with the TypeORM store, install the following optional peer dependencies:
 
 ```bash
 npm install @nestjs/typeorm typeorm
@@ -61,88 +54,48 @@ npm install @nestjs/typeorm typeorm
 
 ## Quick Start
 
-MCP-Nest runs as a **NestJS microservice transport strategy**. Tools, resources,
-and prompts live on `@McpController()` classes (so NestJS guards, pipes,
-interceptors, and exception filters apply to them), and the strategy serves them
-over one or more transports (Streamable HTTP, STDIO).
-
-```typescript
-// greeting.controller.ts
-import { McpController, Tool, McpContext } from '@rekog/mcp-nest';
-import { Ctx, Payload } from '@nestjs/microservices';
-import { z } from 'zod';
-
-@McpController()
-export class GreetingController {
-  @Tool({
-    name: 'greeting-tool',
-    description: 'Returns a greeting with progress updates',
-    parameters: z.object({ name: z.string().default('World') }),
-  })
-  async sayHello(
-    @Payload() { name }: { name: string },
-    @Ctx() ctx: McpContext,
-  ) {
-    await ctx.reportProgress({ progress: 50, total: 100 });
-    return { content: [{ type: 'text', text: `Hello, ${name}!` }] };
-  }
-}
-```
-
 ```typescript
 // app.module.ts
 import { Module } from '@nestjs/common';
-import {
-  McpStrategy,
-  MCP_STRATEGY,
-  StreamableHttpTransport,
-} from '@rekog/mcp-nest';
-import { GreetingController } from './greeting.controller';
-
-// The strategy is the whole configuration — there is no McpModule.
-export const mcp = new McpStrategy({
-  name: 'my-mcp-server',
-  version: '1.0.0',
-  transports: [
-    new StreamableHttpTransport(),
-  ],
-});
+import { McpModule } from '@rekog/mcp-nest';
+import { GreetingTool } from './greeting.tool';
 
 @Module({
-  controllers: [GreetingController],
-  // Optional: only needed if a provider injects the strategy (e.g. for
-  // runtime/dynamic tool registration).
-  providers: [{ provide: MCP_STRATEGY, useValue: mcp }],
+  imports: [
+    McpModule.forRoot({
+      name: 'my-mcp-server',
+      version: '1.0.0',
+    }),
+  ],
+  providers: [GreetingTool],
 })
 export class AppModule {}
 ```
 
 ```typescript
-// main.ts
-import { NestFactory } from '@nestjs/core';
-import { AppModule, mcp } from './app.module';
+// greeting.tool.ts
+import { Injectable } from '@nestjs/common';
+import { Tool, Context } from '@rekog/mcp-nest';
+import { z } from 'zod';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  mcp.setHttpAdapter(app.getHttpAdapter()); // needed for HTTP transports
-  app.connectMicroservice({ strategy: mcp });
-  await app.startAllMicroservices(); // mounts the MCP transports
-  await app.listen(3000); // also serves your normal HTTP routes
+@Injectable()
+export class GreetingTool {
+  @Tool({
+    name: 'greeting-tool',
+    description: 'Returns a greeting with progress updates',
+    parameters: z.object({
+      name: z.string().default('World'),
+    }),
+  })
+  async sayHello({ name }, context: Context) {
+    await context.reportProgress({ progress: 50, total: 100 });
+    return `Hello, ${name}!`;
+  }
 }
-void bootstrap();
 ```
-
-> **Order matters:** call `startAllMicroservices()` before `listen()` so the MCP
-> HTTP routes are mounted before the server starts accepting connections.
-
-For an STDIO-only server, skip the HTTP adapter and use
-`NestFactory.createMicroservice(AppModule, { strategy: mcp })` with
-`transports: [new StdioTransport()]` and disable logging (stdout is reserved for
-the protocol).
 
 ## Documentation
 
-- **[Migration to the Strategy API](docs/migration-to-strategy.md)** - Moving from `McpModule.forRoot(options)` to `McpStrategy` + `@McpController`
 - **[Tools Guide](docs/tools.md)** - Define and expose NestJS methods as MCP tools
 - **[Discovery and Registration of Tools](docs/tool-discovery-and-registration.md)** - Automatic discovery and manual registration of tools
 - **[Dynamic Capabilities Guide](docs/dynamic-capabilities.md)** - Register tools, resources, and prompts programmatically at runtime
@@ -153,10 +106,10 @@ the protocol).
 - **[External Authorization Server](docs/external-authorization-server/README.md)** - Securing your MCP server with an external authorization server (Keycloak, Auth0, etc)
 - **[Server examples](docs/server-examples.md)** - MCP servers examples (Streamable HTTP, HTTP, and STDIO) and with Fastify support
 
-## Examples
+## Playground
 
-The `examples` directory contains working examples for all features.
-Refer to [`examples/README.md`](examples/README.md) for details.
+The `playground` directory contains working examples for all features.
+Refer to [`playground/README.md`](playground/README.md) for details.
 
 <!-- Badges -->
 [ci-url]: https://github.com/rekog-labs/MCP-Nest/actions/workflows/pipeline.yml

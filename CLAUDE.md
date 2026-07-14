@@ -18,14 +18,12 @@ npm run lint               # ESLint with automatic fixes
 npm run format             # Prettier formatting for src and tests
 ```
 
-### Running Examples
-Each project under `examples/` is a self-contained npm project. Run one on its own:
+### Running Playground Examples
 ```bash
-cd examples/<project>       # e.g. examples/tools, examples/server-examples
-npm install
-npm start                   # serves the MCP endpoint (default http://localhost:3000/mcp)
+npm run start:playground   # Default stateful server (Express)
+npm run start:fastify      # Fastify adapter server
+npm run test:fastify       # Test Fastify client connection
 ```
-See `examples/README.md` for the full list of projects and per-project run/test commands.
 
 ### Single Test Execution
 ```bash
@@ -39,7 +37,7 @@ npx --node-options=--experimental-vm-modules jest --testNamePattern="auth"
 ## Core Components
 
 ### 1. McpModule - The Primary MCP Server Module
-Located at `packages/mcp-nest/src/mcp/mcp.module.ts:18`. This is the main module for creating MCP servers.
+Located at `src/mcp/mcp.module.ts:18`. This is the main module for creating MCP servers.
 
 **Key Features**:
 - Decorator-based tool/resource/prompt discovery via `McpRegistryDiscoveryService`
@@ -58,9 +56,7 @@ McpModule.forRoot({
 ```
 
 ### 2. McpAuthModule - OAuth 2.1 Authorization Server
-Located at `packages/mcp-nest-auth/src/mcp-oauth.module.ts:76`. Provides complete OAuth 2.1 compliant Identity Provider implementation.
-
-**Published as a separate package**: the authorization server ships as `@rekog/mcp-nest-auth` (a sibling workspace under `packages/`) so the core `@rekog/mcp-nest` stays free of `typeorm`/`passport`/`@nestjs/jwt`. It depends on `@rekog/mcp-nest` (peer) and must be installed alongside it. All auth symbols (`McpAuthModule`, `McpAuthJwtGuard`, `GitHubOAuthProvider`, `McpUser`, `IOAuthStore`, `JwtTokenService`, …) are imported from `@rekog/mcp-nest-auth`.
+Located at `src/authz/mcp-oauth.module.ts:76`. Provides complete OAuth 2.1 compliant Identity Provider implementation.
 
 **Key Features**:
 - Built-in GitHub and Google OAuth providers
@@ -191,19 +187,19 @@ McpAuthModule supports multiple storage backends:
 ## Project Structure
 
 ### File Organization
-- `packages/mcp-nest/src/mcp/` - Core MCP functionality (McpModule, transports, services)
-- `packages/mcp-nest-auth/src/` - OAuth authentication module (McpAuthModule)
-- `packages/mcp-nest/src/mcp/decorators/` - Tool/Resource/Prompt decorators
-- `packages/mcp-nest/src/mcp/services/handlers/` - MCP protocol request handlers
-- `packages/mcp-nest/src/mcp/transport/` - Transport implementations (SSE, Streamable HTTP, STDIO)
-- `packages/mcp-nest-auth/src/providers/` - OAuth providers (GitHub, Google, custom interface)
-- `packages/mcp-nest-auth/src/stores/` - Storage backends (memory, TypeORM, custom interface)
-- `examples/` - Working examples and demo servers
+- `src/mcp/` - Core MCP functionality (McpModule, transports, services)
+- `src/authz/` - OAuth authentication module (McpAuthModule)
+- `src/mcp/decorators/` - Tool/Resource/Prompt decorators
+- `src/mcp/services/handlers/` - MCP protocol request handlers
+- `src/mcp/transport/` - Transport implementations (SSE, Streamable HTTP, STDIO)
+- `src/authz/providers/` - OAuth providers (GitHub, Google, custom interface)
+- `src/authz/stores/` - Storage backends (memory, TypeORM, custom interface)
+- `playground/` - Working examples and demo servers
 - `tests/` - Comprehensive E2E test suite covering all transports
 - `docs/` - Complete documentation for all features
 
 ### HTTP Adapter Abstraction
-`HttpAdapterFactory` at `packages/mcp-nest/src/mcp/adapters/` provides framework-agnostic request/response handling for Express/Fastify compatibility.
+`HttpAdapterFactory` at `src/mcp/adapters/` provides framework-agnostic request/response handling for Express/Fastify compatibility.
 
 ## Integration Points
 
