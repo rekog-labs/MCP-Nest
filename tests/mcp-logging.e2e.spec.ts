@@ -1,12 +1,16 @@
-import { INestApplication, Injectable, Logger } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
-import { Tool } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { McpTransportType } from '../src/mcp/interfaces';
-import { createSseClient } from './utils';
+import { McpController, Tool } from '@rekog/mcp-nest';
+import {
+  createStreamableClient,
+  McpStrategy,
+  StreamableHttpTransport,
+} from './utils';
+import type { McpServerOptions } from '@rekog/mcp-nest';
+import { Ctx, Payload } from '@nestjs/microservices';
 
-@Injectable()
+@McpController()
 class TestTool {
   @Tool({
     name: 'test-tool',
@@ -15,7 +19,7 @@ class TestTool {
       message: z.string(),
     }),
   })
-  async testTool({ message }) {
+  async testTool(@Payload() { message }: { message: string }, @Ctx() _ctx) {
     return {
       content: [
         {
@@ -25,6 +29,34 @@ class TestTool {
       ],
     };
   }
+}
+
+/**
+ * Inlines the `bootstrapMcpApp` helper body so the test can configure the
+ * strategy's `logging` option (not exposed by the shared helper).
+ */
+async function bootstrapWithLogging(
+  logging: McpServerOptions['logging'],
+  transports: McpServerOptions['transports'],
+): Promise<{ app: INestApplication; port: number }> {
+  const strategy = new McpStrategy({
+    name: 'test-mcp-server',
+    version: '1.0.0',
+    logging,
+    transports,
+  });
+
+  const moduleFixture: TestingModule = await Test.createTestingModule({
+    controllers: [TestTool],
+  }).compile();
+
+  const app = moduleFixture.createNestApplication();
+  strategy.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy });
+  await app.startAllMicroservices();
+  await app.listen(0);
+  const port = (app.getHttpServer().address() as { port: number }).port;
+  return { app, port };
 }
 
 describe('MCP Logging Configuration (e2e)', () => {
@@ -39,25 +71,13 @@ describe('MCP Logging Configuration (e2e)', () => {
 
   describe('Default logging behavior', () => {
     it('should use default NestJS logging when logging option is undefined', async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [
-          McpModule.forRoot({
-            name: 'test-mcp-server',
-            version: '1.0.0',
-            transport: McpTransportType.SSE,
-            // logging option not specified - should use default
-          }),
-        ],
-        providers: [TestTool],
-      }).compile();
+      const bootstrapped = await bootstrapWithLogging(undefined, [
+        new StreamableHttpTransport({ statefulMode: true }),
+      ]);
+      app = bootstrapped.app;
+      testPort = bootstrapped.port;
 
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-
-      const server = app.getHttpServer();
-      testPort = (server.address() as import('net').AddressInfo).port;
-
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -70,25 +90,13 @@ describe('MCP Logging Configuration (e2e)', () => {
 
   describe('Disabled logging', () => {
     it('should not log when logging is set to false', async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [
-          McpModule.forRoot({
-            name: 'test-mcp-server',
-            version: '1.0.0',
-            transport: McpTransportType.SSE,
-            logging: false,
-          }),
-        ],
-        providers: [TestTool],
-      }).compile();
+      const bootstrapped = await bootstrapWithLogging(false, [
+        new StreamableHttpTransport({ statefulMode: true }),
+      ]);
+      app = bootstrapped.app;
+      testPort = bootstrapped.port;
 
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-
-      const server = app.getHttpServer();
-      testPort = (server.address() as import('net').AddressInfo).port;
-
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -104,27 +112,14 @@ describe('MCP Logging Configuration (e2e)', () => {
 
   describe('Filtered logging', () => {
     it('should only log specified levels when logging.level is configured', async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [
-          McpModule.forRoot({
-            name: 'test-mcp-server',
-            version: '1.0.0',
-            transport: McpTransportType.SSE,
-            logging: {
-              level: ['error', 'warn'],
-            },
-          }),
-        ],
-        providers: [TestTool],
-      }).compile();
+      const bootstrapped = await bootstrapWithLogging(
+        { level: ['error', 'warn'] },
+        [new StreamableHttpTransport({ statefulMode: true })],
+      );
+      app = bootstrapped.app;
+      testPort = bootstrapped.port;
 
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-
-      const server = app.getHttpServer();
-      testPort = (server.address() as import('net').AddressInfo).port;
-
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -138,27 +133,14 @@ describe('MCP Logging Configuration (e2e)', () => {
   describe('Logger factory behavior', () => {
     it('should create appropriate logger based on configuration', async () => {
       // Test with all log levels
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [
-          McpModule.forRoot({
-            name: 'test-mcp-server',
-            version: '1.0.0',
-            transport: McpTransportType.SSE,
-            logging: {
-              level: ['log', 'error', 'warn', 'debug', 'verbose'],
-            },
-          }),
-        ],
-        providers: [TestTool],
-      }).compile();
+      const bootstrapped = await bootstrapWithLogging(
+        { level: ['log', 'error', 'warn', 'debug', 'verbose'] },
+        [new StreamableHttpTransport({ statefulMode: true })],
+      );
+      app = bootstrapped.app;
+      testPort = bootstrapped.port;
 
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-
-      const server = app.getHttpServer();
-      testPort = (server.address() as import('net').AddressInfo).port;
-
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -171,27 +153,13 @@ describe('MCP Logging Configuration (e2e)', () => {
 
   describe('Multiple transports with logging configuration', () => {
     it('should apply logging configuration to all transports', async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [
-          McpModule.forRoot({
-            name: 'test-mcp-server',
-            version: '1.0.0',
-            transport: [McpTransportType.SSE, McpTransportType.STREAMABLE_HTTP],
-            logging: {
-              level: ['error'],
-            },
-          }),
-        ],
-        providers: [TestTool],
-      }).compile();
+      const bootstrapped = await bootstrapWithLogging({ level: ['error'] }, [
+        new StreamableHttpTransport({ statefulMode: true }),
+      ]);
+      app = bootstrapped.app;
+      testPort = bootstrapped.port;
 
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-
-      const server = app.getHttpServer();
-      testPort = (server.address() as import('net').AddressInfo).port;
-
-      const client = await createSseClient(testPort);
+      const client = await createStreamableClient(testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },

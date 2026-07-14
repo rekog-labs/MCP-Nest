@@ -1,0 +1,34 @@
+{
+  "name": "perf-benchmark",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start:v2-stateless": "ts-node --transpile-only servers/v2-stateless.ts",
+    "start:v2-stateful": "ts-node --transpile-only servers/v2-stateful.ts",
+    "start:raw-sdk": "ts-node --transpile-only servers/raw-sdk-stateless.ts",
+    "smoke": "ts-node --transpile-only bench/smoke-check.ts",
+    "bench": "ts-node --transpile-only bench/runner.ts",
+    "report": "ts-node --transpile-only bench/report.ts",
+    "profile": "ts-node --transpile-only bench/profile.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/microservices": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@rekog/mcp-nest": "2.0.0-alpha.4",
+    "autocannon": "^8.0.0",
+    "pidusage": "^4.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/autocannon": "^7.12.5",
+    "@types/node": "^22.0.0",
+    "@types/pidusage": "^2.0.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,20 +1,24 @@
 import {
   INestApplication,
+  Inject,
   Injectable,
-  Module,
   OnModuleInit,
 } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { Tool, McpRegistryService } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createStreamableClient } from './utils';
+import { Payload } from '@nestjs/microservices';
+import {
+  MCP_STRATEGY,
+  McpController,
+  McpStrategy,
+  Tool,
+} from '@rekog/mcp-nest';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { z } from 'zod';
 
 /**
- * Test Suite: Dynamic Tool Registration via McpRegistryService
+ * Test Suite: Dynamic Tool Registration via the McpStrategy
  *
  * Validates that tools can be registered programmatically at runtime
- * using the McpRegistryService service, in addition to decorator-based tools.
+ * through the strategy instance, in addition to decorator-based tools.
  *
  * This enables:
  * - Tools with dynamic descriptions from databases
@@ -23,20 +27,20 @@ import { z } from 'zod';
  */
 
 // ============================================================================
-// Test Setup: Dynamic tool registration service
+// Test Setup: Dynamic tool registration service (mirrors the old OnModuleInit
+// pattern by injecting the strategy via the MCP_STRATEGY token).
 // ============================================================================
+
+const COLLECTIONS = ['documents', 'knowledge', 'faq'];
 
 @Injectable()
 class DynamicToolsService implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
-  async onModuleInit() {
-    // Simulate loading tool configuration from a database
-    const collections = ['documents', 'knowledge', 'faq'];
-
-    this.registry.registerTool({
+  onModuleInit() {
+    this.strategy.registerTool({
       name: 'search-knowledge',
-      description: `Search the knowledge base. Available collections: ${collections.join(', ')}`,
+      description: `Search the knowledge base. Available collections: ${COLLECTIONS.join(', ')}`,
       parameters: z.object({
         query: z.string().describe('Search query'),
         collection: z.string().optional().describe('Filter by collection'),
@@ -62,13 +66,12 @@ class DynamicToolsService implements OnModuleInit {
       },
     });
 
-    // Register another dynamic tool
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'get-collections',
       description: 'Get available collections',
       handler: async () => {
         return {
-          content: [{ type: 'text', text: JSON.stringify(collections) }],
+          content: [{ type: 'text', text: JSON.stringify(COLLECTIONS) }],
         };
       },
     });
@@ -79,14 +82,14 @@ class DynamicToolsService implements OnModuleInit {
 // Test Setup: Decorator-based tools (for mixed mode testing)
 // ============================================================================
 
-@Injectable()
+@McpController()
 class StaticTools {
   @Tool({
     name: 'static-tool',
     description: 'A statically defined tool using decorators',
     parameters: z.object({ input: z.string() }),
   })
-  staticTool({ input }: { input: string }) {
+  staticTool(@Payload() { input }: { input: string }) {
     return {
       content: [{ type: 'text', text: `Static result: ${input}` }],
     };
@@ -99,10 +102,10 @@ class StaticTools {
 
 @Injectable()
 class OutputSchemaToolService implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.registry.registerTool({
+    this.strategy.registerTool({
       name: 'structured-output-tool',
       description: 'A tool with output schema validation',
       parameters: z.object({ id: z.string() }),
@@ -124,153 +127,22 @@ class OutputSchemaToolService implements OnModuleInit {
 }
 
 // ============================================================================
-// Test Setup: Multi-server dynamic tool registration
-// ============================================================================
-
-@Injectable()
-class Server1DynamicTools implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
-
-  onModuleInit() {
-    this.registry.registerTool({
-      name: 'server1-dynamic-tool',
-      description: 'Dynamic tool for server 1',
-      handler: async () => {
-        return { content: [{ type: 'text', text: 'Server 1 dynamic' }] };
-      },
-    });
-  }
-}
-
-@Injectable()
-class Server2DynamicTools implements OnModuleInit {
-  constructor(private readonly registry: McpRegistryService) {}
-
-  onModuleInit() {
-    this.registry.registerTool({
-      name: 'server2-dynamic-tool',
-      description: 'Dynamic tool for server 2',
-      handler: async () => {
-        return { content: [{ type: 'text', text: 'Server 2 dynamic' }] };
-      },
-    });
-  }
-}
-
-// ============================================================================
-// Module: Basic dynamic tools
-// ============================================================================
-
-const deregServerModule = McpModule.forRoot({
-  name: 'dereg-server',
-  version: '1.0.0',
-  mcpEndpoint: '/dereg/mcp',
-});
-
-@Module({
-  imports: [deregServerModule],
-  providers: [DynamicToolsService],
-})
-class DeregistrationToolsAppModule {}
-
-const basicServerModule = McpModule.forRoot({
-  name: 'basic-server',
-  version: '1.0.0',
-  mcpEndpoint: '/basic/mcp',
-});
-
-@Module({
-  imports: [basicServerModule],
-  providers: [DynamicToolsService],
-})
-class BasicDynamicToolsAppModule {}
-
-// ============================================================================
-// Module: Mixed mode (decorator + dynamic tools)
-// ============================================================================
-
-const mixedServerModule = McpModule.forRoot({
-  name: 'mixed-server',
-  version: '1.0.0',
-  mcpEndpoint: '/mixed/mcp',
-});
-
-@Module({
-  imports: [mixedServerModule],
-  providers: [DynamicToolsService, StaticTools],
-})
-class MixedToolsAppModule {}
-
-// ============================================================================
-// Module: Output schema validation
-// ============================================================================
-
-const outputSchemaServerModule = McpModule.forRoot({
-  name: 'output-schema-server',
-  version: '1.0.0',
-  mcpEndpoint: '/output-schema/mcp',
-});
-
-@Module({
-  imports: [outputSchemaServerModule],
-  providers: [OutputSchemaToolService],
-})
-class OutputSchemaAppModule {}
-
-// ============================================================================
-// Module: Multi-server isolation
-// ============================================================================
-
-const multiServer1Module = McpModule.forRoot({
-  name: 'multi-server-1',
-  version: '1.0.0',
-  mcpEndpoint: '/multi1/mcp',
-});
-
-const multiServer2Module = McpModule.forRoot({
-  name: 'multi-server-2',
-  version: '1.0.0',
-  mcpEndpoint: '/multi2/mcp',
-});
-
-@Module({
-  imports: [multiServer1Module],
-  providers: [Server1DynamicTools],
-})
-class MultiServer1Module {}
-
-@Module({
-  imports: [multiServer2Module],
-  providers: [Server2DynamicTools],
-})
-class MultiServer2Module {}
-
-@Module({
-  imports: [MultiServer1Module, MultiServer2Module],
-})
-class MultiServerAppModule {}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
-  jest.setTimeout(15000);
-
+describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
   describe('Basic Dynamic Tools', () => {
     let app: INestApplication;
     let serverPort: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [BasicDynamicToolsAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-
-      const server = app.getHttpServer();
-      serverPort = (server.address() as import('net').AddressInfo).port;
+      const { app: a, port } = await bootstrapMcpApp({
+        name: 'basic-server',
+        controllers: [],
+        providers: [DynamicToolsService],
+      });
+      app = a;
+      serverPort = port;
     });
 
     afterAll(async () => {
@@ -278,9 +150,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should list dynamically registered tools', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const tools = await client.listTools();
 
@@ -302,9 +172,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should execute dynamically registered tools', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result: any = await client.callTool({
           name: 'search-knowledge',
@@ -321,9 +189,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should execute dynamic tool without parameters', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result: any = await client.callTool({
           name: 'get-collections',
@@ -338,9 +204,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should have correct input schema for dynamic tools', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const tools = await client.listTools();
         const searchTool = tools.tools.find(
@@ -362,15 +226,13 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     let serverPort: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [MixedToolsAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-
-      const server = app.getHttpServer();
-      serverPort = (server.address() as import('net').AddressInfo).port;
+      const { app: a, port } = await bootstrapMcpApp({
+        name: 'mixed-server',
+        controllers: [StaticTools],
+        providers: [DynamicToolsService],
+      });
+      app = a;
+      serverPort = port;
     });
 
     afterAll(async () => {
@@ -378,9 +240,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should list both decorator and dynamic tools', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/mixed/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const tools = await client.listTools();
 
@@ -402,9 +262,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should execute decorator-based tool alongside dynamic tools', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/mixed/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result: any = await client.callTool({
           name: 'static-tool',
@@ -423,15 +281,13 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     let serverPort: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [OutputSchemaAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-
-      const server = app.getHttpServer();
-      serverPort = (server.address() as import('net').AddressInfo).port;
+      const { app: a, port } = await bootstrapMcpApp({
+        name: 'output-schema-server',
+        controllers: [],
+        providers: [OutputSchemaToolService],
+      });
+      app = a;
+      serverPort = port;
     });
 
     afterAll(async () => {
@@ -439,9 +295,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should have outputSchema in tool listing', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/output-schema/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const tools = await client.listTools();
         const tool = tools.tools.find(
@@ -458,9 +312,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should return structured content for tools with outputSchema', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/output-schema/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result: any = await client.callTool({
           name: 'structured-output-tool',
@@ -479,29 +331,48 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
   });
 
   describe('Multi-Server Isolation', () => {
-    let app: INestApplication;
-    let serverPort: number;
+    let app1: INestApplication;
+    let app2: INestApplication;
+    let port1: number;
+    let port2: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [MultiServerAppModule],
-      }).compile();
+      const server1 = await bootstrapMcpApp({
+        name: 'multi-server-1',
+        controllers: [],
+      });
+      app1 = server1.app;
+      port1 = server1.port;
+      server1.strategy.registerTool({
+        name: 'server1-dynamic-tool',
+        description: 'Dynamic tool for server 1',
+        handler: async () => ({
+          content: [{ type: 'text', text: 'Server 1 dynamic' }],
+        }),
+      });
 
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-
-      const server = app.getHttpServer();
-      serverPort = (server.address() as import('net').AddressInfo).port;
+      const server2 = await bootstrapMcpApp({
+        name: 'multi-server-2',
+        controllers: [],
+      });
+      app2 = server2.app;
+      port2 = server2.port;
+      server2.strategy.registerTool({
+        name: 'server2-dynamic-tool',
+        description: 'Dynamic tool for server 2',
+        handler: async () => ({
+          content: [{ type: 'text', text: 'Server 2 dynamic' }],
+        }),
+      });
     });
 
     afterAll(async () => {
-      await app.close();
+      await app1.close();
+      await app2.close();
     });
 
     it('should register dynamic tools to correct server (server 1)', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/multi1/mcp',
-      });
+      const client = await createStreamableClient(port1);
       try {
         const tools = await client.listTools();
 
@@ -517,9 +388,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should register dynamic tools to correct server (server 2)', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/multi2/mcp',
-      });
+      const client = await createStreamableClient(port2);
       try {
         const tools = await client.listTools();
 
@@ -535,12 +404,8 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should execute tools on their respective servers', async () => {
-      const client1 = await createStreamableClient(serverPort, {
-        endpoint: '/multi1/mcp',
-      });
-      const client2 = await createStreamableClient(serverPort, {
-        endpoint: '/multi2/mcp',
-      });
+      const client1 = await createStreamableClient(port1);
+      const client2 = await createStreamableClient(port2);
 
       try {
         const result1: any = await client1.callTool({
@@ -564,20 +429,17 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
   describe('Deregistration', () => {
     let app: INestApplication;
     let serverPort: number;
-    let capabilityBuilder: McpRegistryService;
+    let strategy: McpStrategy;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [DeregistrationToolsAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo)
-        .port;
-      capabilityBuilder = moduleFixture.get(McpRegistryService, {
-        strict: false,
+      const result = await bootstrapMcpApp({
+        name: 'dereg-server',
+        controllers: [],
+        providers: [DynamicToolsService],
       });
+      app = result.app;
+      serverPort = result.port;
+      strategy = result.strategy;
     });
 
     afterAll(async () => {
@@ -585,20 +447,18 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should remove a tool from the listing', async () => {
-      capabilityBuilder.registerTool({
+      strategy.registerTool({
         name: 'temp-tool',
         description: 'Temporary tool',
         handler: async () => ({ content: [{ type: 'text', text: 'temp' }] }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         let tools = await client.listTools();
         expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeDefined();
 
-        capabilityBuilder.removeTool('temp-tool');
+        strategy.removeTool('temp-tool');
 
         tools = await client.listTools();
         expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeUndefined();
@@ -608,9 +468,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should return an error when calling a removed tool', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         await expect(
           client.callTool({ name: 'temp-tool', arguments: {} }),
@@ -621,22 +479,20 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should not affect other tools when one is removed', async () => {
-      capabilityBuilder.registerTool({
+      strategy.registerTool({
         name: 'tool-to-keep',
         description: 'Should remain',
         handler: async () => ({ content: [{ type: 'text', text: 'kept' }] }),
       });
-      capabilityBuilder.registerTool({
+      strategy.registerTool({
         name: 'tool-to-remove',
         description: 'Should be removed',
         handler: async () => ({ content: [{ type: 'text', text: 'gone' }] }),
       });
 
-      capabilityBuilder.removeTool('tool-to-remove');
+      strategy.removeTool('tool-to-remove');
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const tools = await client.listTools();
         expect(
@@ -651,15 +507,13 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should reflect a newly registered tool on a running server', async () => {
-      capabilityBuilder.registerTool({
+      strategy.registerTool({
         name: 'hot-registered-tool',
         description: 'Registered after server started',
         handler: async () => ({ content: [{ type: 'text', text: 'hot' }] }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const tools = await client.listTools();
         expect(
@@ -671,15 +525,15 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should re-register a tool after removal', async () => {
-      capabilityBuilder.registerTool({
+      strategy.registerTool({
         name: 'reregistered-tool',
         description: 'Original',
         handler: async () => ({
           content: [{ type: 'text', text: 'original' }],
         }),
       });
-      capabilityBuilder.removeTool('reregistered-tool');
-      capabilityBuilder.registerTool({
+      strategy.removeTool('reregistered-tool');
+      strategy.registerTool({
         name: 'reregistered-tool',
         description: 'Replacement',
         handler: async () => ({
@@ -687,9 +541,7 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const tools = await client.listTools();
         const matches = tools.tools.filter(
@@ -709,20 +561,18 @@ describe('E2E: Dynamic Tool Registration via McpRegistryService', () => {
     });
 
     it('should overwrite a tool when registered with the same name', async () => {
-      capabilityBuilder.registerTool({
+      strategy.registerTool({
         name: 'duplicate-tool',
         description: 'First version',
         handler: async () => ({ content: [{ type: 'text', text: 'first' }] }),
       });
-      capabilityBuilder.registerTool({
+      strategy.registerTool({
         name: 'duplicate-tool',
         description: 'Second version',
         handler: async () => ({ content: [{ type: 'text', text: 'second' }] }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const tools = await client.listTools();
         const matches = tools.tools.filter((t) => t.name === 'duplicate-tool');

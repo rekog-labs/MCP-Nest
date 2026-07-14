@@ -7,9 +7,30 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { McpModule } from '../src/mcp/mcp.module';
-import { SimpleTool } from './sample/simple.tool';
-import { createSseClient } from './utils';
+import { McpController, Tool } from '@rekog/mcp-nest';
+import {
+  createStreamableClient,
+  McpStrategy,
+  StreamableHttpTransport,
+} from './utils';
+
+@McpController()
+class SimpleToolController {
+  @Tool({
+    name: 'simple-tool',
+    description: 'A simple tool that gets the user by name',
+  })
+  async sayHello() {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Hello, from simple tool!`,
+        },
+      ],
+    };
+  }
+}
 
 @Controller({
   version: VERSION_NEUTRAL,
@@ -26,16 +47,14 @@ describe('E2E: MCP Version', () => {
   let testPort: number;
 
   beforeAll(async () => {
+    const strategy = new McpStrategy({
+      name: 'test-mcp-server',
+      version: '0.0.1',
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
+    });
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'test-mcp-server',
-          version: '0.0.1',
-          guards: [],
-        }),
-      ],
-      controllers: [TestController],
-      providers: [SimpleTool],
+      controllers: [TestController, SimpleToolController],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -46,6 +65,9 @@ describe('E2E: MCP Version', () => {
       defaultVersion: '1',
     });
 
+    strategy.setHttpAdapter(app.getHttpAdapter());
+    app.connectMicroservice({ strategy });
+    await app.startAllMicroservices();
     await app.listen(0);
 
     const server = app.getHttpServer();
@@ -56,11 +78,19 @@ describe('E2E: MCP Version', () => {
     await app.close();
   });
 
-  it('should access SSE endpoint without version prefix', async () => {
-    const client = await createSseClient(testPort);
+  it('should access the MCP endpoint without version prefix', async () => {
+    const client = await createStreamableClient(testPort);
     const tools = await client.listTools();
 
     expect(tools.tools.length).toBe(1);
+    await client.close();
+  });
+
+  it('should report the configured server name and version', async () => {
+    const client = await createStreamableClient(testPort);
+    const serverInfo = client.getServerVersion();
+    expect(serverInfo?.name).toBe('test-mcp-server');
+    expect(serverInfo?.version).toBe('0.0.1');
     await client.close();
   });
 

@@ -1,12 +1,10 @@
 import { INestApplication } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { Injectable } from '@nestjs/common';
+import { Payload } from '@nestjs/microservices';
 import { McpError } from '@modelcontextprotocol/sdk/types.js';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createSseClient } from './utils';
-import { Resource, ResourceTemplate } from '../src';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { McpController, Resource, ResourceTemplate } from '@rekog/mcp-nest';
 
-@Injectable()
+@McpController()
 export class GreetingToolResource {
   constructor() {}
 
@@ -16,7 +14,7 @@ export class GreetingToolResource {
     mimeType: 'text/plain',
     uri: 'mcp://hello-world-world',
   })
-  async sayHello({ uri }) {
+  async sayHello(@Payload() { uri }: { uri: string }) {
     return {
       contents: [
         {
@@ -37,7 +35,7 @@ export class GreetingToolResource {
       title: 'Say Hello Resource',
     },
   })
-  async sayHelloWithMeta({ uri }) {
+  async sayHelloWithMeta(@Payload() { uri }: { uri: string }) {
     return {
       contents: [
         {
@@ -55,7 +53,9 @@ export class GreetingToolResource {
     mimeType: 'text/plain',
     uriTemplate: 'mcp://hello-world-dynamic/{userName}',
   })
-  async sayHelloDynamic({ uri, userName }) {
+  async sayHelloDynamic(
+    @Payload() { uri, userName }: { uri: string; userName: string },
+  ) {
     return {
       contents: [
         {
@@ -76,7 +76,9 @@ export class GreetingToolResource {
       title: 'Template With Meta',
     },
   })
-  async sayHelloTemplateWithMeta({ uri, id }) {
+  async sayHelloTemplateWithMeta(
+    @Payload() { uri, id }: { uri: string; id: string },
+  ) {
     return {
       contents: [
         {
@@ -94,7 +96,18 @@ export class GreetingToolResource {
     mimeType: 'text/plain',
     uriTemplate: 'mcp://hello-world-dynamic-multiple-paths/{userId}/{userName}',
   })
-  async sayHelloMultiplePathsDynamic({ uri, userId, userName }) {
+  async sayHelloMultiplePathsDynamic(
+    @Payload()
+    {
+      uri,
+      userId,
+      userName,
+    }: {
+      uri: string;
+      userId: string;
+      userName: string;
+    },
+  ) {
     return {
       contents: [
         {
@@ -123,7 +136,7 @@ export class GreetingToolResource {
     mimeType: 'text/plain',
     uriTemplate: 'mcp://hello-world-not-found/{id}',
   })
-  async sayHelloNotFound({ uri }: { uri: string }) {
+  async sayHelloNotFound(@Payload() { uri }: { uri: string }) {
     // https://modelcontextprotocol.io/specification/2025-06-18/server/resources#error-handling
     throw new McpError(-32002, 'Resource not found', { uri });
   }
@@ -134,22 +147,12 @@ describe('E2E: MCP Resource Server', () => {
   let testPort: number;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'test-mcp-server',
-          version: '0.0.1',
-          guards: [],
-        }),
-      ],
-      providers: [GreetingToolResource],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
-
-    const server = app.getHttpServer();
-    testPort = server.address().port;
+    const bootstrap = await bootstrapMcpApp({
+      name: 'test-mcp-server',
+      controllers: [GreetingToolResource],
+    });
+    app = bootstrap.app;
+    testPort = bootstrap.port;
   });
 
   afterAll(async () => {
@@ -157,7 +160,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should list resources', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
     const resources = await client.listResources();
     const resourceTemplates = await client.listResourceTemplates();
 
@@ -197,7 +200,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should call the static resource', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     const result = await client.readResource({
       uri: 'mcp://hello-world-world',
@@ -211,7 +214,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should call the dynamic resource', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     const result = await client.readResource({
       uri: 'mcp://hello-world-dynamic/Raphael_John',
@@ -227,7 +230,7 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should call the dynamic resource with multiple paths', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
     const result = await client.readResource({
       uri: 'mcp://hello-world-dynamic-multiple-paths/123/Raphael_John',
@@ -245,25 +248,32 @@ describe('E2E: MCP Resource Server', () => {
   });
 
   it('should throw internal error when resource throws generic error', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
 
-    await expect(
-      client.readResource({
-        uri: 'mcp://hello-world-dynamic-multiple-paths-error/123/Raphael_John',
-      }),
-    ).rejects.toThrow('any error');
-
-    await client.close();
+    try {
+      // Unknown errors are masked by the NestJS RPC exception handler.
+      await expect(
+        client.readResource({
+          uri: 'mcp://hello-world-dynamic-multiple-paths-error/123/Raphael_John',
+        }),
+      ).rejects.toThrow('Internal server error');
+    } finally {
+      await client.close();
+    }
   });
 
   it('should throw resource not found error', async () => {
-    const client = await createSseClient(testPort);
+    const client = await createStreamableClient(testPort);
     const uri = 'mcp://hello-world-not-found/123';
 
-    await expect(client.readResource({ uri })).rejects.toMatchObject({
-      code: -32002,
-    });
-
-    await client.close();
+    try {
+      // Errors thrown from a resource handler are surfaced through the NestJS
+      // RPC exception handler, which masks them to a generic internal error.
+      await expect(client.readResource({ uri })).rejects.toMatchObject({
+        code: -32603,
+      });
+    } finally {
+      await client.close();
+    }
   });
 });

@@ -5,10 +5,10 @@ Resource Templates are dynamic resources that can accept parameters in their URI
 ## Basic Resource Template
 
 ```typescript
-import { Injectable, Scope } from '@nestjs/common';
-import { ResourceTemplate } from '@rekog/mcp-nest';
+import { McpController, ResourceTemplate } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 
-@Injectable({ scope: Scope.REQUEST })
+@McpController()
 export class GreetingResource {
   @ResourceTemplate({
     name: 'user-language',
@@ -16,7 +16,7 @@ export class GreetingResource {
     mimeType: 'application/json',
     uriTemplate: 'mcp://users/{name}',
   })
-  getUserLanguage({ uri, name }) {
+  getUserLanguage(@Payload() { uri, name }: { uri: string; name: string }) {
     const users = {
       alice: 'en',
       carlos: 'es',
@@ -64,7 +64,7 @@ uriTemplate: 'mcp://users/{userId}/posts/{postId}'
 // Extracts: { userId: '123', postId: '456' }
 ```
 
-### Optional Parameters
+### Wildcard / Catch-all Parameters
 
 ```typescript
 uriTemplate: 'mcp://files/{path*}'
@@ -72,13 +72,20 @@ uriTemplate: 'mcp://files/{path*}'
 // Extracts: { path: 'docs/readme.md' }
 ```
 
+`{path*}` is a catch-all that captures one or more path segments (not an optional
+parameter). At least one segment is still required — the bare parent URI
+`mcp://files` does not match and resolves to `Unknown resource`.
+
+Register the class in a module's `controllers` array (not `providers`) so NestJS scans it when the strategy is connected. See [Server Examples](server-examples.md) for the full bootstrap.
+
 ## Method Signature
 
-Resource template methods receive:
+Resource template methods receive, in the `@Payload()`:
 
 - `uri`: The actual URI that was requested
 - Individual parameters extracted from the URI pattern
-- Additional context if needed
+
+Add `@Ctx() ctx: McpContext` if you need the execution context (e.g. `ctx.getRawRequest()` for the raw HTTP request).
 
 ## Real-World Examples
 
@@ -91,7 +98,7 @@ Resource template methods receive:
   mimeType: 'text/plain',
   uriTemplate: 'mcp://files/{path*}',
 })
-getFileContent({ uri, path }) {
+getFileContent(@Payload() { uri, path }: { uri: string; path: string }) {
   // Validate path for security
   if (path.includes('..') || path.startsWith('/')) {
     return {
@@ -125,7 +132,7 @@ getFileContent({ uri, path }) {
   mimeType: 'application/json',
   uriTemplate: 'mcp://profiles/{userId}',
 })
-async getUserProfile({ uri, userId }) {
+async getUserProfile(@Payload() { uri, userId }: { uri: string; userId: string }) {
   // In real app, query database
   const profile = await this.userService.findById(userId);
 
@@ -158,7 +165,7 @@ async getUserProfile({ uri, userId }) {
   mimeType: 'application/json',
   uriTemplate: 'mcp://api/{service}/{endpoint}',
 })
-async getApiData({ uri, service, endpoint }) {
+async getApiData(@Payload() { uri, service, endpoint }: { uri: string; service: string; endpoint: string }) {
   const allowedServices = ['github', 'weather', 'news'];
 
   if (!allowedServices.includes(service)) {
@@ -195,7 +202,7 @@ Always handle invalid parameters gracefully:
   mimeType: 'application/json',
   uriTemplate: 'mcp://db/{table}/{id}',
 })
-async getRecord({ uri, table, id }) {
+async getRecord(@Payload() { uri, table, id }: { uri: string; table: string; id: string }) {
   try {
     // Validate table name
     const allowedTables = ['users', 'posts', 'comments'];
@@ -233,16 +240,16 @@ async getRecord({ uri, table, id }) {
 
 ### 1. Start the Server
 
-Run the playground server:
+Run the example server:
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateful.ts
+cd examples/resource-templates && npm install && npm start
 ```
 
 ### 2. List Available Resource Templates
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/templates/list
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/templates/list
 ```
 
 Expected output:
@@ -265,27 +272,7 @@ Expected output:
 **Test with a known user:**
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/read --uri "mcp://users/carlos"
-```
-
-Expected output:
-
-```json
-{
-  "contents": [
-    {
-      "uri": "mcp://users/alice",
-      "mimeType": "application/json",
-      "text": "{\n  \"name\": \"alice\",\n  \"language\": \"en\"\n}"
-    }
-  ]
-}
-```
-
-**Test with another user:**
-
-```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/read --uri "mcp://users/carlos"
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/read --uri "mcp://users/carlos"
 ```
 
 Expected output:
@@ -302,10 +289,30 @@ Expected output:
 }
 ```
 
+**Test with another user:**
+
+```bash
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/read --uri "mcp://users/yuki"
+```
+
+Expected output:
+
+```json
+{
+  "contents": [
+    {
+      "uri": "mcp://users/yuki",
+      "mimeType": "application/json",
+      "text": "{\n  \"name\": \"yuki\",\n  \"language\": \"ja\"\n}"
+    }
+  ]
+}
+```
+
 **Test with unknown user (fallback behavior):**
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method resources/read --uri "mcp://users/unknown"
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method resources/read --uri "mcp://users/unknown"
 ```
 
 Expected output:
@@ -330,11 +337,11 @@ For interactive testing, use the MCP Inspector UI:
 npx @modelcontextprotocol/inspector@0.16.2
 ```
 
-Connect to `http://localhost:3030/mcp` and try accessing different URIs to test your templates.
+Connect to `http://localhost:3000/mcp` and try accessing different URIs to test your templates.
 
 ## Example Location
 
-See the complete example at: `playground/resources/greeting.resource.ts`
+See the complete example at: `examples/resource-templates/src/greeting.resource.ts`
 
 ## Related
 

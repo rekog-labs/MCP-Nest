@@ -1,8 +1,13 @@
-import { INestApplication, Injectable, Module } from '@nestjs/common';
+import { INestApplication, Module } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Tool } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { McpAuthModule } from '../src/authz/mcp-oauth.module';
+import { Payload } from '@nestjs/microservices';
+import {
+  McpController,
+  McpStrategy,
+  StreamableHttpTransport,
+  Tool,
+} from '@rekog/mcp-nest';
+import { McpAuthModule } from '@rekog/mcp-nest-auth';
 import { z } from 'zod';
 
 const MockOAuthProviderA = {
@@ -61,26 +66,26 @@ const MockOAuthProviderB = {
   scope: ['https://www.googleapis.com/auth/drive.readonly'],
 };
 
-@Injectable()
+@McpController()
 class ToolsA {
   @Tool({
     name: 'toolA',
     description: 'Tool A from ModuleA',
     parameters: z.object({}),
   })
-  toolA() {
+  toolA(@Payload() _args: unknown) {
     return { content: [{ type: 'text', text: 'Tool A result' }] };
   }
 }
 
-@Injectable()
+@McpController()
 class ToolsB {
   @Tool({
     name: 'toolB',
     description: 'Tool B from ModuleB',
     parameters: z.object({}),
   })
-  toolB() {
+  toolB(@Payload() _args: unknown) {
     return { content: [{ type: 'text', text: 'Tool B result' }] };
   }
 }
@@ -119,35 +124,39 @@ describe('E2E: Multiple McpAuthModule instances', () => {
       },
     });
 
-    const mcpModuleA = McpModule.forRoot({
+    // Each MCP server is now a microservice transport strategy with its own
+    // distinct HTTP route (replacing the old mcpEndpoint option).
+    const strategyA = new McpStrategy({
       name: 'server-a',
-      mcpEndpoint: '/servers/a/mcp',
-      sseEndpoint: '/servers/a/sse',
-      messagesEndpoint: '/servers/a/messages',
-      capabilities: { tools: {} },
       version: '0.0.1',
+      transports: [
+        new StreamableHttpTransport({
+          endpoint: '/servers/a/mcp',
+          statefulMode: true,
+        }),
+      ],
     });
 
-    const mcpModuleB = McpModule.forRoot({
+    const strategyB = new McpStrategy({
       name: 'server-b',
-      mcpEndpoint: '/servers/b/mcp',
-      sseEndpoint: '/servers/b/sse',
-      messagesEndpoint: '/servers/b/messages',
-      capabilities: { tools: {} },
       version: '0.0.1',
+      transports: [
+        new StreamableHttpTransport({
+          endpoint: '/servers/b/mcp',
+          statefulMode: true,
+        }),
+      ],
     });
 
     @Module({
-      imports: [mcpAuthModuleA, mcpModuleA],
-      providers: [ToolsA],
-      exports: [ToolsA],
+      imports: [mcpAuthModuleA],
+      controllers: [ToolsA],
     })
     class ModuleA {}
 
     @Module({
-      imports: [mcpAuthModuleB, mcpModuleB],
-      providers: [ToolsB],
-      exports: [ToolsB],
+      imports: [mcpAuthModuleB],
+      controllers: [ToolsB],
     })
     class ModuleB {}
 
@@ -155,7 +164,14 @@ describe('E2E: Multiple McpAuthModule instances', () => {
       imports: [ModuleA, ModuleB],
     }).compile();
 
+    // One HTTP adapter, but both strategies connect to it; each mounts its own
+    // transports on its own distinct endpoints.
     const app: INestApplication = moduleFixture.createNestApplication();
+    strategyA.setHttpAdapter(app.getHttpAdapter());
+    strategyB.setHttpAdapter(app.getHttpAdapter());
+    app.connectMicroservice({ strategy: strategyA });
+    app.connectMicroservice({ strategy: strategyB });
+    await app.startAllMicroservices();
     await app.listen(0);
 
     try {

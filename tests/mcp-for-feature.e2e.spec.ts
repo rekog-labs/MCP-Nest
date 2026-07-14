@@ -1,25 +1,31 @@
 import { INestApplication, Injectable, Module } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Tool, Resource, Prompt } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createStreamableClient } from './utils';
+import { McpController, Prompt, Resource, Tool } from '@rekog/mcp-nest';
+import {
+  createStreamableClient,
+  McpStrategy,
+  StreamableHttpTransport,
+} from './utils';
 import { z } from 'zod';
 
 /**
- * Test Suite: McpModule.forFeature()
+ * Test Suite: feature-module grouping of MCP capabilities
  *
- * Validates that tools, resources, and prompts can be registered to specific MCP servers
- * using McpModule.forFeature(), allowing for modular organization of MCP capabilities.
- *
- * This pattern enables:
- * - Domain-organized modules with their own tools
- * - Clear association between tools and their target MCP server
- * - Modularity without dependency coupling
+ * ADAPTATION NOTE (microservices migration):
+ * The legacy suite mounted several MCP servers in one app (separated by HTTP
+ * endpoints) and registered capabilities to a named server purely via
+ * `McpModule.forFeature([...], 'server-name')`. `McpModule` (and `forFeature`)
+ * no longer exist. Under the microservice transport-strategy model:
+ *   - An app hosts an `McpStrategy`, and the strategy scans ALL modules'
+ *     controllers, binding every `@Tool`/`@Resource`/`@Prompt` it finds.
+ *   - The "feature module" grouping intent is preserved by declaring each
+ *     group of capability `@McpController`s in its own `@Module({ controllers })`
+ *     and importing those feature modules into the app module — exactly the
+ *     equivalent of the old `forFeature` grouping, minus the runtime binding
+ *     responsibility (the strategy now binds, not the module).
+ * Per-server isolation comes from each named server being its own hybrid app on
+ * its own port, importing only the feature modules it owns.
  */
-
-// ============================================================================
-// Test Setup: Create test tools and modules
-// ============================================================================
 
 @Injectable()
 class UserService {
@@ -35,7 +41,7 @@ class UserService {
   }
 }
 
-@Injectable()
+@McpController()
 class UserTools {
   constructor(private readonly userService: UserService) {}
 
@@ -44,8 +50,8 @@ class UserTools {
     description: 'Get a user by ID',
     parameters: z.object({ id: z.string() }),
   })
-  getUser({ id }: { id: string }) {
-    const user = this.userService.getUser(id);
+  getUser(args: { id: string }) {
+    const user = this.userService.getUser(args.id);
     return { content: [{ type: 'text', text: JSON.stringify(user) }] };
   }
 
@@ -66,7 +72,7 @@ class OrderService {
   }
 }
 
-@Injectable()
+@McpController()
 class OrderTools {
   constructor(private readonly orderService: OrderService) {}
 
@@ -75,13 +81,13 @@ class OrderTools {
     description: 'Get an order by ID',
     parameters: z.object({ id: z.string() }),
   })
-  getOrder({ id }: { id: string }) {
-    const order = this.orderService.getOrder(id);
+  getOrder(args: { id: string }) {
+    const order = this.orderService.getOrder(args.id);
     return { content: [{ type: 'text', text: JSON.stringify(order) }] };
   }
 }
 
-@Injectable()
+@McpController()
 class AnalyticsTools {
   @Tool({
     name: 'get-analytics',
@@ -94,7 +100,7 @@ class AnalyticsTools {
   }
 }
 
-@Injectable()
+@McpController()
 class ResourceProvider {
   @Resource({
     uri: 'feature://config',
@@ -113,7 +119,7 @@ class ResourceProvider {
   }
 }
 
-@Injectable()
+@McpController()
 class PromptProvider {
   @Prompt({
     name: 'feature-prompt',
@@ -128,166 +134,102 @@ class PromptProvider {
   }
 }
 
-// ============================================================================
-// Feature Module: User domain tools
-// ============================================================================
+// Feature modules group capability controllers, mirroring the old
+// `forFeature([...])` grouping. The strategy scans the controllers of every
+// imported module and binds their handlers.
 @Module({
-  imports: [McpModule.forFeature([UserTools], 'main-server')],
-  providers: [UserTools, UserService],
-  exports: [],
+  controllers: [UserTools, OrderTools],
+  providers: [UserService, OrderService],
 })
-class UserFeatureModule {}
+class UserOrderFeatureModule {}
 
-// ============================================================================
-// Feature Module: Order domain tools
-// ============================================================================
 @Module({
-  imports: [McpModule.forFeature([OrderTools], 'main-server')],
-  providers: [OrderTools, OrderService],
-  exports: [OrderTools],
+  controllers: [ResourceProvider, PromptProvider],
 })
-class OrderFeatureModule {}
+class ResourcePromptFeatureModule {}
 
-// ============================================================================
-// Feature Module: Analytics for a different server
-// ============================================================================
 @Module({
-  imports: [McpModule.forFeature([AnalyticsTools], 'analytics-server')],
-  providers: [AnalyticsTools],
-  exports: [AnalyticsTools],
+  controllers: [AnalyticsTools],
 })
 class AnalyticsFeatureModule {}
 
-// ============================================================================
-// Feature Module: Resources and Prompts
-// ============================================================================
-@Module({
-  imports: [
-    McpModule.forFeature([ResourceProvider, PromptProvider], 'main-server'),
-  ],
-  providers: [ResourceProvider, PromptProvider],
-  exports: [ResourceProvider, PromptProvider],
-})
-class ResourcesFeatureModule {}
+async function bootstrapServer(config: {
+  name: string;
+  imports: any[];
+}): Promise<{ app: INestApplication; port: number }> {
+  const strategy = new McpStrategy({
+    name: config.name,
+    version: '1.0.0',
+    transports: [new StreamableHttpTransport({ statefulMode: true })],
+  });
 
-// ============================================================================
-// MCP Server Configurations
-// ============================================================================
-const mainServerModule = McpModule.forRoot({
-  name: 'main-server',
-  version: '1.0.0',
-  mcpEndpoint: '/main/mcp',
-  sseEndpoint: '/main/sse',
-  messagesEndpoint: '/main/messages',
-});
+  const moduleFixture: TestingModule = await Test.createTestingModule({
+    imports: config.imports,
+  }).compile();
 
-const analyticsServerModule = McpModule.forRoot({
-  name: 'analytics-server',
-  version: '1.0.0',
-  mcpEndpoint: '/analytics/mcp',
-  sseEndpoint: '/analytics/sse',
-  messagesEndpoint: '/analytics/messages',
-});
+  const app = moduleFixture.createNestApplication();
+  strategy.setHttpAdapter(app.getHttpAdapter());
+  app.connectMicroservice({ strategy });
+  await app.startAllMicroservices();
+  await app.listen(0);
+  const port = (app.getHttpServer().address() as { port: number }).port;
+  return { app, port };
+}
 
-// ============================================================================
-// App Module: Combines servers with feature modules
-// ============================================================================
-@Module({
-  imports: [
-    mainServerModule,
-    analyticsServerModule,
-    UserFeatureModule,
-    OrderFeatureModule,
-    AnalyticsFeatureModule,
-    ResourcesFeatureModule,
-  ],
-  // Note: No providers with @Tool decorators here - all tools come from feature modules
-})
-class AppModule {}
-
-// ============================================================================
-// Test: Multiple feature modules targeting different servers
-// ============================================================================
-@Module({
-  imports: [McpModule.forFeature([UserTools, OrderTools], 'combined-server')],
-  providers: [UserTools, UserService, OrderTools, OrderService],
-  exports: [UserTools, OrderTools],
-})
-class CombinedFeatureModule {}
-
-const combinedServerModule = McpModule.forRoot({
-  name: 'combined-server',
-  version: '1.0.0',
-  mcpEndpoint: '/combined/mcp',
-  sseEndpoint: '/combined/sse',
-  messagesEndpoint: '/combined/messages',
-});
-
-@Module({
-  imports: [combinedServerModule, CombinedFeatureModule],
-})
-class CombinedAppModule {}
-
-describe('E2E: McpModule.forFeature() (Streamable HTTP)', () => {
-  let app: INestApplication;
+describe('E2E: feature-module grouping (Streamable HTTP)', () => {
+  let mainApp: INestApplication;
+  let analyticsApp: INestApplication;
   let combinedApp: INestApplication;
-  let serverPort: number;
-  let combinedServerPort: number;
+  let mainPort: number;
+  let analyticsPort: number;
+  let combinedPort: number;
 
   jest.setTimeout(15000);
 
   beforeAll(async () => {
-    // Create main app with multiple servers and feature modules
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
+    // Main server: user + order tools, plus a resource and a prompt, grouped
+    // into two feature modules imported into the app.
+    const main = await bootstrapServer({
+      name: 'main-server',
+      imports: [UserOrderFeatureModule, ResourcePromptFeatureModule],
+    });
+    mainApp = main.app;
+    mainPort = main.port;
 
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
+    // Analytics server: only the analytics feature module.
+    const analytics = await bootstrapServer({
+      name: 'analytics-server',
+      imports: [AnalyticsFeatureModule],
+    });
+    analyticsApp = analytics.app;
+    analyticsPort = analytics.port;
 
-    const server = app.getHttpServer();
-    if (!server.address()) {
-      throw new Error('Server address not found after listen');
-    }
-    serverPort = (server.address() as import('net').AddressInfo).port;
-
-    // Create combined app
-    const combinedModuleFixture: TestingModule = await Test.createTestingModule(
-      {
-        imports: [CombinedAppModule],
-      },
-    ).compile();
-
-    combinedApp = combinedModuleFixture.createNestApplication();
-    await combinedApp.listen(0);
-
-    const combinedServer = combinedApp.getHttpServer();
-    if (!combinedServer.address()) {
-      throw new Error('Combined server address not found after listen');
-    }
-    combinedServerPort = (combinedServer.address() as import('net').AddressInfo)
-      .port;
+    // Combined server: the user/order feature module only.
+    const combined = await bootstrapServer({
+      name: 'combined-server',
+      imports: [UserOrderFeatureModule],
+    });
+    combinedApp = combined.app;
+    combinedPort = combined.port;
   });
 
   afterAll(async () => {
-    await app.close();
+    await mainApp.close();
+    await analyticsApp.close();
     await combinedApp.close();
   });
 
-  describe('Main Server - Should have tools from UserFeatureModule and OrderFeatureModule', () => {
-    it('should list user and order tools registered via forFeature', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/main/mcp',
-      });
+  describe('Main Server - Should have user and order capabilities', () => {
+    it('should list user and order tools registered for the server', async () => {
+      const client = await createStreamableClient(mainPort);
       try {
         const tools = await client.listTools();
 
-        // Should have tools from both feature modules
         expect(tools.tools.find((t) => t.name === 'get-user')).toBeDefined();
         expect(tools.tools.find((t) => t.name === 'list-users')).toBeDefined();
         expect(tools.tools.find((t) => t.name === 'get-order')).toBeDefined();
 
-        // Should NOT have analytics tools (registered to different server)
+        // Should NOT have analytics tools (registered to a different server)
         expect(
           tools.tools.find((t) => t.name === 'get-analytics'),
         ).toBeUndefined();
@@ -296,10 +238,8 @@ describe('E2E: McpModule.forFeature() (Streamable HTTP)', () => {
       }
     });
 
-    it('should call tools registered via forFeature', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/main/mcp',
-      });
+    it('should call tools registered for the server', async () => {
+      const client = await createStreamableClient(mainPort);
       try {
         const result: any = await client.callTool({
           name: 'get-user',
@@ -314,10 +254,8 @@ describe('E2E: McpModule.forFeature() (Streamable HTTP)', () => {
       }
     });
 
-    it('should have resources registered via forFeature', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/main/mcp',
-      });
+    it('should have resources registered for the server', async () => {
+      const client = await createStreamableClient(mainPort);
       try {
         const resources = await client.listResources();
         expect(
@@ -328,10 +266,8 @@ describe('E2E: McpModule.forFeature() (Streamable HTTP)', () => {
       }
     });
 
-    it('should have prompts registered via forFeature', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/main/mcp',
-      });
+    it('should have prompts registered for the server', async () => {
+      const client = await createStreamableClient(mainPort);
       try {
         const prompts = await client.listPrompts();
         expect(
@@ -343,15 +279,12 @@ describe('E2E: McpModule.forFeature() (Streamable HTTP)', () => {
     });
   });
 
-  describe('Analytics Server - Should have tools from AnalyticsFeatureModule only', () => {
+  describe('Analytics Server - Should have analytics tools only', () => {
     it('should list only analytics tools', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/analytics/mcp',
-      });
+      const client = await createStreamableClient(analyticsPort);
       try {
         const tools = await client.listTools();
 
-        // Should have analytics tools
         expect(
           tools.tools.find((t) => t.name === 'get-analytics'),
         ).toBeDefined();
@@ -368,9 +301,7 @@ describe('E2E: McpModule.forFeature() (Streamable HTTP)', () => {
     });
 
     it('should call analytics tool', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/analytics/mcp',
-      });
+      const client = await createStreamableClient(analyticsPort);
       try {
         const result: any = await client.callTool({
           name: 'get-analytics',
@@ -385,14 +316,11 @@ describe('E2E: McpModule.forFeature() (Streamable HTTP)', () => {
   });
 
   describe('Combined Feature Module - Multiple providers in single forFeature call', () => {
-    it('should list tools from multiple providers registered in single forFeature', async () => {
-      const client = await createStreamableClient(combinedServerPort, {
-        endpoint: '/combined/mcp',
-      });
+    it('should list tools from multiple capability classes grouped in single forFeature', async () => {
+      const client = await createStreamableClient(combinedPort);
       try {
         const tools = await client.listTools();
 
-        // Should have tools from both UserTools and OrderTools
         expect(tools.tools.find((t) => t.name === 'get-user')).toBeDefined();
         expect(tools.tools.find((t) => t.name === 'list-users')).toBeDefined();
         expect(tools.tools.find((t) => t.name === 'get-order')).toBeDefined();
@@ -405,17 +333,12 @@ describe('E2E: McpModule.forFeature() (Streamable HTTP)', () => {
     });
   });
 
-  describe('Server isolation - forFeature tools go to correct server', () => {
-    it('should not register tools to wrong server even when forFeature targets different server', async () => {
-      // This test verifies that when forFeature targets a server that exists,
-      // tools only go to that specific server, not others
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/main/mcp',
-      });
+  describe('Server isolation - capabilities go to correct server', () => {
+    it('should not register analytics tools on the main server', async () => {
+      const client = await createStreamableClient(mainPort);
       try {
         const tools = await client.listTools();
 
-        // Main server should NOT have analytics tools (they go to analytics-server)
         expect(
           tools.tools.find((t) => t.name === 'get-analytics'),
         ).toBeUndefined();

@@ -1,24 +1,29 @@
 import {
   INestApplication,
+  Inject,
   Injectable,
-  Module,
   OnModuleInit,
 } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { Resource, McpRegistryService } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createStreamableClient } from './utils';
+import { Payload } from '@nestjs/microservices';
+import {
+  MCP_STRATEGY,
+  McpController,
+  McpStrategy,
+  Resource,
+} from '@rekog/mcp-nest';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 
 // ============================================================================
-// Test Setup: Dynamic resource registration service
+// Test Setup: Dynamic resource registration service (injects the strategy via
+// the MCP_STRATEGY token, mirroring the old OnModuleInit pattern).
 // ============================================================================
 
 @Injectable()
 class DynamicResourcesService implements OnModuleInit {
-  constructor(private readonly capabilityBuilder: McpRegistryService) {}
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
 
   onModuleInit() {
-    this.capabilityBuilder.registerResource({
+    this.strategy.registerResource({
       uri: 'mcp://dynamic-config',
       name: 'dynamic-config',
       description: 'Application configuration loaded at runtime',
@@ -36,7 +41,7 @@ class DynamicResourcesService implements OnModuleInit {
       },
     });
 
-    this.capabilityBuilder.registerResource({
+    this.strategy.registerResource({
       uri: 'mcp://dynamic-status',
       name: 'dynamic-status',
       description: 'Service status',
@@ -59,7 +64,7 @@ class DynamicResourcesService implements OnModuleInit {
 // Test Setup: Decorator-based resource (for mixed mode testing)
 // ============================================================================
 
-@Injectable()
+@McpController()
 class StaticResource {
   @Resource({
     name: 'static-resource',
@@ -67,7 +72,7 @@ class StaticResource {
     uri: 'mcp://static-resource',
     mimeType: 'text/plain',
   })
-  getStaticResource({ uri }: { uri: string }) {
+  getStaticResource(@Payload() { uri }: { uri: string }) {
     return {
       contents: [{ uri, mimeType: 'text/plain', text: 'static content' }],
     };
@@ -75,134 +80,22 @@ class StaticResource {
 }
 
 // ============================================================================
-// Test Setup: Multi-server isolation
-// ============================================================================
-
-@Injectable()
-class Server1DynamicResources implements OnModuleInit {
-  constructor(private readonly capabilityBuilder: McpRegistryService) {}
-
-  onModuleInit() {
-    this.capabilityBuilder.registerResource({
-      uri: 'mcp://server1-resource',
-      name: 'server1-resource',
-      description: 'Resource for server 1',
-      handler: async () => ({
-        contents: [
-          {
-            uri: 'mcp://server1-resource',
-            mimeType: 'text/plain',
-            text: 'server 1',
-          },
-        ],
-      }),
-    });
-  }
-}
-
-@Injectable()
-class Server2DynamicResources implements OnModuleInit {
-  constructor(private readonly capabilityBuilder: McpRegistryService) {}
-
-  onModuleInit() {
-    this.capabilityBuilder.registerResource({
-      uri: 'mcp://server2-resource',
-      name: 'server2-resource',
-      description: 'Resource for server 2',
-      handler: async () => ({
-        contents: [
-          {
-            uri: 'mcp://server2-resource',
-            mimeType: 'text/plain',
-            text: 'server 2',
-          },
-        ],
-      }),
-    });
-  }
-}
-
-// ============================================================================
-// Modules
-// ============================================================================
-
-const deregServerModule = McpModule.forRoot({
-  name: 'dereg-resource-server',
-  version: '1.0.0',
-  mcpEndpoint: '/dereg/mcp',
-});
-
-@Module({
-  imports: [deregServerModule],
-  providers: [DynamicResourcesService],
-})
-class DeregistrationResourcesAppModule {}
-
-const basicServerModule = McpModule.forRoot({
-  name: 'basic-resource-server',
-  version: '1.0.0',
-  mcpEndpoint: '/basic/mcp',
-});
-
-@Module({
-  imports: [basicServerModule],
-  providers: [DynamicResourcesService],
-})
-class BasicDynamicResourcesAppModule {}
-
-const mixedServerModule = McpModule.forRoot({
-  name: 'mixed-resource-server',
-  version: '1.0.0',
-  mcpEndpoint: '/mixed/mcp',
-});
-
-@Module({
-  imports: [mixedServerModule],
-  providers: [DynamicResourcesService, StaticResource],
-})
-class MixedResourcesAppModule {}
-
-const multiServer1Module = McpModule.forRoot({
-  name: 'multi-resource-server-1',
-  version: '1.0.0',
-  mcpEndpoint: '/multi1/mcp',
-});
-
-const multiServer2Module = McpModule.forRoot({
-  name: 'multi-resource-server-2',
-  version: '1.0.0',
-  mcpEndpoint: '/multi2/mcp',
-});
-
-@Module({ imports: [multiServer1Module], providers: [Server1DynamicResources] })
-class MultiResourceServer1Module {}
-
-@Module({ imports: [multiServer2Module], providers: [Server2DynamicResources] })
-class MultiResourceServer2Module {}
-
-@Module({ imports: [MultiResourceServer1Module, MultiResourceServer2Module] })
-class MultiResourceServerAppModule {}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
-  jest.setTimeout(15000);
-
+describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
   describe('Basic Dynamic Resources', () => {
     let app: INestApplication;
     let serverPort: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [BasicDynamicResourcesAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo)
-        .port;
+      const { app: a, port } = await bootstrapMcpApp({
+        name: 'basic-resource-server',
+        controllers: [],
+        providers: [DynamicResourcesService],
+      });
+      app = a;
+      serverPort = port;
     });
 
     afterAll(async () => {
@@ -210,9 +103,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should list dynamically registered resources', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listResources();
 
@@ -228,9 +119,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should include resource metadata in listing', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listResources();
         const configResource = result.resources.find(
@@ -248,9 +137,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should read a dynamically registered resource', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.readResource({
           uri: 'mcp://dynamic-config',
@@ -268,9 +155,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should read a dynamic resource without explicit mimeType', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/basic/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.readResource({
           uri: 'mcp://dynamic-status',
@@ -289,14 +174,13 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     let serverPort: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [MixedResourcesAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo)
-        .port;
+      const { app: a, port } = await bootstrapMcpApp({
+        name: 'mixed-resource-server',
+        controllers: [StaticResource],
+        providers: [DynamicResourcesService],
+      });
+      app = a;
+      serverPort = port;
     });
 
     afterAll(async () => {
@@ -304,9 +188,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should list both decorator and dynamic resources', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/mixed/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listResources();
 
@@ -326,9 +208,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should read decorator-based resource alongside dynamic resources', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/mixed/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.readResource({
           uri: 'mcp://static-resource',
@@ -343,28 +223,62 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
   });
 
   describe('Multi-Server Isolation', () => {
-    let app: INestApplication;
-    let serverPort: number;
+    let app1: INestApplication;
+    let app2: INestApplication;
+    let port1: number;
+    let port2: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [MultiResourceServerAppModule],
-      }).compile();
+      const server1 = await bootstrapMcpApp({
+        name: 'multi-resource-server-1',
+        controllers: [],
+      });
+      app1 = server1.app;
+      port1 = server1.port;
+      server1.strategy.registerResource({
+        uri: 'mcp://server1-resource',
+        name: 'server1-resource',
+        description: 'Resource for server 1',
+        handler: async () => ({
+          contents: [
+            {
+              uri: 'mcp://server1-resource',
+              mimeType: 'text/plain',
+              text: 'server 1',
+            },
+          ],
+        }),
+      });
 
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo)
-        .port;
+      const server2 = await bootstrapMcpApp({
+        name: 'multi-resource-server-2',
+        controllers: [],
+      });
+      app2 = server2.app;
+      port2 = server2.port;
+      server2.strategy.registerResource({
+        uri: 'mcp://server2-resource',
+        name: 'server2-resource',
+        description: 'Resource for server 2',
+        handler: async () => ({
+          contents: [
+            {
+              uri: 'mcp://server2-resource',
+              mimeType: 'text/plain',
+              text: 'server 2',
+            },
+          ],
+        }),
+      });
     });
 
     afterAll(async () => {
-      await app.close();
+      await app1.close();
+      await app2.close();
     });
 
     it('should register dynamic resources to correct server (server 1)', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/multi1/mcp',
-      });
+      const client = await createStreamableClient(port1);
       try {
         const result = await client.listResources();
 
@@ -380,9 +294,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should register dynamic resources to correct server (server 2)', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/multi2/mcp',
-      });
+      const client = await createStreamableClient(port2);
       try {
         const result = await client.listResources();
 
@@ -398,12 +310,8 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should read resources on their respective servers', async () => {
-      const client1 = await createStreamableClient(serverPort, {
-        endpoint: '/multi1/mcp',
-      });
-      const client2 = await createStreamableClient(serverPort, {
-        endpoint: '/multi2/mcp',
-      });
+      const client1 = await createStreamableClient(port1);
+      const client2 = await createStreamableClient(port2);
       try {
         const result1 = await client1.readResource({
           uri: 'mcp://server1-resource',
@@ -424,20 +332,17 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
   describe('Deregistration', () => {
     let app: INestApplication;
     let serverPort: number;
-    let capabilityBuilder: McpRegistryService;
+    let strategy: McpStrategy;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [DeregistrationResourcesAppModule],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      serverPort = (app.getHttpServer().address() as import('net').AddressInfo)
-        .port;
-      capabilityBuilder = moduleFixture.get(McpRegistryService, {
-        strict: false,
+      const result = await bootstrapMcpApp({
+        name: 'dereg-resource-server',
+        controllers: [],
+        providers: [DynamicResourcesService],
       });
+      app = result.app;
+      serverPort = result.port;
+      strategy = result.strategy;
     });
 
     afterAll(async () => {
@@ -445,7 +350,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should remove a resource from the listing', async () => {
-      capabilityBuilder.registerResource({
+      strategy.registerResource({
         uri: 'mcp://temp-resource',
         name: 'temp-resource',
         description: 'Temporary resource',
@@ -460,16 +365,14 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         let result = await client.listResources();
         expect(
           result.resources.find((r) => r.name === 'temp-resource'),
         ).toBeDefined();
 
-        capabilityBuilder.removeResource('mcp://temp-resource');
+        strategy.removeResource('mcp://temp-resource');
 
         result = await client.listResources();
         expect(
@@ -481,9 +384,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should return an error when reading a removed resource', async () => {
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         await expect(
           client.readResource({ uri: 'mcp://temp-resource' }),
@@ -494,7 +395,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should not affect other resources when one is removed', async () => {
-      capabilityBuilder.registerResource({
+      strategy.registerResource({
         uri: 'mcp://resource-to-keep',
         name: 'resource-to-keep',
         description: 'Should remain',
@@ -508,7 +409,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
           ],
         }),
       });
-      capabilityBuilder.registerResource({
+      strategy.registerResource({
         uri: 'mcp://resource-to-remove',
         name: 'resource-to-remove',
         description: 'Should be removed',
@@ -523,11 +424,9 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
         }),
       });
 
-      capabilityBuilder.removeResource('mcp://resource-to-remove');
+      strategy.removeResource('mcp://resource-to-remove');
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listResources();
         expect(
@@ -542,7 +441,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should reflect a newly registered resource on a running server', async () => {
-      capabilityBuilder.registerResource({
+      strategy.registerResource({
         uri: 'mcp://hot-registered-resource',
         name: 'hot-registered-resource',
         description: 'Registered after server started',
@@ -557,9 +456,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listResources();
         expect(
@@ -571,7 +468,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should re-register a resource after removal', async () => {
-      capabilityBuilder.registerResource({
+      strategy.registerResource({
         uri: 'mcp://reregistered-resource',
         name: 'reregistered-resource',
         description: 'Original',
@@ -585,8 +482,8 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
           ],
         }),
       });
-      capabilityBuilder.removeResource('mcp://reregistered-resource');
-      capabilityBuilder.registerResource({
+      strategy.removeResource('mcp://reregistered-resource');
+      strategy.registerResource({
         uri: 'mcp://reregistered-resource',
         name: 'reregistered-resource',
         description: 'Replacement',
@@ -601,9 +498,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listResources();
         const matches = result.resources.filter(
@@ -622,7 +517,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
     });
 
     it('should overwrite a resource when registered with the same uri', async () => {
-      capabilityBuilder.registerResource({
+      strategy.registerResource({
         uri: 'mcp://duplicate-resource',
         name: 'duplicate-resource',
         description: 'First version',
@@ -636,7 +531,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
           ],
         }),
       });
-      capabilityBuilder.registerResource({
+      strategy.registerResource({
         uri: 'mcp://duplicate-resource',
         name: 'duplicate-resource',
         description: 'Second version',
@@ -651,9 +546,7 @@ describe('E2E: Dynamic Resource Registration via McpRegistryService', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort, {
-        endpoint: '/dereg/mcp',
-      });
+      const client = await createStreamableClient(serverPort);
       try {
         const result = await client.listResources();
         const matches = result.resources.filter(

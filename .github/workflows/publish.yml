@@ -39,12 +39,17 @@ jobs:
       - name: Run tests
         run: bun test
 
-      - name: Update package.json version
+      - name: Update package versions
         run: |
           TAG_VERSION=${{ github.event.release.tag_name }}
           # Remove 'v' prefix if present
           TAG_VERSION=${TAG_VERSION#v}
-          npm version $TAG_VERSION --no-git-tag-version
+          # Bump both published workspace packages to the release version.
+          # (auth declares @rekog/mcp-nest as a peer with a >= range, so the
+          # core bump does not require touching the auth peer range.)
+          npm version "$TAG_VERSION" --no-git-tag-version \
+            -w @rekog/mcp-nest \
+            -w @rekog/mcp-nest-auth
 
       - name: Publish to npm
         run: |
@@ -53,12 +58,15 @@ jobs:
 
           # Check if this is a pre-release version
           if [[ "$TAG_VERSION" =~ (alpha|beta|rc|next|canary) ]]; then
-            echo "Publishing pre-release version with --tag next"
-            npm publish --provenance --access public --tag next
+            NPM_TAG=next
           else
-            echo "Publishing stable version with --tag latest"
-            npm publish --provenance --access public --tag latest
+            NPM_TAG=latest
           fi
+          echo "Publishing @rekog/mcp-nest and @rekog/mcp-nest-auth with --tag $NPM_TAG"
+
+          # Publish core first, then the auth package (which peer-depends on it).
+          npm publish -w @rekog/mcp-nest --provenance --access public --tag "$NPM_TAG"
+          npm publish -w @rekog/mcp-nest-auth --provenance --access public --tag "$NPM_TAG"
 
   smoke-test:
     name: Smoke test published package
@@ -85,27 +93,31 @@ jobs:
         env:
           V: ${{ steps.ver.outputs.version }}
         run: |
-          for i in $(seq 1 30); do
-            if npm view "@rekog/mcp-nest@$V" version >/dev/null 2>&1; then
-              echo "Published version $V is available on npm"
-              exit 0
+          for pkg in @rekog/mcp-nest @rekog/mcp-nest-auth; do
+            ok=0
+            for i in $(seq 1 30); do
+              if npm view "$pkg@$V" version >/dev/null 2>&1; then
+                echo "$pkg@$V is available on npm"
+                ok=1
+                break
+              fi
+              echo "Waiting for $pkg@$V to appear on npm (attempt $i/30)..."
+              sleep 5
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "Timed out waiting for $pkg@$V"
+              exit 1
             fi
-            echo "Waiting for @rekog/mcp-nest@$V to appear on npm (attempt $i/30)..."
-            sleep 5
           done
-          echo "Timed out waiting for @rekog/mcp-nest@$V"
-          exit 1
 
-      - name: Stage playground against published artifact
+      - name: Install and smoke-test the published package
+        working-directory: examples/server-examples
         env:
           V: ${{ steps.ver.outputs.version }}
         run: |
-          cp -r playground /tmp/smoke
-          cd /tmp/smoke
-          # The single change: registry version instead of workspace file: reference
+          # server-examples is a self-contained project that depends only on
+          # @rekog/mcp-nest (no auth). Pin it to the just-published version so
+          # the smoke exercises the exact artifact that was released.
           npm pkg set "dependencies.@rekog/mcp-nest=$V"
           npm install --no-audit --no-fund
-
-      - name: Run smoke
-        working-directory: /tmp/smoke
-        run: npm run smoke
+          npm run smoke

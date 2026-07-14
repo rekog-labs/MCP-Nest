@@ -1,25 +1,33 @@
-import { INestApplication, Injectable } from '@nestjs/common';
+import {
+  Controller,
+  INestApplication,
+  Injectable,
+  UseGuards,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { randomBytes, createHash } from 'crypto';
 import { z } from 'zod';
-import { Tool, McpModule } from '../src';
-import type { Context } from '../src';
-import jwt from 'jsonwebtoken';
-import { McpAuthModule } from '../src/authz/mcp-oauth.module';
-import { McpAuthJwtGuard } from '../src/authz/guards/jwt-auth.guard';
+import { Ctx, Payload } from '@nestjs/microservices';
 import {
-  OAuthProviderConfig,
-  OAuthUserProfile,
-} from '../src/authz/providers/oauth-provider.interface';
+  McpContext,
+  McpController,
+  McpHttpControllerFor,
+  McpStrategy,
+  StreamableHttpTransport,
+  Tool,
+} from '@rekog/mcp-nest';
+import jwt from 'jsonwebtoken';
+import { McpAuthJwtGuard, McpAuthModule } from '@rekog/mcp-nest-auth';
+import { OAuthProviderConfig, OAuthUserProfile } from '@rekog/mcp-nest-auth';
 import type {
   IOAuthStore,
   OAuthClient,
   AuthorizationCode,
   ClientRegistrationDto,
-} from '../src/authz/stores/oauth-store.interface';
-import type { OAuthSession } from '../src/authz/providers/oauth-provider.interface';
-import { createSseClient } from './utils';
+} from '@rekog/mcp-nest-auth';
+import type { OAuthSession } from '@rekog/mcp-nest-auth';
+import { createStreamableClient } from './utils';
 
 // Mock OAuth Provider for testing
 const MockOAuthProvider: OAuthProviderConfig = {
@@ -154,7 +162,7 @@ class MockOAuthStore implements IOAuthStore {
 }
 
 // Test tool for protected endpoints
-@Injectable()
+@McpController()
 export class TestProtectedTool {
   @Tool({
     name: 'protected-hello',
@@ -163,17 +171,31 @@ export class TestProtectedTool {
       message: z.string().default('Hello'),
     }),
   })
-  async protectedHello({ message }, context: Context, request: any) {
+  async protectedHello(
+    @Payload() { message }: { message: string },
+    @Ctx() context: McpContext,
+  ) {
+    const user = context.getRawRequest<{ user?: any }>()?.user;
     return {
       content: [
         {
           type: 'text',
-          text: `${message} from authenticated user: ${request.user?.sub}`,
+          text: `${message} from authenticated user: ${user?.sub}`,
         },
       ],
     };
   }
 }
+
+// The MCP transport route mounted as a real Nest controller. `McpAuthJwtGuard`
+// (from the auth package) validates the Bearer JWT via the module's
+// JwtTokenService, rejects missing/invalid tokens with 401, and sets `req.user`
+// on success — replacing the old `app.use(...)` middleware.
+const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
+
+@Controller('mcp')
+@UseGuards(McpAuthJwtGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
 describe('E2E: McpAuthModule OAuth Flow', () => {
   let app: INestApplication;
@@ -203,6 +225,18 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
   beforeAll(async () => {
     mockStore = new MockOAuthStore();
 
+    // The OAuth 2.1 module still provides its normal Nest controllers
+    // (register/authorize/token/well-known). The MCP transport is protected by
+    // `McpAuthJwtGuard` on the mounted `McpHttpController` above: it validates
+    // the Bearer JWT (reusing the authz JwtTokenService) and sets `req.user`.
+    // Missing/invalid tokens get a 401, which the MCP client surfaces as a
+    // connection error.
+    const strategy = new McpStrategy({
+      name: 'test-oauth-mcp-server',
+      version: '0.0.1',
+      transports: [mcpTransport],
+    });
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         McpAuthModule.forRoot({
@@ -218,16 +252,20 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
             store: mockStore,
           },
         }),
-        McpModule.forRoot({
-          name: 'test-oauth-mcp-server',
-          version: '0.0.1',
-          guards: [McpAuthJwtGuard],
-        }),
       ],
-      providers: [TestProtectedTool],
+      controllers: [TestProtectedTool, McpHttpController],
+      providers: [McpAuthJwtGuard],
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    strategy.setHttpAdapter(app.getHttpAdapter());
+    app.connectMicroservice({ strategy });
+
+    // The OAuth controller endpoints (/auth/*, /.well-known/*) stay open so the
+    // handshake can run; only the mounted /mcp controller is guarded by
+    // McpAuthJwtGuard.
+
+    await app.startAllMicroservices();
     await app.listen(0);
 
     const server = app.getHttpServer();
@@ -486,7 +524,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
     });
 
     it('should allow access to protected MCP endpoints with valid token', async () => {
-      const client = await createSseClient(testPort, {
+      const client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: `Bearer ${validAccessToken}`,
@@ -514,7 +552,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
       // Standard OAuth flow: connection without token should get 401
       // This triggers the MCP Authorization flow for the client
       await expect(
-        createSseClient(testPort, {
+        createStreamableClient(testPort, {
           requestInit: {
             headers: {},
           },
@@ -524,7 +562,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
 
     it('should reject access to protected MCP endpoints with invalid token', async () => {
       await expect(
-        createSseClient(testPort, {
+        createStreamableClient(testPort, {
           requestInit: {
             headers: {
               Authorization: 'Bearer invalid-token',

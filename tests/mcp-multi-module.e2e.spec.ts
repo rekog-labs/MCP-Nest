@@ -1,10 +1,22 @@
-import { INestApplication, Injectable, Module } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import { Tool } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { createStreamableClient } from './utils';
+import { INestApplication } from '@nestjs/common';
+import { McpController, Tool } from '@rekog/mcp-nest';
+import {
+  bootstrapMcpApp,
+  createStreamableClient,
+  StreamableHttpTransport,
+} from './utils';
 
-@Injectable()
+/**
+ * ADAPTATION NOTE (microservices migration):
+ * The legacy suite hosted two MCP servers ("server-a", "server-b") inside a
+ * single app, separated by per-server HTTP endpoints. Under the microservice
+ * transport-strategy model an app hosts exactly one `McpStrategy`, so each
+ * server is now its own hybrid app on its own port. The intent — each server
+ * exposes only its own tool — is preserved, and is exercised for both the
+ * stateful and stateless streamable-HTTP transports.
+ */
+
+@McpController()
 class ToolsA {
   @Tool({
     name: 'toolA',
@@ -15,7 +27,7 @@ class ToolsA {
   }
 }
 
-@Injectable()
+@McpController()
 class ToolsB {
   @Tool({
     name: 'toolB',
@@ -26,112 +38,77 @@ class ToolsB {
   }
 }
 
-const mcpModuleA = McpModule.forRoot({
-  name: 'server-a',
-  mcpEndpoint: '/servers/a/mcp',
-  sseEndpoint: '/servers/a/sse',
-  messagesEndpoint: '/servers/a/messages',
-  capabilities: { tools: {} },
-  version: '0.0.1',
-});
-const mcpModuleB = McpModule.forRoot({
-  name: 'server-b',
-  mcpEndpoint: '/servers/b/mcp',
-  sseEndpoint: '/servers/b/sse',
-  messagesEndpoint: '/servers/b/messages',
-  version: '0.0.1',
-});
-
-@Module({
-  imports: [mcpModuleA],
-  providers: [ToolsA],
-  exports: [ToolsA],
-})
-class ModuleA {}
-
-@Module({
-  imports: [mcpModuleB],
-  providers: [ToolsB],
-  exports: [ToolsB],
-})
-class ModuleB {}
-
 describe('E2E: Multiple MCP servers (Streamable HTTP)', () => {
-  let app: INestApplication;
-  let statelessApp: INestApplication;
-  let statefulServerPort: number;
-  let statelessServerPort: number;
+  const apps: INestApplication[] = [];
+  let statefulPortA: number;
+  let statefulPortB: number;
+  let statelessPortA: number;
+  let statelessPortB: number;
 
-  // Set timeout for all tests in this describe block to 15000ms
   jest.setTimeout(15000);
 
   beforeAll(async () => {
-    // Create stateful server (original)
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [ModuleA, ModuleB],
-    }).compile();
+    const statefulA = await bootstrapMcpApp({
+      name: 'server-a',
+      controllers: [ToolsA],
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
+    });
+    const statefulB = await bootstrapMcpApp({
+      name: 'server-b',
+      controllers: [ToolsB],
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
+    });
+    const statelessA = await bootstrapMcpApp({
+      name: 'server-a',
+      controllers: [ToolsA],
+      transports: [new StreamableHttpTransport({ statefulMode: false })],
+    });
+    const statelessB = await bootstrapMcpApp({
+      name: 'server-b',
+      controllers: [ToolsB],
+      transports: [new StreamableHttpTransport({ statefulMode: false })],
+    });
 
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
-
-    const server = app.getHttpServer();
-    if (!server.address()) {
-      throw new Error('Server address not found after listen');
-    }
-    statefulServerPort = (server.address() as import('net').AddressInfo).port;
-
-    // Create stateless server
-    const statelessModuleFixture: TestingModule =
-      await Test.createTestingModule({
-        imports: [ModuleA, ModuleB],
-      }).compile();
-
-    statelessApp = statelessModuleFixture.createNestApplication();
-    await statelessApp.listen(0);
-
-    const statelessServer = statelessApp.getHttpServer();
-    if (!statelessServer.address()) {
-      throw new Error('Stateless server address not found after listen');
-    }
-    statelessServerPort = (
-      statelessServer.address() as import('net').AddressInfo
-    ).port;
+    apps.push(statefulA.app, statefulB.app, statelessA.app, statelessB.app);
+    statefulPortA = statefulA.port;
+    statefulPortB = statefulB.port;
+    statelessPortA = statelessA.port;
+    statelessPortB = statelessB.port;
   });
 
   afterAll(async () => {
-    await app.close();
-    await statelessApp.close();
+    await Promise.all(apps.map((app) => app.close()));
   });
 
   const runClientTests = (stateless: boolean) => {
     describe(`${stateless ? 'stateless' : 'stateful'} client`, () => {
-      let port: number;
+      let portA: number;
+      let portB: number;
 
-      beforeAll(async () => {
-        port = stateless ? statelessServerPort : statefulServerPort;
+      beforeAll(() => {
+        portA = stateless ? statelessPortA : statefulPortA;
+        portB = stateless ? statelessPortB : statefulPortB;
       });
 
       it('should list tools for server A', async () => {
-        const client = await createStreamableClient(port, {
-          endpoint: '/servers/a/mcp',
-        });
+        const client = await createStreamableClient(portA);
         try {
           const tools = await client.listTools();
           expect(tools.tools.length).toBe(1);
           expect(tools.tools.find((t) => t.name === 'toolA')).toBeDefined();
+          expect(tools.tools.find((t) => t.name === 'toolB')).toBeUndefined();
         } finally {
           await client.close();
         }
       });
 
       it('should list tools for server B', async () => {
-        const client = await createStreamableClient(port, {
-          endpoint: '/servers/b/mcp',
-        });
+        const client = await createStreamableClient(portB);
         try {
           const tools = await client.listTools();
           expect(tools.tools.length).toBe(1);
           expect(tools.tools.find((t) => t.name === 'toolB')).toBeDefined();
+          expect(tools.tools.find((t) => t.name === 'toolA')).toBeUndefined();
         } finally {
           await client.close();
         }

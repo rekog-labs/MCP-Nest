@@ -1,10 +1,17 @@
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
 import { INestApplication, Injectable, Scope } from '@nestjs/common';
+import { Ctx, Payload } from '@nestjs/microservices';
 import { Test, TestingModule } from '@nestjs/testing';
+import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { z } from 'zod';
-import { McpModule, McpTransportType, Tool } from '../src';
-import type { Context } from '../src';
-import { createStreamableClient } from './utils';
+import {
+  McpContext,
+  McpController,
+  McpStrategy,
+  StreamableHttpTransport,
+  Tool,
+} from '@rekog/mcp-nest';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { randomUUID } from 'crypto';
 import {
@@ -13,7 +20,6 @@ import {
   ListToolsRequest,
   ListToolsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { FastifyAdapter } from '@nestjs/platform-fastify';
 
 @Injectable()
 class MockUserRepository {
@@ -26,7 +32,7 @@ class MockUserRepository {
   }
 }
 
-@Injectable()
+@McpController()
 export class FastifyTestTool {
   constructor(private readonly userRepository: MockUserRepository) {}
 
@@ -37,7 +43,10 @@ export class FastifyTestTool {
       name: z.string().default('World'),
     }),
   })
-  async sayHello({ name }: { name: string }, context: Context) {
+  async sayHello(
+    @Payload() { name }: { name: string },
+    @Ctx() context: McpContext,
+  ) {
     // Validate that context properties exist
     if (!context.mcpServer) {
       throw new Error('mcpServer is not defined in the context');
@@ -73,8 +82,6 @@ export class FastifyTestTool {
     parameters: z.object({}),
   })
   async detectFramework() {
-    // For testing purposes, we'll identify the framework based on the tool behavior
-    // In a real implementation, the adapter factory would handle this automatically
     return {
       content: [
         {
@@ -86,6 +93,7 @@ export class FastifyTestTool {
   }
 }
 
+@McpController()
 @Injectable({ scope: Scope.REQUEST })
 export class RequestScopedTool {
   @Tool({
@@ -95,7 +103,7 @@ export class RequestScopedTool {
       testId: z.string().default('test-123'),
     }),
   })
-  async testRequestScope({ testId }: { testId: string }) {
+  async testRequestScope(@Payload() { testId }: { testId: string }) {
     // Generate a unique ID to verify request scoping
     const uniqueId = randomUUID();
 
@@ -110,67 +118,52 @@ export class RequestScopedTool {
   }
 }
 
+const TOOL_CONTROLLERS = [FastifyTestTool, RequestScopedTool];
+
 describe('E2E: Fastify HTTP Adapter Support', () => {
   let expressApp: INestApplication;
   let fastifyApp: INestApplication;
   let expressPort: number;
   let fastifyPort: number;
 
-  // Set timeout for all tests in this describe block
-  jest.setTimeout(20000);
-
   beforeAll(async () => {
-    // Create Express-based server (control group)
-    const expressModuleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'test-express-mcp-server',
-          version: '0.0.1',
-          transport: McpTransportType.STREAMABLE_HTTP,
-          streamableHttp: {
-            enableJsonResponse: false,
-            sessionIdGenerator: () => randomUUID(),
-            statelessMode: false,
-          },
-        }),
-      ],
-      providers: [FastifyTestTool, MockUserRepository, RequestScopedTool],
-    }).compile();
+    // Create Express-based server (control group) via the standard helper.
+    const express = await bootstrapMcpApp({
+      name: 'test-express-mcp-server',
+      controllers: TOOL_CONTROLLERS,
+      providers: [MockUserRepository],
+    });
+    expressApp = express.app;
+    expressPort = express.port;
 
-    expressApp = expressModuleFixture.createNestApplication();
-    await expressApp.listen(0);
+    // Create Fastify-based server (test subject) inline. The MCP transports use
+    // an internal HttpAdapterFactory that detects Fastify and reads the raw
+    // Node request/response, so streamable-HTTP works on top of Fastify.
+    const strategy = new McpStrategy({
+      name: 'test-fastify-mcp-server',
+      version: '0.0.1',
+      transports: [new StreamableHttpTransport({ statefulMode: true })],
+    });
 
-    const expressServer = expressApp.getHttpServer();
-    if (!expressServer.address()) {
-      throw new Error('Express server address not found after listen');
-    }
-    expressPort = (expressServer.address() as import('net').AddressInfo).port;
-
-    // Create Fastify-based server (test subject)
     const fastifyModuleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'test-fastify-mcp-server',
-          version: '0.0.1',
-          transport: McpTransportType.STREAMABLE_HTTP,
-          streamableHttp: {
-            enableJsonResponse: false,
-            sessionIdGenerator: () => randomUUID(),
-            statelessMode: false,
-          },
-        }),
-      ],
-      providers: [FastifyTestTool, MockUserRepository, RequestScopedTool],
+      controllers: TOOL_CONTROLLERS,
+      providers: [MockUserRepository],
     }).compile();
 
+    // The Fastify body-drain bug is fixed in src: the transport prefers the
+    // adapter's already-parsed body, so no in-test preHandler hook is needed.
     const fastifyAdapter = new FastifyAdapter();
     fastifyApp = fastifyModuleFixture.createNestApplication(fastifyAdapter);
+    strategy.setHttpAdapter(fastifyApp.getHttpAdapter());
+    fastifyApp.connectMicroservice({ strategy });
+    // startAllMicroservices() runs before listen() so the MCP routes mount on
+    // the Fastify instance before the HTTP server starts listening.
+    await fastifyApp.startAllMicroservices();
     await fastifyApp.listen(0, '0.0.0.0');
 
-    const fastifyServer = fastifyApp.getHttpServer();
-    if (!fastifyServer.address()) {
-      throw new Error('Fastify server address not found after listen');
-    }
+    // On Fastify, getHttpServer().address() may be null; derive the port from
+    // the underlying Node server instance instead.
+    const fastifyServer = fastifyApp.getHttpAdapter().getInstance().server;
     fastifyPort = (fastifyServer.address() as import('net').AddressInfo).port;
   });
 
@@ -258,9 +251,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
 
     beforeEach(async () => {
       if (!fastifyPort) {
-        throw new Error(
-          'Fastify server not available - install @nestjs/platform-fastify to run these tests',
-        );
+        throw new Error('Fastify server not available');
       }
       client = await createStreamableClient(fastifyPort);
     });
@@ -394,13 +385,6 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
 
   describe('Framework Compatibility', () => {
     it('should produce identical tool results regardless of framework', async () => {
-      if (!expressPort || !fastifyPort) {
-        console.warn(
-          'Skipping compatibility test - both servers not available',
-        );
-        return;
-      }
-
       const expressClient = await createStreamableClient(expressPort);
       const fastifyClient = await createStreamableClient(fastifyPort);
 
@@ -452,13 +436,6 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
     });
 
     it('should list identical tools on both frameworks', async () => {
-      if (!expressPort || !fastifyPort) {
-        console.warn(
-          'Skipping tools list compatibility test - both servers not available',
-        );
-        return;
-      }
-
       const expressClient = await createStreamableClient(expressPort);
       const fastifyClient = await createStreamableClient(fastifyPort);
 

@@ -1,24 +1,46 @@
-import { INestApplication, Injectable } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import {
+  CanActivate,
+  Controller,
+  ExecutionContext,
+  INestApplication,
+  Injectable,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { z } from 'zod';
-import { Tool } from '../src';
-import type { Context } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
+import { Ctx, Payload } from '@nestjs/microservices';
+import {
+  McpContext,
+  McpController,
+  McpHttpControllerFor,
+  McpRawRequest,
+  StreamableHttpTransport,
+  Tool,
+} from '@rekog/mcp-nest';
 import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import { CanActivate, ExecutionContext } from '@nestjs/common';
-import { createSseClient } from './utils';
+import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
-// Mock authentication guard
-class MockAuthGuard implements CanActivate {
+/**
+ * AUTHENTICATION for HTTP transports is a NestJS guard on the MCP route, not
+ * module-level config. The guard inspects the Authorization header, populates
+ * `req.user` on success, and throws `UnauthorizedException` (401) on failure —
+ * gating the MCP routes the same way the old `guards: [MockAuthGuard]` did.
+ * Because the MCP endpoint is mounted as a real controller (via
+ * `McpHttpControllerFor`), the guard runs on every transport request. Tools
+ * read the authenticated user by injecting the request with `@McpRawRequest()`
+ * and reading `req.user`.
+ */
+@Injectable()
+class AuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-
-    if (
-      request.headers.authorization &&
-      request.headers.authorization.includes('token-xyz')
-    ) {
-      request.user = {
+    const req = context.switchToHttp().getRequest<{
+      headers: Record<string, string | undefined>;
+      user?: unknown;
+    }>();
+    const authorization = req.headers?.authorization;
+    if (authorization && authorization.includes('token-xyz')) {
+      req.user = {
         id: 'user123',
         name: 'Test User',
         orgMemberships: [
@@ -30,11 +52,9 @@ class MockAuthGuard implements CanActivate {
           },
         ],
       };
-
       return true;
     }
-
-    return false;
+    throw new UnauthorizedException('Unauthorized');
   }
 }
 
@@ -58,7 +78,7 @@ class MockUserRepository {
 }
 
 // Greeting tool that uses the authentication context
-@Injectable()
+@McpController()
 export class AuthGreetingTool {
   constructor(private readonly userRepository: MockUserRepository) {}
 
@@ -69,10 +89,14 @@ export class AuthGreetingTool {
       name: z.string().default('World'),
     }),
   })
-  async sayHello({ name }, context: Context, request: Request & { user: any }) {
+  async sayHello(
+    @Payload() { name }: { name: string },
+    @Ctx() context: McpContext,
+    @McpRawRequest() req?: { user?: any }, // raw request; read req.user
+  ) {
     // Access both repository data and the authenticated user context
     const repoUser = await this.userRepository.findOne();
-    const authUser = request.user; // Authenticated user from the request
+    const authUser = req?.user;
 
     // Construct greeting using both data sources
     const greeting = `Hello, ${name}! I'm ${authUser.name} from ${authUser.orgMemberships[0].organization.name}. Repository user is ${repoUser.name}.`;
@@ -97,33 +121,27 @@ export class AuthGreetingTool {
   }
 }
 
+// Mount the MCP route as a real Nest controller so the guard runs at the HTTP
+// layer on every transport request (initialize, tools/list, tools/call).
+const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
+
+@Controller('mcp')
+@UseGuards(AuthGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
+
 describe('E2E: MCP Server Tool with Authentication', () => {
   let app: INestApplication;
   let testPort: number;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        McpModule.forRoot({
-          name: 'test-auth-mcp-server',
-          version: '0.0.1',
-          // Specify the MockAuthGuard to protect the messages endpoint
-          guards: [MockAuthGuard],
-          capabilities: {
-            resources: {},
-            prompts: {},
-            tools: {},
-          },
-        }),
-      ],
-      providers: [AuthGreetingTool, MockUserRepository, MockAuthGuard],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.listen(0);
-
-    const server = app.getHttpServer();
-    testPort = server.address().port;
+    const bootstrapped = await bootstrapMcpApp({
+      name: 'test-auth-mcp-server',
+      controllers: [AuthGreetingTool, McpHttpController],
+      providers: [MockUserRepository, AuthGuard],
+      transports: [mcpTransport],
+    });
+    app = bootstrapped.app;
+    testPort = bootstrapped.port;
   });
 
   afterAll(async () => {
@@ -131,7 +149,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should list tools', async () => {
-    const client = await createSseClient(testPort, {
+    const client = await createStreamableClient(testPort, {
       requestInit: {
         headers: {
           Authorization: 'Bearer token-xyz',
@@ -150,7 +168,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should inject authentication context into the tool', async () => {
-    const client = await createSseClient(testPort, {
+    const client = await createStreamableClient(testPort, {
       requestInit: {
         headers: {
           Authorization: 'Bearer token-xyz',
@@ -187,10 +205,10 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should reject unauthenticated connections', async () => {
-    // Connection should be rejected
+    // Connection should be rejected by the auth middleware (401)
     let client: Client | undefined;
     try {
-      client = await createSseClient(testPort, {
+      client = await createStreamableClient(testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer invalid-token',
@@ -199,7 +217,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
       });
 
       // If we get here, the test should fail
-      fail('Connection should have been rejected');
+      throw new Error('Connection should have been rejected');
     } catch (error) {
       // We expect an error to be thrown when authentication fails
       expect(error).toBeDefined();

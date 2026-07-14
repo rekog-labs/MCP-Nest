@@ -1,4 +1,4 @@
-import { AzureADOAuthProvider } from '../src/authz/providers/azure-ad.provider';
+import { AzureADOAuthProvider } from '@rekog/mcp-nest-auth';
 
 describe('Azure AD OAuth Provider', () => {
   describe('Provider Configuration', () => {

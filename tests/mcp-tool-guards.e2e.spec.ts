@@ -1,43 +1,78 @@
-import { INestApplication, Injectable, SetMetadata } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import {
+  Controller,
+  ExecutionContext,
+  Injectable,
+  INestApplication,
+  SetMetadata,
+  UseGuards,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { z } from 'zod';
-import { Tool, ToolGuards, PublicTool } from '../src';
-import { McpModule } from '../src/mcp/mcp.module';
-import { CanActivate, ExecutionContext } from '@nestjs/common';
-import { createSseClient, createStreamableClient } from './utils';
-import { McpTransportType } from '../src';
+import { Payload } from '@nestjs/microservices';
+import { CanActivate } from '@nestjs/common';
+import {
+  McpContext,
+  McpController,
+  McpHttpControllerFor,
+  Tool,
+  PublicTool,
+} from '@rekog/mcp-nest';
+import {
+  bootstrapMcpApp,
+  createStreamableClient,
+  StreamableHttpTransport,
+} from './utils';
 
 /**
- * Guard that checks for admin role via request.user.role
+ * Migrated from `@ToolGuards([...])` to native `@UseGuards([...])`.
+ *
+ * `@ToolGuards()` is no longer enforced by the strategy. Native guards run
+ * during the RPC pipeline (i.e. at tool *call* time, not at list time), so
+ * guarded tools are still visible in `listTools`. The intent — that guards
+ * gate access — is preserved by asserting CALL-TIME denial (the tool call
+ * returns isError / the client rejects) instead of list filtering.
+ *
+ * RPC-style guards read:
+ *   - the user via `ctx.switchToRpc().getContext().getRawRequest().user`
+ *   - the tool arguments via `ctx.switchToRpc().getData()`
+ *
+ * Authentication itself is a NestJS guard (`IdentityGuard`) on the MCP route
+ * that parses the Authorization header and sets `req.user`, admitting every
+ * request (even tokenless ones) so the per-tool guards decide access.
+ */
+
+function getUser(context: ExecutionContext): any {
+  const rpcCtx = context.switchToRpc().getContext<McpContext>();
+  return rpcCtx.getRawRequest<{ user?: any }>()?.user;
+}
+
+/**
+ * Guard that checks for admin role via the request user.
  */
 @Injectable()
 class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    return request?.user?.role === 'admin';
+    return getUser(context)?.role === 'admin';
   }
 }
 
 /**
- * Guard that checks for any authenticated user
+ * Guard that checks for any authenticated user.
  */
 @Injectable()
 class AuthenticatedGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    return !!request?.user;
+    return !!getUser(context);
   }
 }
 
 /**
- * Guard that returns a promise (async guard)
+ * Guard that returns a promise (async guard).
  */
 @Injectable()
 class AsyncGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
-    return !!request?.user?.asyncAllowed;
+    return !!getUser(context)?.asyncAllowed;
   }
 }
 
@@ -62,78 +97,88 @@ class ReflectorGuard implements CanActivate {
     if (!requiredRole) {
       return true;
     }
-    const request = context.switchToHttp().getRequest();
-    return request?.user?.role === requiredRole;
+    return getUser(context)?.role === requiredRole;
   }
 }
 
 /**
- * Guard that calls getResponse() - an unavailable method.
- * Should throw, causing the tool to be hidden.
- */
-@Injectable()
-class ResponseAccessGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
-    context.switchToHttp().getResponse();
-    return true;
-  }
-}
-
-/**
- * Guard that checks entity ownership via request.body (tool arguments).
- * Simulates a real-world entity-modify guard that reads the tool input
- * to determine if the user owns the entity being modified.
+ * Guard that checks entity ownership via the tool arguments (RPC payload).
+ * Simulates a real-world entity-modify guard that reads the tool input to
+ * determine if the user owns the entity being modified.
  */
 @Injectable()
 class OwnershipGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    const body = request?.body;
-    const user = request?.user;
+    const body = context.switchToRpc().getData<{ ownerId?: string }>();
+    const user = getUser(context);
 
-    // During tools/list, body may be undefined — allow listing
     if (!body || !body.ownerId) {
       return true;
     }
 
-    // During tools/call, check that user owns the entity
     return body.ownerId === user?.id;
   }
 }
 
 /**
- * Mock transport-level guard that parses Authorization header and sets user on request.
- * Allows unauthenticated requests through for per-tool auth to handle.
+ * Guard whose logic fails — it tries to use a context accessor that is not
+ * available in the RPC pipeline and throws. A throwing guard must deny the
+ * call (the old suite asserted such a tool was hidden at list time; native
+ * guards instead deny at call time).
  */
 @Injectable()
-class MockTransportAuthGuard implements CanActivate {
+class ThrowingGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers?.authorization;
+    // `getResponse()` returns no usable HTTP response in the RPC pipeline.
+    const res = context.switchToHttp().getResponse<unknown>();
+    if (!res || typeof (res as { status?: unknown }).status !== 'function') {
+      throw new Error('HTTP response is not available in the RPC pipeline');
+    }
+    return true;
+  }
+}
+
+/**
+ * Identity-only guard: resolves `req.user` from the Authorization header and
+ * always admits the request (including tokenless ones). Access control is
+ * delegated to the per-tool `@UseGuards()` above.
+ */
+@Injectable()
+class IdentityGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest<{
+      headers: Record<string, string | undefined>;
+      user?: unknown;
+    }>();
+    const authHeader = req.headers?.authorization;
 
     if (!authHeader) {
       return true;
     }
 
     if (authHeader.includes('admin-token')) {
-      request.user = { id: 'admin-1', role: 'admin', name: 'Admin', asyncAllowed: true };
-      return true;
+      req.user = {
+        id: 'admin-1',
+        role: 'admin',
+        name: 'Admin',
+        asyncAllowed: true,
+      };
+    } else if (authHeader.includes('user-token')) {
+      req.user = { id: 'user-1', role: 'user', name: 'Regular User' };
+    } else if (authHeader.includes('async-token')) {
+      req.user = {
+        id: 'async-1',
+        role: 'viewer',
+        name: 'Async User',
+        asyncAllowed: true,
+      };
     }
 
-    if (authHeader.includes('user-token')) {
-      request.user = { id: 'user-1', role: 'user', name: 'Regular User' };
-      return true;
-    }
-
-    if (authHeader.includes('async-token')) {
-      request.user = { id: 'async-1', role: 'viewer', name: 'Async User', asyncAllowed: true };
-      return true;
-    }
-
-    return false;
+    return true;
   }
 }
 
+@McpController()
 @Injectable()
 class GuardedTools {
   @Tool({
@@ -151,7 +196,7 @@ class GuardedTools {
     description: 'Tool requiring authentication',
     parameters: z.object({}),
   })
-  @ToolGuards([AuthenticatedGuard])
+  @UseGuards(AuthenticatedGuard)
   async authenticatedTool() {
     return {
       content: [{ type: 'text', text: 'Authenticated tool executed' }],
@@ -163,7 +208,7 @@ class GuardedTools {
     description: 'Tool requiring admin role',
     parameters: z.object({}),
   })
-  @ToolGuards([AdminGuard])
+  @UseGuards(AdminGuard)
   async adminTool() {
     return { content: [{ type: 'text', text: 'Admin tool executed' }] };
   }
@@ -173,7 +218,7 @@ class GuardedTools {
     description: 'Tool requiring both authentication and admin role',
     parameters: z.object({}),
   })
-  @ToolGuards([AuthenticatedGuard, AdminGuard])
+  @UseGuards(AuthenticatedGuard, AdminGuard)
   async multiGuardTool() {
     return { content: [{ type: 'text', text: 'Multi-guard tool executed' }] };
   }
@@ -183,7 +228,7 @@ class GuardedTools {
     description: 'Tool with async guard',
     parameters: z.object({}),
   })
-  @ToolGuards([AsyncGuard])
+  @UseGuards(AsyncGuard)
   async asyncGuardTool() {
     return { content: [{ type: 'text', text: 'Async guard tool executed' }] };
   }
@@ -195,8 +240,8 @@ class GuardedTools {
       message: z.string(),
     }),
   })
-  @ToolGuards([AuthenticatedGuard])
-  async guardedWithArgs({ message }) {
+  @UseGuards(AuthenticatedGuard)
+  async guardedWithArgs(@Payload() { message }: { message: string }) {
     return { content: [{ type: 'text', text: `Echo: ${message}` }] };
   }
 
@@ -205,7 +250,7 @@ class GuardedTools {
     description: 'Tool with a Reflector-based guard reading method metadata',
     parameters: z.object({}),
   })
-  @ToolGuards([ReflectorGuard])
+  @UseGuards(ReflectorGuard)
   @RequiredRole('admin')
   async reflectorGuardTool() {
     return {
@@ -215,76 +260,78 @@ class GuardedTools {
 
   @Tool({
     name: 'bad-guard-tool',
-    description:
-      'Tool with a guard that accesses an unavailable context method',
+    description: 'Tool whose guard fails by accessing an unavailable context',
     parameters: z.object({}),
   })
-  @ToolGuards([ResponseAccessGuard])
+  @UseGuards(ThrowingGuard)
   async badGuardTool() {
     return { content: [{ type: 'text', text: 'Should never execute' }] };
   }
 
   @Tool({
     name: 'ownership-tool',
-    description: 'Tool with an ownership guard that reads request.body',
+    description: 'Tool with an ownership guard that reads tool arguments',
     parameters: z.object({
       ownerId: z.string(),
       title: z.string(),
     }),
   })
-  @ToolGuards([OwnershipGuard])
-  async ownershipTool({ ownerId, title }) {
-    return { content: [{ type: 'text', text: `Updated: ${title} (owner: ${ownerId})` }] };
+  @UseGuards(OwnershipGuard)
+  async ownershipTool(
+    @Payload() { ownerId, title }: { ownerId: string; title: string },
+  ) {
+    return {
+      content: [
+        { type: 'text', text: `Updated: ${title} (owner: ${ownerId})` },
+      ],
+    };
   }
 }
 
-describe('E2E: Tool Guards via @ToolGuards()', () => {
+// Mount the MCP route as a real controller so `IdentityGuard` runs at the HTTP
+// layer and sets `req.user` before the per-tool @UseGuards run.
+const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
+
+@Controller('mcp')
+@UseGuards(IdentityGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
+
+describe('E2E: Tool Guards via native @UseGuards()', () => {
   describe.each([
     {
-      transportName: 'SSE',
-      transport: McpTransportType.SSE,
-      createClient: (port: number, headers?: Record<string, string>) =>
-        createSseClient(port, headers ? { requestInit: { headers } } : {}),
-    },
-    {
       transportName: 'Streamable HTTP (stateful)',
-      transport: McpTransportType.STREAMABLE_HTTP,
+      makeTransports: () => [mcpTransport],
       createClient: (port: number, headers?: Record<string, string>) =>
         createStreamableClient(
           port,
           headers ? { requestInit: { headers } } : {},
         ),
     },
-  ])('$transportName transport', ({ transport, createClient }) => {
+  ])('$transportName transport', ({ makeTransports, createClient }) => {
     let app: INestApplication;
     let testPort: number;
 
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [
-          McpModule.forRoot({
-            name: 'test-tool-guards-server',
-            version: '0.0.1',
-            transport,
-            guards: [MockTransportAuthGuard],
-            allowUnauthenticatedAccess: true,
-          }),
-        ],
+      const bootstrapped = await bootstrapMcpApp({
+        name: 'test-tool-guards-server',
+        controllers: [GuardedTools, McpHttpController],
         providers: [
-          GuardedTools,
-          MockTransportAuthGuard,
           AdminGuard,
           AuthenticatedGuard,
           AsyncGuard,
           ReflectorGuard,
-          ResponseAccessGuard,
           OwnershipGuard,
+          ThrowingGuard,
+          IdentityGuard,
         ],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.listen(0);
-      testPort = app.getHttpServer().address().port;
+        transports: makeTransports(),
+        // No `allowUnauthenticatedAccess`: identity comes from IdentityGuard on
+        // the MCP controller, and gating is done purely by native @UseGuards at
+        // call time, so the per-tool ToolAuthorizationService (which only acts
+        // on @PublicTool/@ToolScopes/@ToolRoles) stays out of the way.
+      });
+      app = bootstrapped.app;
+      testPort = bootstrapped.port;
     });
 
     afterAll(async () => {
@@ -292,23 +339,25 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
     });
 
     describe('Tool Listing', () => {
-      it('should list only unguarded tools when unauthenticated', async () => {
+      // NOTE: native @UseGuards run at CALL time, not list time, so guarded
+      // tools remain visible in listings regardless of auth. We assert the
+      // public tool is always listed; access control is verified at call time
+      // in the "Tool Execution" block below.
+      it('should list the public tool (and guarded tools) when unauthenticated', async () => {
         const client = await createClient(testPort);
 
         const tools = await client.listTools();
         const toolNames = tools.tools.map((t) => t.name);
 
         expect(toolNames).toContain('public-tool');
-        expect(toolNames).not.toContain('authenticated-tool');
-        expect(toolNames).not.toContain('admin-tool');
-        expect(toolNames).not.toContain('multi-guard-tool');
-        expect(toolNames).not.toContain('async-guard-tool');
-        expect(toolNames).not.toContain('guarded-with-args');
+        // Guarded tools are still visible — native guards gate at call time.
+        expect(toolNames).toContain('authenticated-tool');
+        expect(toolNames).toContain('admin-tool');
 
         await client.close();
       });
 
-      it('should list tools the user has access to (regular user)', async () => {
+      it('should list tools for an authenticated user', async () => {
         const client = await createClient(testPort, {
           Authorization: 'Bearer user-token',
         });
@@ -319,9 +368,6 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
         expect(toolNames).toContain('public-tool');
         expect(toolNames).toContain('authenticated-tool');
         expect(toolNames).toContain('guarded-with-args');
-        expect(toolNames).not.toContain('admin-tool');
-        expect(toolNames).not.toContain('multi-guard-tool');
-        expect(toolNames).not.toContain('async-guard-tool');
 
         await client.close();
       });
@@ -334,60 +380,13 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
         const tools = await client.listTools();
         const toolNames = tools.tools.map((t) => t.name);
 
+        // Native guards never filter listings, so every tool is visible.
         expect(toolNames).toContain('public-tool');
         expect(toolNames).toContain('authenticated-tool');
         expect(toolNames).toContain('admin-tool');
         expect(toolNames).toContain('multi-guard-tool');
         expect(toolNames).toContain('async-guard-tool');
         expect(toolNames).toContain('guarded-with-args');
-
-        await client.close();
-      });
-
-      it('should support Reflector-based guards reading method metadata', async () => {
-        const adminClient = await createClient(testPort, {
-          Authorization: 'Bearer admin-token',
-        });
-        const adminTools = await adminClient.listTools();
-        const adminToolNames = adminTools.tools.map((t) => t.name);
-        expect(adminToolNames).toContain('reflector-guard-tool');
-        await adminClient.close();
-
-        const userClient = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-        const userTools = await userClient.listTools();
-        const userToolNames = userTools.tools.map((t) => t.name);
-        expect(userToolNames).not.toContain('reflector-guard-tool');
-        await userClient.close();
-      });
-
-      it('should hide tools when guard accesses an unavailable context method', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer admin-token',
-        });
-
-        const tools = await client.listTools();
-        const toolNames = tools.tools.map((t) => t.name);
-
-        // The guard calls getResponse() which throws, so the tool is hidden
-        expect(toolNames).not.toContain('bad-guard-tool');
-
-        await client.close();
-      });
-
-      it('should show tools for async-allowed user', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer async-token',
-        });
-
-        const tools = await client.listTools();
-        const toolNames = tools.tools.map((t) => t.name);
-
-        expect(toolNames).toContain('public-tool');
-        expect(toolNames).toContain('authenticated-tool');
-        expect(toolNames).toContain('async-guard-tool');
-        expect(toolNames).not.toContain('admin-tool');
 
         await client.close();
       });
@@ -412,12 +411,11 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
       it('should deny execution of guarded tools without auth', async () => {
         const client = await createClient(testPort);
 
-        await expect(
-          client.callTool({
-            name: 'authenticated-tool',
-            arguments: {},
-          }),
-        ).rejects.toThrow();
+        const result: any = await client.callTool({
+          name: 'authenticated-tool',
+          arguments: {},
+        });
+        expect(result.isError).toBe(true);
 
         await client.close();
       });
@@ -444,12 +442,11 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
           Authorization: 'Bearer user-token',
         });
 
-        await expect(
-          client.callTool({
-            name: 'admin-tool',
-            arguments: {},
-          }),
-        ).rejects.toThrow();
+        const result: any = await client.callTool({
+          name: 'admin-tool',
+          arguments: {},
+        });
+        expect(result.isError).toBe(true);
 
         await client.close();
       });
@@ -476,12 +473,11 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
           Authorization: 'Bearer user-token',
         });
 
-        await expect(
-          client.callTool({
-            name: 'multi-guard-tool',
-            arguments: {},
-          }),
-        ).rejects.toThrow();
+        const result: any = await client.callTool({
+          name: 'multi-guard-tool',
+          arguments: {},
+        });
+        expect(result.isError).toBe(true);
 
         await client.close();
       });
@@ -520,6 +516,62 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
         await client.close();
       });
 
+      it('should deny async guard tools for non-async-allowed users', async () => {
+        const client = await createClient(testPort, {
+          Authorization: 'Bearer user-token',
+        });
+
+        const result: any = await client.callTool({
+          name: 'async-guard-tool',
+          arguments: {},
+        });
+        expect(result.isError).toBe(true);
+
+        await client.close();
+      });
+
+      it('should support Reflector-based guards reading method metadata', async () => {
+        const adminClient = await createClient(testPort, {
+          Authorization: 'Bearer admin-token',
+        });
+        const adminResult = await adminClient.callTool({
+          name: 'reflector-guard-tool',
+          arguments: {},
+        });
+        expect(
+          (adminResult.content as { type: string; text: string }[])[0].text,
+        ).toBe('Reflector guard tool executed');
+        await adminClient.close();
+
+        const userClient = await createClient(testPort, {
+          Authorization: 'Bearer user-token',
+        });
+        const userResult: any = await userClient.callTool({
+          name: 'reflector-guard-tool',
+          arguments: {},
+        });
+        expect(userResult.isError).toBe(true);
+        await userClient.close();
+      });
+
+      it('should deny execution when a guard throws (unavailable context method)', async () => {
+        const client = await createClient(testPort, {
+          Authorization: 'Bearer admin-token',
+        });
+
+        const result: any = await client.callTool({
+          name: 'bad-guard-tool',
+          arguments: {},
+        });
+        // The guard throws, so the call is denied rather than executing.
+        expect(result.isError).toBe(true);
+        expect(
+          (result.content as { type: string; text: string }[])[0].text,
+        ).not.toBe('Should never execute');
+
+        await client.close();
+      });
+
       it('should pass arguments correctly to guarded tools', async () => {
         const client = await createClient(testPort, {
           Authorization: 'Bearer user-token',
@@ -538,8 +590,8 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
       });
     });
 
-    describe('Guard access to tool arguments (request.body)', () => {
-      it('should list ownership-guarded tool (guard allows listing when no body)', async () => {
+    describe('Guard access to tool arguments (RPC payload)', () => {
+      it('should list ownership-guarded tool', async () => {
         const client = await createClient(testPort, {
           Authorization: 'Bearer user-token',
         });
@@ -573,12 +625,11 @@ describe('E2E: Tool Guards via @ToolGuards()', () => {
           Authorization: 'Bearer user-token',
         });
 
-        await expect(
-          client.callTool({
-            name: 'ownership-tool',
-            arguments: { ownerId: 'someone-else', title: 'Not My Recipe' },
-          }),
-        ).rejects.toThrow();
+        const result: any = await client.callTool({
+          name: 'ownership-tool',
+          arguments: { ownerId: 'someone-else', title: 'Not My Recipe' },
+        });
+        expect(result.isError).toBe(true);
 
         await client.close();
       });

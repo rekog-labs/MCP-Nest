@@ -5,11 +5,11 @@ Prompts are reusable instruction templates that AI agents can use to guide conve
 ## Basic Prompt
 
 ```typescript
-import { Injectable, Scope } from '@nestjs/common';
-import { Prompt } from '@rekog/mcp-nest';
+import { McpController, Prompt } from '@rekog/mcp-nest';
+import { Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 
-@Injectable({ scope: Scope.REQUEST })
+@McpController()
 export class GreetingPrompt {
   @Prompt({
     name: 'multilingual-greeting-guide',
@@ -19,7 +19,7 @@ export class GreetingPrompt {
       language: z.string().describe('The language to use for the greeting'),
     }),
   })
-  getGreetingInstructions({ name, language }) {
+  getGreetingInstructions(@Payload() { name, language }: { name: string; language: string }) {
     return {
       description: 'Greet users in their native languages!',
       messages: [
@@ -36,6 +36,8 @@ export class GreetingPrompt {
 }
 ```
 
+Register the class in a module's `controllers` array (not `providers`) so NestJS scans it when the strategy is connected. See [Server Examples](server-examples.md) for the full bootstrap. The validated arguments arrive as the `@Payload()`; add `@Ctx() ctx: McpContext` if you need the execution context.
+
 ## Prompt Structure
 
 A prompt returns an object with:
@@ -45,9 +47,11 @@ A prompt returns an object with:
 
 ## Message Roles
 
-Messages can have different roles:
+Messages can have two roles either `'user'` or `'assistant'`
 
 ```typescript
+import { McpController, Prompt, PromptResult } from '@rekog/mcp-nest';
+
 @Prompt({
   name: 'code-review-guide',
   description: 'Instructions for reviewing code',
@@ -56,12 +60,12 @@ Messages can have different roles:
     focusArea: z.string(),
   }),
 })
-getCodeReviewPrompt({ codeLanguage, focusArea }) {
+getCodeReviewPrompt(@Payload() { codeLanguage, focusArea }: { codeLanguage: string; focusArea: string }): PromptResult {
   return {
     description: 'Guide for conducting thorough code reviews',
     messages: [
       {
-        role: 'system',
+        role: 'assistant',
         content: {
           type: 'text',
           text: `You are an expert ${codeLanguage} code reviewer.`,
@@ -79,6 +83,8 @@ getCodeReviewPrompt({ codeLanguage, focusArea }) {
 }
 ```
 
+`PromptResult` is the SDK's `GetPromptResult`; use `Promise<PromptResult>` for `async` handlers.
+
 ## Multi-turn Conversation Prompts
 
 Create complex conversation flows:
@@ -92,12 +98,12 @@ Create complex conversation flows:
     experience: z.string().describe('Years of experience'),
   }),
 })
-getInterviewGuide({ role, experience }) {
+getInterviewGuide(@Payload() { role, experience }: { role: string; experience: string }) {
   return {
     description: `Interview guide for ${role} position`,
     messages: [
       {
-        role: 'system',
+        role: 'assistant',
         content: {
           type: 'text',
           text: 'You are conducting a technical interview. Be thorough but encouraging.',
@@ -114,14 +120,14 @@ getInterviewGuide({ role, experience }) {
         role: 'user',
         content: {
           type: 'text',
-          text: 'Yes, that's correct. I'm excited to discuss the role.',
+          text: "Yes, that's correct. I'm excited to discuss the role.",
         },
       },
       {
         role: 'assistant',
         content: {
           type: 'text',
-          text: 'Great! Let's start with some technical questions relevant to your experience level.',
+          text: "Great! Let's start with some technical questions relevant to your experience level.",
         },
       },
     ],
@@ -171,7 +177,7 @@ Build prompts based on business logic:
     complexity: z.enum(['simple', 'medium', 'complex']),
   }),
 })
-getTaskPlannerPrompt({ task, complexity }) {
+getTaskPlannerPrompt(@Payload() { task, complexity }: { task: string; complexity: 'simple' | 'medium' | 'complex' }) {
   const baseMessage = `Plan the following task: ${task}`;
 
   const complexityInstructions = {
@@ -184,7 +190,7 @@ getTaskPlannerPrompt({ task, complexity }) {
     description: `Task planning for ${complexity} task`,
     messages: [
       {
-        role: 'system',
+        role: 'assistant',
         content: {
           type: 'text',
           text: 'You are a project planning expert.',
@@ -206,16 +212,18 @@ getTaskPlannerPrompt({ task, complexity }) {
 
 ### 1. Start the Server
 
-Run the playground server:
+Run the example server:
 
 ```bash
-npx ts-node-dev --respawn playground/servers/server-stateful.ts
+cd examples/prompts && npm install && npm start
 ```
+
+This serves the MCP endpoint at `http://localhost:3000/mcp`.
 
 ### 2. List Available Prompts
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method prompts/list
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method prompts/list
 ```
 
 Expected output:
@@ -225,7 +233,19 @@ Expected output:
   "prompts": [
     {
       "name": "multilingual-greeting-guide",
-      "description": "Simple instruction for greeting users in their native languages"
+      "description": "Simple instruction for greeting users in their native languages",
+      "arguments": [
+        {
+          "name": "name",
+          "description": "The name of the person to greet",
+          "required": true
+        },
+        {
+          "name": "language",
+          "description": "The language to use for the greeting",
+          "required": true
+        }
+      ]
     }
   ]
 }
@@ -234,7 +254,7 @@ Expected output:
 ### 3. Get a Prompt Template
 
 ```bash
-npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3030/mcp --transport http --method prompts/get --prompt-name multilingual-greeting-guide --prompt-args name=Alice --prompt-args language=es
+npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method prompts/get --prompt-name multilingual-greeting-guide --prompt-args name=Alice --prompt-args language=es
 ```
 
 Expected output:
@@ -262,8 +282,8 @@ For interactive testing, use the MCP Inspector UI:
 npx @modelcontextprotocol/inspector@0.16.2
 ```
 
-Connect to `http://localhost:3030/mcp` and browse the prompts to test with different parameters.
+Connect to `http://localhost:3000/mcp` and browse the prompts to test with different parameters.
 
 ## Example Location
 
-See the complete example at: `playground/resources/greeting.prompt.ts`
+See the complete example at: `examples/prompts/src/greeting.prompt.ts`

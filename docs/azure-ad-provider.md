@@ -51,35 +51,80 @@ Copy these values from your app registration:
 
 ### Basic Setup
 
+The Azure AD provider ships with the built-in authorization server package. Install it alongside `@rekog/mcp-nest`:
+
+```bash
+npm install @rekog/mcp-nest-auth
+```
+
 ```typescript
-import { Module } from '@nestjs/common';
-import { McpModule, McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest';
+import { Controller, Module, UseGuards } from '@nestjs/common';
+import {
+  McpHttpControllerFor,
+  McpStrategy,
+  StreamableHttpTransport,
+} from '@rekog/mcp-nest';
+import {
+  McpAuthModule,
+  AzureADOAuthProvider,
+} from '@rekog/mcp-nest-auth';
+import { MyTools } from './my-tools'; // your @McpController() classes
+// A NestJS guard that validates the Bearer JWT (via the module's
+// JwtTokenService), rejects missing/invalid tokens with 401, and sets
+// `req.user`. See the Azure AD OAuth Provider guide for its implementation.
+import { McpAuthGuard } from './mcp-auth.guard';
+
+const mcpTransport = new StreamableHttpTransport();
+
+// MCP runs as a microservice strategy — there is no McpModule.
+export const mcp = new McpStrategy({
+  name: 'My MCP Server with Azure AD',
+  version: '1.0.0',
+  transports: [mcpTransport],
+});
+
+// Mount the MCP route as a real Nest controller so `McpAuthGuard` runs on every
+// transport request; the OAuth endpoints stay open because only this controller
+// is guarded.
+@Controller('mcp')
+@UseGuards(McpAuthGuard)
+class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
 @Module({
   imports: [
-    McpModule.forRoot({
-      name: 'My MCP Server with Azure AD',
-      version: '1.0.0',
-      transport: 'sse',
-    }),
     McpAuthModule.forRoot({
       // Azure AD Provider Configuration
       provider: AzureADOAuthProvider,
-      
+
       // Required OAuth Configuration
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      
+
       // Required JWT Configuration
       jwtSecret: process.env.JWT_SECRET!,
-      
+
       // Server Configuration
       serverUrl: process.env.SERVER_URL || 'http://localhost:3000',
       apiPrefix: 'auth',
     }),
   ],
+  controllers: [McpHttpController, MyTools],
+  providers: [McpAuthGuard],
 })
 export class AppModule {}
+```
+
+Wire the strategy into your bootstrap; the `McpAuthGuard` on the MCP controller
+above validates the Bearer JWT and sets `req.user` (see the
+[Azure AD OAuth Provider](azure-ad-oauth-provider.md) guide for the full
+`main.ts` and the guard's implementation):
+
+```typescript
+const app = await NestFactory.create(AppModule);
+mcp.setHttpAdapter(app.getHttpAdapter());
+app.connectMicroservice({ strategy: mcp });
+await app.startAllMicroservices();
+await app.listen(3000);
 ```
 
 ### Environment Variables
