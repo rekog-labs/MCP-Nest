@@ -12,7 +12,7 @@
     "url": "https://github.com/rekog-labs/MCP-Nest"
   },
   "scripts": {
-    "build": "npm run build -w @rekog/mcp-nest && npm run build -w @rekog/mcp-nest-auth",
+    "build": "bun run --filter '@rekog/mcp-nest' build && bun run --filter '@rekog/mcp-nest-auth' build",
     "prepare": "npm run build",
     "test": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts')",
     "test:watch": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts') --watch",
