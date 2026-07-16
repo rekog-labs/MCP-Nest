@@ -19,7 +19,11 @@ import {
   DiscoveredCapability,
   McpRegistryDiscoveryService,
 } from '../mcp-registry-discovery.service';
-import { ToolGuardExecutionContext, ToolMetadata } from '../../decorators';
+import {
+  ToolGuardExecutionContext,
+  ToolMetadata,
+  ToolSchemaContext,
+} from '../../decorators';
 import { McpHandlerBase } from './mcp-handler.base';
 import { ZodType } from 'zod';
 import { HttpRequest } from '../../interfaces/http-adapter.interface';
@@ -195,6 +199,23 @@ export class McpToolsHandler extends McpHandlerBase {
 
     return true;
   }
+
+  /**
+   * Resolves a tool's `parameters` for the current identity.
+   *
+   * When `parameters` is a resolver function, it is invoked with the
+   * per-request {@link ToolSchemaContext} so that `tools/list` rendering and
+   * `tools/call` validation always use the same schema (they can never
+   * disagree). Plain Zod schemas pass through unchanged, so tools that do not
+   * opt into per-identity schemas are byte-identical to before.
+   */
+  private resolveParameters(
+    parameters: ToolMetadata['parameters'],
+    ctx: ToolSchemaContext,
+  ): ZodType | undefined {
+    return typeof parameters === 'function' ? parameters(ctx) : parameters;
+  }
+
   registerHandlers(mcpServer: McpServer, httpRequest: HttpRequest) {
     if (this.registry.getTools(this.mcpModuleId).length === 0) {
       this.logger.debug('No tools registered, skipping tool handlers');
@@ -207,6 +228,10 @@ export class McpToolsHandler extends McpHandlerBase {
       const user = httpRequest.raw
         ? (httpRequest.raw as McpRequestWithUser).user
         : undefined;
+
+      // Context for per-identity schema resolution. Built once and reused for
+      // every tool so the advertised schema matches what tools/call validates.
+      const toolSchemaContext: ToolSchemaContext = { httpRequest, user };
 
       // Get all tools and filter based on user permissions
       // STDIO: If no httpRequest.raw, disable guards (local dev mode)
@@ -259,9 +284,10 @@ export class McpToolsHandler extends McpHandlerBase {
           };
         }
 
-        // Add input schema if defined
+        // Add input schema if defined. Resolve per-identity schemas first so
+        // the advertised inputSchema matches what tools/call will validate.
         const normalizedInputParameters = normalizeObjectSchema(
-          tool.metadata.parameters,
+          this.resolveParameters(tool.metadata.parameters, toolSchemaContext),
         );
         if (normalizedInputParameters) {
           toolSchema['inputSchema'] = toJsonSchemaCompat(
@@ -315,6 +341,7 @@ export class McpToolsHandler extends McpHandlerBase {
         const user = httpRequest.raw
           ? (httpRequest.raw as McpRequestWithUser).user
           : undefined;
+        const toolSchemaContext: ToolSchemaContext = { httpRequest, user };
         const effectiveModuleHasGuards = httpRequest.raw
           ? this.moduleHasGuards
           : false;
@@ -337,9 +364,14 @@ export class McpToolsHandler extends McpHandlerBase {
         }
 
         try {
-          // Validate input parameters against the tool's schema
-          if (toolInfo.metadata.parameters) {
-            const validation = toolInfo.metadata.parameters.safeParse(
+          // Validate input parameters against the tool's schema. Resolve
+          // per-identity schemas with the SAME context used at tools/list time.
+          const resolvedParameters = this.resolveParameters(
+            toolInfo.metadata.parameters,
+            toolSchemaContext,
+          );
+          if (resolvedParameters) {
+            const validation = resolvedParameters.safeParse(
               request.params.arguments || {},
             );
             if (!validation.success) {

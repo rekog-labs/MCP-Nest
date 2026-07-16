@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { Context } from './mcp-tool.interface';
-import { ToolAnnotations } from '../decorators/tool.decorator';
+import {
+  ToolAnnotations,
+  ToolSchemaResolver,
+} from '../decorators/tool.decorator';
 
 /**
  * Handler function signature for dynamically registered tools.
@@ -34,8 +37,8 @@ export interface DynamicToolDefinition {
   name: string;
   /** Description shown to the LLM */
   description: string;
-  /** Zod schema for input validation */
-  parameters?: z.ZodType;
+  /** Zod schema for input validation, or a per-identity resolver `(ctx) => z.ZodType` */
+  parameters?: z.ZodType | ToolSchemaResolver;
   /** Zod schema for output validation */
   outputSchema?: z.ZodType;
   /** MCP tool annotations */
