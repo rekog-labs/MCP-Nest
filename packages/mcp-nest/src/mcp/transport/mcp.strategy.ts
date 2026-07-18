@@ -16,37 +16,9 @@ import {
   ProtocolErrorCode,
 } from '@modelcontextprotocol/server';
 import { firstValueFrom } from 'rxjs';
-import { z, ZodType } from 'zod';
-
-/**
- * Zod schema → JSON Schema for the manually built `tools/list` result.
- * Replaces the v1 SDK's `toJsonSchemaCompat` (removed in SDK v2), keeping its
- * defaults (draft-7 target, input side of pipes).
- */
-function toJsonSchema(schema: ZodType): Record<string, unknown> {
-  return z.toJSONSchema(schema, { target: 'draft-7', io: 'input' }) as Record<
-    string,
-    unknown
-  >;
-}
-
-/**
- * Accept a Zod object schema or a raw shape and return an object schema, or
- * undefined when the input is missing / not an object schema. Replaces the v1
- * SDK's `normalizeObjectSchema` (removed in SDK v2), minus the Zod 3 support.
- */
-function normalizeObjectSchema(
-  schema?: ZodType | Record<string, ZodType>,
-): ZodType | undefined {
-  if (!schema) return undefined;
-  if (schema instanceof z.ZodObject) return schema;
-  if (schema instanceof z.ZodType) return undefined;
-  const values = Object.values(schema);
-  if (values.length > 0 && values.every((v) => v instanceof z.ZodType)) {
-    return z.object(schema as z.ZodRawShape);
-  }
-  return undefined;
-}
+import { z } from 'zod';
+import { resolveToolSchema } from './tool-schema';
+import type { ToolInputSchema } from '../decorators/tool.decorator';
 
 import {
   MCP_PROMPT_METADATA_KEY,
@@ -463,14 +435,20 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           if (securitySchemes.length > 0) {
             schema._meta = { ...(schema._meta as object), securitySchemes };
           }
-          const input = normalizeObjectSchema(tool.metadata.parameters);
-          if (input) schema.inputSchema = toJsonSchema(input);
-          const output = normalizeObjectSchema(tool.metadata.outputSchema);
-          if (output) {
-            schema.outputSchema = {
-              ...toJsonSchema(output),
-              type: 'object',
-            };
+          const input = tool.metadata.parameters
+            ? resolveToolSchema(tool.metadata.parameters).toJsonSchema('input')
+            : undefined;
+          if (input) schema.inputSchema = input;
+          if (tool.metadata.outputSchema) {
+            const output = resolveToolSchema(
+              tool.metadata.outputSchema,
+            ).toJsonSchema('output');
+            if (output) {
+              schema.outputSchema = {
+                ...output,
+                type: 'object',
+              };
+            }
           }
           return schema;
         });
@@ -495,18 +473,17 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       );
 
       if (tool.metadata.parameters) {
-        const validation = tool.metadata.parameters.safeParse(
-          request.params.arguments ?? {},
-        );
+        const validation = await resolveToolSchema(
+          tool.metadata.parameters,
+        ).validate(request.params.arguments ?? {});
         if (!validation.success) {
-          const issues = validation.error.issues
-            .map((issue) => {
-              const path = issue.path.length > 0 ? issue.path.join('.') : '';
-              return `${path ? `[${path}]: ` : ''}${issue.message}`;
-            })
-            .join('; ');
           return {
-            content: [{ type: 'text', text: `Invalid parameters: ${issues}` }],
+            content: [
+              {
+                type: 'text',
+                text: `Invalid parameters: ${validation.message}`,
+              },
+            ],
             isError: true,
           };
         }
@@ -517,7 +494,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       try {
         const result = await tool.invoke(request.params.arguments ?? {}, ctx);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return this.formatToolResult(result, tool.metadata.outputSchema);
+        return await this.formatToolResult(result, tool.metadata.outputSchema);
       } catch (error) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return this.toErrorResult(error);
@@ -647,17 +624,20 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     }
   }
 
-  private formatToolResult(result: any, outputSchema?: ZodType): any {
+  private async formatToolResult(
+    result: any,
+    outputSchema?: ToolInputSchema,
+  ): Promise<any> {
     if (result && typeof result === 'object' && Array.isArray(result.content)) {
       return result;
     }
     const defaultContent = [{ type: 'text', text: JSON.stringify(result) }];
     if (outputSchema) {
-      const validation = outputSchema.safeParse(result);
+      const validation = await resolveToolSchema(outputSchema).validate(result);
       if (!validation.success) {
         throw new ProtocolError(
           ProtocolErrorCode.InternalError,
-          `Tool result does not match outputSchema: ${validation.error.message}`,
+          `Tool result does not match outputSchema: ${validation.message}`,
         );
       }
       return { structuredContent: validation.data, content: defaultContent };
