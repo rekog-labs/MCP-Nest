@@ -50,6 +50,7 @@ describe('examples/tools e2e (pinned @modelcontextprotocol/sdk@1.10.0 client)', 
     expect(names).toEqual(
       [
         'admin-action',
+        'arktype-add',
         'boom',
         'greet-user',
         'greet-user-interactive',
@@ -146,5 +147,32 @@ describe('examples/tools e2e (pinned @modelcontextprotocol/sdk@1.10.0 client)', 
 
   test('filters on a prompt surface a protocol error', async () => {
     await expect(client.getPrompt({ name: 'my-prompt' })).rejects.toThrow();
+  });
+
+  // Proves a NON-Zod Standard Schema validator (ArkType 2.x) drives a tool
+  // end-to-end: ArkType's ~standard.jsonSchema reaches tools/list, and its
+  // ~standard.validate runs server-side on tools/call.
+  describe('ArkType (non-Zod Standard Schema) tool', () => {
+    test('inputSchema emission (ArkType -> JSON Schema on the wire)', async () => {
+      const { tools } = await client.listTools();
+      const t: any = tools.find((x) => x.name === 'arktype-add');
+      expect(t.inputSchema.type).toBe('object');
+      expect(t.inputSchema.properties.a).toBeDefined();
+      expect(t.inputSchema.properties.b).toBeDefined();
+    });
+
+    test('valid call -> ArkType-validated structuredContent', async () => {
+      const res: any = await client.request(
+        { method: 'tools/call', params: { name: 'arktype-add', arguments: { a: 2, b: 3 } } },
+        WireResult,
+      );
+      expect(res.structuredContent.sum).toBe(5);
+    });
+
+    test('invalid call -> ArkType validation rejects server-side', async () => {
+      const res: any = await client.callTool({ name: 'arktype-add', arguments: { a: 'nope', b: 3 } });
+      expect(res.isError).toBe(true);
+      expect(text(res)).toContain('Invalid parameters');
+    });
   });
 });
