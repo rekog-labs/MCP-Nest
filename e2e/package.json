@@ -8,7 +8,7 @@
     "test:tools": "bun test tools"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.10.0",
+    "@modelcontextprotocol/sdk": "1.26.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
