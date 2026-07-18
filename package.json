@@ -17,7 +17,12 @@
     "test": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts')",
     "test:watch": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts') --watch",
     "lint": "eslint \"{packages,apps,libs,tests}/**/*.ts\" --fix",
-    "format": "prettier --write \"packages/**/*.ts\" \"tests/**/*.ts\""
+    "format": "prettier --write \"packages/**/*.ts\" \"tests/**/*.ts\"",
+    "examples:local": "bash scripts/use-examples.sh local",
+    "examples:published": "bash scripts/use-examples.sh published",
+    "e2e": "cd e2e && bun install && bun test",
+    "e2e:local": "bash scripts/use-examples.sh local && npm run build && npm run e2e",
+    "e2e:published": "bash scripts/use-examples.sh published next && npm run e2e"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",

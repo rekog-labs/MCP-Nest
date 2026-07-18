@@ -6,3 +6,6 @@ tsconfig.build.tsbuildinfo
 .claude
 /.idea/
 .DS_Store
+
+# Example npm lockfiles churn when switching between local/published mcp-nest
+examples/**/package-lock.json

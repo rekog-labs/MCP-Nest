@@ -12,7 +12,7 @@
     "@nestjs/core": "^11.0.0",
     "@nestjs/microservices": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
-    "@rekog/mcp-nest": "2.0.0-alpha.1",
+    "@rekog/mcp-nest": "file:../../packages/mcp-nest",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "reflect-metadata": "^0.2.2",
