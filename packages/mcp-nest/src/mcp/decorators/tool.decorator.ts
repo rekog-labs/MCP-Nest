@@ -1,6 +1,6 @@
 import { applyDecorators, SetMetadata } from '@nestjs/common';
 import { z } from 'zod';
-import { ToolAnnotations as SdkToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import { ToolAnnotations as SdkToolAnnotations } from "@modelcontextprotocol/server";
 import { MCP_TOOL_METADATA_KEY } from './constants';
 import { mcpMessagePattern } from './mcp-message-pattern';
 

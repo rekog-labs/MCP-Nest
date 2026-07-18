@@ -1,5 +1,5 @@
 import { HttpServer, Logger } from '@nestjs/common';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from "@modelcontextprotocol/server";
 import { McpServerOptions } from './mcp-server-options.interface';
 import { McpSessionInfo, McpTransportKind } from './mcp-context';
 

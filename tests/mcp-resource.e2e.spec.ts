@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
-import { McpError } from '@modelcontextprotocol/sdk/types.js';
+import { ProtocolError } from "@modelcontextprotocol/server";
 import { bootstrapMcpApp, createStreamableClient } from './utils';
 import { McpController, Resource, ResourceTemplate } from '@rekog/mcp-nest';
 
@@ -138,7 +138,7 @@ export class GreetingToolResource {
   })
   async sayHelloNotFound(@Payload() { uri }: { uri: string }) {
     // https://modelcontextprotocol.io/specification/2025-06-18/server/resources#error-handling
-    throw new McpError(-32002, 'Resource not found', { uri });
+    throw new ProtocolError(-32002, 'Resource not found', { uri });
   }
 }
 

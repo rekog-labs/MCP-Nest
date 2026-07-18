@@ -1,6 +1,5 @@
-import { Icon, ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
+import { Icon, ServerCapabilities, McpServer } from "@modelcontextprotocol/server";
 import { HttpServer } from '@nestjs/common';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpTransport } from './mcp-transport.interface';
 
 /**

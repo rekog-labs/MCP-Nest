@@ -9,7 +9,7 @@ import {
 import { Test } from '@nestjs/testing';
 import { Ctx, MessagePattern, Payload } from '@nestjs/microservices';
 import { z } from 'zod';
-import type { Progress } from '@modelcontextprotocol/sdk/types.js';
+import type { Progress } from "@modelcontextprotocol/server";
 import {
   McpContext,
   McpController,

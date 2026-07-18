@@ -23,7 +23,6 @@
   },
   "peerDependencies": {
     "@rekog/mcp-nest": ">=2.0.0-alpha.0",
-    "@modelcontextprotocol/sdk": ">=1.10.0",
     "@nestjs/common": ">=9.0.0",
     "@nestjs/core": ">=9.0.0",
     "@nestjs/jwt": "^11.0.0",

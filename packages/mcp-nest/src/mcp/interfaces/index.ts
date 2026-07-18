@@ -1,4 +1,4 @@
-export type { Icon } from '@modelcontextprotocol/sdk/types.js';
+export type { Icon } from '@modelcontextprotocol/server';
 
 export type {
   Literal,

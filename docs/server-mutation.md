@@ -9,7 +9,7 @@ The primary use case — and the reason this hook exists — is **instrumentatio
 When constructing the `McpStrategy`, you can provide a `serverMutator` function that receives the MCP server instance. It runs once per server creation, and whatever it returns is used as the server. This lets you wrap the server to observe or extend its behavior.
 
 ```typescript
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { McpStrategy, StreamableHttpTransport } from '@rekog/mcp-nest';
 
 const customMutator = (server: McpServer) => {
@@ -32,7 +32,7 @@ Sentry ships a drop-in wrapper, `wrapMcpServerWithSentry`, that captures spans f
 
 ```typescript
 import * as Sentry from '@sentry/node';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,

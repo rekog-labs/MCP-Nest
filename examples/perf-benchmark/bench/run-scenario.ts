@@ -1,7 +1,6 @@
 import autocannon from 'autocannon';
 import pidusage from 'pidusage';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { ScenarioSpec, ScenarioRunResult, ServerSpec, Driver } from './types';
 
 const PID_SAMPLE_INTERVAL_MS = 500;

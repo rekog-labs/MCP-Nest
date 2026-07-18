@@ -1,5 +1,4 @@
-import { Progress } from '@modelcontextprotocol/sdk/types.js';
-import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { Progress, Client } from "@modelcontextprotocol/client";
 import { INestApplication, Injectable, Scope } from '@nestjs/common';
 import { Ctx, Payload, RpcException } from '@nestjs/microservices';
 import { z } from 'zod';
@@ -15,7 +14,6 @@ import {
   createStreamableClientWithElicitation,
   StreamableHttpTransport,
 } from './utils';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 @Injectable()
 class MockUserRepository {
@@ -433,7 +431,6 @@ describe('E2E: MCP ToolServer', () => {
             let progressCount = 1;
             const result: any = await client.callTool(
               { name: tool, arguments: { name: 'userRepo123' } },
-              undefined,
               {
                 onprogress: (progress: Progress) => {
                   expect(progress.progress).toBeGreaterThan(0);
@@ -653,7 +650,7 @@ describe('E2E: MCP ToolServer', () => {
 
       it('should handle declined elicitation gracefully', async () => {
         const client = await clientCreator(statefulServerPort);
-        client.setRequestHandler(ElicitRequestSchema, () => ({
+        client.setRequestHandler('elicitation/create', () => ({
           action: 'decline',
         }));
         try {
@@ -669,7 +666,7 @@ describe('E2E: MCP ToolServer', () => {
 
       it('should handle cancelled elicitation gracefully', async () => {
         const client = await clientCreator(statefulServerPort);
-        client.setRequestHandler(ElicitRequestSchema, () => ({
+        client.setRequestHandler('elicitation/create', () => ({
           action: 'cancel',
         }));
         try {

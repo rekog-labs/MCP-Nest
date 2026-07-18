@@ -1,7 +1,5 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { INestApplication, ModuleMetadata } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
@@ -174,7 +172,7 @@ export async function createStreamableClientWithElicitation(
   );
 
   // Set up elicit request handler
-  client.setRequestHandler(ElicitRequestSchema, (params) => ({
+  client.setRequestHandler('elicitation/create', (params) => ({
     action: 'accept',
     content: {
       surname: params.params.message.includes('name')

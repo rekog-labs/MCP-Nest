@@ -12,7 +12,9 @@
     "profile": "ts-node --transpile-only bench/profile.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/client": "^2.0.0-beta.4",
+    "@modelcontextprotocol/node": "^2.0.0-beta.4",
+    "@modelcontextprotocol/server": "^2.0.0-beta.4",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/microservices": "^11.0.0",

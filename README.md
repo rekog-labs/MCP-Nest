@@ -42,7 +42,7 @@ Find out how to do that with `@rekog/MCP-Nest` in this repository [MCP-Nest-Samp
 ## Installation
 
 ```bash
-npm install @rekog/mcp-nest @modelcontextprotocol/sdk zod@^4
+npm install @rekog/mcp-nest @modelcontextprotocol/server @modelcontextprotocol/core @modelcontextprotocol/node zod@^4
 ```
 
 ### Optional dependencies

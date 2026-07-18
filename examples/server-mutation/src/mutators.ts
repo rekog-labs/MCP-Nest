@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from "@modelcontextprotocol/server";
 
 /**
  * Instrumentation is the canonical use of `serverMutator`: wrap the server so
