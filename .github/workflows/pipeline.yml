@@ -33,7 +33,7 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: bun test --coverage --coverage-reporter=lcov
+        run: npm run test:coverage
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5

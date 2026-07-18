@@ -16,6 +16,7 @@
     "prepare": "npm run build",
     "test": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts')",
     "test:watch": "bun test $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts') --watch",
+    "test:coverage": "bun test --coverage --coverage-reporter=lcov $(find \"$PWD/tests\" \"$PWD/packages\" -name '*.spec.ts')",
     "lint": "eslint \"{packages,apps,libs,tests}/**/*.ts\" --fix",
     "format": "prettier --write \"packages/**/*.ts\" \"tests/**/*.ts\"",
     "examples:local": "bash scripts/use-examples.sh local",
