@@ -1,12 +1,6 @@
-import {
-  CallToolRequestSchema,
-  GetPromptRequestSchema,
-  Progress,
-  ReadResourceRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+import { Progress, McpServer } from "@modelcontextprotocol/server";
+import { CallToolRequestSchema, GetPromptRequestSchema, ReadResourceRequestSchema } from "@modelcontextprotocol/core";
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-
 export type Literal = boolean | null | number | string | undefined;
 
 export type SerializableValue =

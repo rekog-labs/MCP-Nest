@@ -28,16 +28,9 @@ import 'reflect-metadata';
 import * as http from 'node:http';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
-import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
-import {
-  CallToolRequestSchema,
-  ErrorCode,
-  ListToolsRequestSchema,
-  McpError,
-} from '@modelcontextprotocol/sdk/types.js';
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import { McpServer, ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server";
+import { z, ZodType } from 'zod';
 import type { ZodObject, ZodRawShape } from 'zod';
 import {
   ECHO_TOOL_DESCRIPTION,
@@ -47,6 +40,38 @@ import {
   getToolCount,
   textResult,
 } from '../tools/shared-tools';
+
+/**
+ * Zod schema -> JSON Schema for the manually built `tools/list` result.
+ * Replaces the v1 SDK's `toJsonSchemaCompat` (removed in SDK v2), keeping its
+ * defaults (draft-7 target, input side of pipes). Mirrors
+ * packages/mcp-nest/src/mcp/transport/mcp.strategy.ts.
+ */
+function toJsonSchema(schema: ZodType): Record<string, unknown> {
+  return z.toJSONSchema(schema, { target: 'draft-7', io: 'input' }) as Record<
+    string,
+    unknown
+  >;
+}
+
+/**
+ * Accept a Zod object schema or a raw shape and return an object schema, or
+ * undefined when the input is missing / not an object schema. Replaces the v1
+ * SDK's `normalizeObjectSchema` (removed in SDK v2). Mirrors
+ * packages/mcp-nest/src/mcp/transport/mcp.strategy.ts.
+ */
+function normalizeObjectSchema(
+  schema?: ZodType | Record<string, ZodType>,
+): ZodType | undefined {
+  if (!schema) return undefined;
+  if (schema instanceof z.ZodObject) return schema;
+  if (schema instanceof z.ZodType) return undefined;
+  const values = Object.values(schema);
+  if (values.length > 0 && values.every((v) => v instanceof z.ZodType)) {
+    return z.object(schema as z.ZodRawShape);
+  }
+  return undefined;
+}
 
 interface ToolDef {
   name: string;
@@ -79,23 +104,23 @@ function createServer(): McpServer {
 }
 
 function bindRequestHandlers(server: McpServer): void {
-  server.server.setRequestHandler(ListToolsRequestSchema, () => ({
+  server.server.setRequestHandler('tools/list', () => ({
     tools: TOOL_DEFS.map((tool) => {
       const schema: Record<string, unknown> = {
         name: tool.name,
         description: tool.description,
       };
       const input = normalizeObjectSchema(tool.parameters);
-      if (input) schema.inputSchema = toJsonSchemaCompat(input);
+      if (input) schema.inputSchema = toJsonSchema(input);
       return schema;
     }),
   }));
 
-  server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.server.setRequestHandler('tools/call', async (request) => {
     const tool = TOOL_DEFS.find((t) => t.name === request.params.name);
     if (!tool) {
-      throw new McpError(
-        ErrorCode.MethodNotFound,
+      throw new ProtocolError(
+        ProtocolErrorCode.MethodNotFound,
         `Unknown tool: ${request.params.name}`,
       );
     }
@@ -132,7 +157,7 @@ async function handleMcpPost(
   const body = await readJsonBody(req);
 
   const server = createServer();
-  const transport = new StreamableHTTPServerTransport({
+  const transport = new NodeStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
   });

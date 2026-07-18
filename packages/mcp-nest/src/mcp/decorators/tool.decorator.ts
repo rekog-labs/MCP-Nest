@@ -1,8 +1,24 @@
 import { applyDecorators, SetMetadata } from '@nestjs/common';
 import { z } from 'zod';
-import { ToolAnnotations as SdkToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import {
+  ToolAnnotations as SdkToolAnnotations,
+  type StandardSchemaV1,
+} from '@modelcontextprotocol/server';
 import { MCP_TOOL_METADATA_KEY } from './constants';
 import { mcpMessagePattern } from './mcp-message-pattern';
+
+/**
+ * Schema accepted by a `@Tool`'s `parameters` / `outputSchema`.
+ *
+ * Zod remains the default and its emitted JSON Schema is unchanged, but any
+ * Standard Schema validator that also carries a JSON Schema (e.g. Zod 4.2+,
+ * ArkType 2.1+, or Valibot wrapped with `@valibot/to-json-schema`'s
+ * `toStandardJsonSchema`) is now accepted, as is a raw JSON Schema object.
+ */
+export type ToolInputSchema =
+  | z.ZodType
+  | StandardSchemaV1
+  | Record<string, unknown>;
 
 /**
  * Security scheme type for MCP tools
@@ -14,8 +30,8 @@ export type SecurityScheme =
 export interface ToolMetadata {
   name: string;
   description: string;
-  parameters?: z.ZodType;
-  outputSchema?: z.ZodType;
+  parameters?: ToolInputSchema;
+  outputSchema?: ToolInputSchema;
   annotations?: SdkToolAnnotations;
   _meta?: Record<string, any>;
   // Security-related metadata
@@ -31,8 +47,8 @@ export interface ToolAnnotations extends SdkToolAnnotations {}
 export interface ToolOptions {
   name?: string;
   description?: string;
-  parameters?: z.ZodType;
-  outputSchema?: z.ZodType;
+  parameters?: ToolInputSchema;
+  outputSchema?: ToolInputSchema;
   annotations?: ToolAnnotations;
   _meta?: Record<string, any>;
 }

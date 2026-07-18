@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import { McpServer } from "@modelcontextprotocol/server";
 import { HttpAdapterFactory } from '../../adapters/http-adapter.factory';
 import { HttpResponse } from '../../interfaces/http-adapter.interface';
 import { McpTransport, McpTransportContext } from '../mcp-transport.interface';
@@ -91,7 +91,7 @@ export class StreamableHttpTransport implements McpTransport {
   /** Set the first time {@link httpHandlers} is read — implies a BYO controller. */
   private handlersClaimed = false;
 
-  private readonly transports: Record<string, StreamableHTTPServerTransport> =
+  private readonly transports: Record<string, NodeStreamableHTTPServerTransport> =
     {};
   private readonly servers: Record<string, McpServer> = {};
   private ctx?: McpTransportContext;
@@ -209,7 +209,7 @@ export class StreamableHttpTransport implements McpTransport {
     res: HttpResponse,
     body: unknown,
   ): Promise<void> {
-    const transport = new StreamableHTTPServerTransport({
+    const transport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: this.enableJsonResponse,
     });
@@ -240,7 +240,7 @@ export class StreamableHttpTransport implements McpTransport {
 
     if (!sessionId && isInitializeRequest(body)) {
       const server = this.ctx!.createServer();
-      const transport = new StreamableHTTPServerTransport({
+      const transport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: this.sessionIdGenerator,
         enableJsonResponse: this.enableJsonResponse,
         onsessioninitialized: (sid: string) => {

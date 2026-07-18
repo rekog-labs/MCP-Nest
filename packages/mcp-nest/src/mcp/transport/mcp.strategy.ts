@@ -5,26 +5,20 @@ import {
   MessageHandler,
   Server,
 } from '@nestjs/microservices';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
-  CallToolRequestSchema,
-  ErrorCode,
-  GetPromptRequestSchema,
+  McpServer,
   GetPromptResult,
-  ListPromptsRequestSchema,
-  ListResourcesRequestSchema,
-  ListResourceTemplatesRequestSchema,
-  ListToolsRequestSchema,
-  McpError,
+  ListToolsResult,
+  ProtocolError,
   PromptArgument,
-  ReadResourceRequestSchema,
   ReadResourceResult,
   ServerCapabilities,
-} from '@modelcontextprotocol/sdk/types.js';
-import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
-import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
+  ProtocolErrorCode,
+} from '@modelcontextprotocol/server';
 import { firstValueFrom } from 'rxjs';
-import { z, ZodType } from 'zod';
+import { z } from 'zod';
+import { resolveToolSchema } from './tool-schema';
+import type { ToolInputSchema } from '../decorators/tool.decorator';
 
 import {
   MCP_PROMPT_METADATA_KEY,
@@ -417,7 +411,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     const allowUnauthenticatedAccess =
       this.options.allowUnauthenticatedAccess ?? false;
 
-    server.server.setRequestHandler(ListToolsRequestSchema, () => {
+    server.server.setRequestHandler('tools/list', () => {
       const user = this.getUser(rawRequest);
       const tools = this.getTools()
         .filter((tool) =>
@@ -441,27 +435,33 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           if (securitySchemes.length > 0) {
             schema._meta = { ...(schema._meta as object), securitySchemes };
           }
-          const input = normalizeObjectSchema(tool.metadata.parameters);
-          if (input) schema.inputSchema = toJsonSchemaCompat(input);
-          const output = normalizeObjectSchema(tool.metadata.outputSchema);
-          if (output) {
-            schema.outputSchema = {
-              ...toJsonSchemaCompat(output),
-              type: 'object',
-            };
+          const input = tool.metadata.parameters
+            ? resolveToolSchema(tool.metadata.parameters).toJsonSchema('input')
+            : undefined;
+          if (input) schema.inputSchema = input;
+          if (tool.metadata.outputSchema) {
+            const output = resolveToolSchema(
+              tool.metadata.outputSchema,
+            ).toJsonSchema('output');
+            if (output) {
+              schema.outputSchema = {
+                ...output,
+                type: 'object',
+              };
+            }
           }
           return schema;
         });
-      return { tools };
+      return { tools } as unknown as ListToolsResult;
     });
 
-    server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    server.server.setRequestHandler('tools/call', async (request) => {
       const tool = this.getTools().find(
         (t) => t.metadata.name === request.params.name,
       );
       if (!tool) {
-        throw new McpError(
-          ErrorCode.MethodNotFound,
+        throw new ProtocolError(
+          ProtocolErrorCode.MethodNotFound,
           `Unknown tool: ${request.params.name}`,
         );
       }
@@ -473,18 +473,17 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       );
 
       if (tool.metadata.parameters) {
-        const validation = tool.metadata.parameters.safeParse(
-          request.params.arguments ?? {},
-        );
+        const validation = await resolveToolSchema(
+          tool.metadata.parameters,
+        ).validate(request.params.arguments ?? {});
         if (!validation.success) {
-          const issues = validation.error.issues
-            .map((issue) => {
-              const path = issue.path.length > 0 ? issue.path.join('.') : '';
-              return `${path ? `[${path}]: ` : ''}${issue.message}`;
-            })
-            .join('; ');
           return {
-            content: [{ type: 'text', text: `Invalid parameters: ${issues}` }],
+            content: [
+              {
+                type: 'text',
+                text: `Invalid parameters: ${validation.message}`,
+              },
+            ],
             isError: true,
           };
         }
@@ -495,7 +494,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       try {
         const result = await tool.invoke(request.params.arguments ?? {}, ctx);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return this.formatToolResult(result, tool.metadata.outputSchema);
+        return await this.formatToolResult(result, tool.metadata.outputSchema);
       } catch (error) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return this.toErrorResult(error);
@@ -510,16 +509,16 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   ): void {
     if (this.getResources().length + this.getTemplates().length === 0) return;
 
-    server.server.setRequestHandler(ListResourcesRequestSchema, () => ({
+    server.server.setRequestHandler('resources/list', () => ({
       resources: this.getResources().map((r) => r.metadata),
     }));
 
-    server.server.setRequestHandler(ListResourceTemplatesRequestSchema, () => ({
+    server.server.setRequestHandler('resources/templates/list', () => ({
       resourceTemplates: this.getTemplates().map((r) => r.metadata),
     }));
 
     server.server.setRequestHandler(
-      ReadResourceRequestSchema,
+      'resources/read',
       async (request) => {
         const uri = request.params.uri;
         const templateMatch = matchResourceTemplateByUri(
@@ -543,8 +542,8 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           invoke = resourceMatch.resource.cap.invoke;
           params = { ...resourceMatch.params, ...request.params };
         } else {
-          throw new McpError(
-            ErrorCode.MethodNotFound,
+          throw new ProtocolError(
+            ProtocolErrorCode.MethodNotFound,
             `Unknown resource: ${uri}`,
           );
         }
@@ -562,7 +561,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   ): void {
     if (this.getPrompts().length === 0) return;
 
-    server.server.setRequestHandler(ListPromptsRequestSchema, () => ({
+    server.server.setRequestHandler('prompts/list', () => ({
       prompts: this.getPrompts().map((prompt) => ({
         name: prompt.metadata.name,
         description: prompt.metadata.description,
@@ -578,13 +577,13 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       })),
     }));
 
-    server.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    server.server.setRequestHandler('prompts/get', async (request) => {
       const prompt = this.getPrompts().find(
         (p) => p.metadata.name === request.params.name,
       );
       if (!prompt) {
-        throw new McpError(
-          ErrorCode.MethodNotFound,
+        throw new ProtocolError(
+          ProtocolErrorCode.MethodNotFound,
           `Unknown prompt: ${request.params.name}`,
         );
       }
@@ -625,17 +624,20 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     }
   }
 
-  private formatToolResult(result: any, outputSchema?: ZodType): any {
+  private async formatToolResult(
+    result: any,
+    outputSchema?: ToolInputSchema,
+  ): Promise<any> {
     if (result && typeof result === 'object' && Array.isArray(result.content)) {
       return result;
     }
     const defaultContent = [{ type: 'text', text: JSON.stringify(result) }];
     if (outputSchema) {
-      const validation = outputSchema.safeParse(result);
+      const validation = await resolveToolSchema(outputSchema).validate(result);
       if (!validation.success) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          `Tool result does not match outputSchema: ${validation.error.message}`,
+        throw new ProtocolError(
+          ProtocolErrorCode.InternalError,
+          `Tool result does not match outputSchema: ${validation.message}`,
         );
       }
       return { structuredContent: validation.data, content: defaultContent };
@@ -663,7 +665,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
    *   the failure is server-side, not a bad-input problem it can fix by retrying.
    */
   private toErrorResult(error: unknown): any {
-    if (error instanceof McpError) {
+    if (error instanceof ProtocolError) {
       throw error;
     }
     let message = 'Internal server error';

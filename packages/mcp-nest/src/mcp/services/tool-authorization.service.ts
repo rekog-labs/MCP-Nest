@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server";
 import { ToolMetadata, SecurityScheme } from '../decorators/tool.decorator';
 import { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 
@@ -153,8 +153,8 @@ export class ToolAuthorizationService {
       (metadata.requiredRoles && metadata.requiredRoles.length > 0);
 
     if (hasSpecificRequirements && !user) {
-      throw new McpError(
-        ErrorCode.InvalidRequest,
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidRequest,
         `Tool '${toolName}' requires authentication`,
       );
     }
@@ -162,8 +162,8 @@ export class ToolAuthorizationService {
     // Validate scopes if required
     if (metadata.requiredScopes && metadata.requiredScopes.length > 0) {
       if (!this.hasRequiredScopes(user, metadata.requiredScopes)) {
-        throw new McpError(
-          ErrorCode.InvalidRequest,
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidRequest,
           `Tool '${toolName}' requires scopes: ${metadata.requiredScopes.join(', ')}`,
         );
       }
@@ -172,8 +172,8 @@ export class ToolAuthorizationService {
     // Validate roles if required
     if (metadata.requiredRoles && metadata.requiredRoles.length > 0) {
       if (!this.hasRequiredRoles(user, metadata.requiredRoles)) {
-        throw new McpError(
-          ErrorCode.InvalidRequest,
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidRequest,
           `Tool '${toolName}' requires roles: ${metadata.requiredRoles.join(', ')}`,
         );
       }
@@ -182,8 +182,8 @@ export class ToolAuthorizationService {
     // Freemium mode: an undecorated, non-public tool still requires a user.
     // Standard mode trusts @UseGuards / auth middleware (see canAccessTool).
     if (allowUnauthenticatedAccess && !user) {
-      throw new McpError(
-        ErrorCode.InvalidRequest,
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidRequest,
         `Tool '${toolName}' requires authentication`,
       );
     }

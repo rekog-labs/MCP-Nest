@@ -1,4 +1,5 @@
-import { Progress } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/core";
+import { Progress, Client, CallToolRequest, ListToolsRequest } from "@modelcontextprotocol/client";
 import { INestApplication, Injectable, Scope } from '@nestjs/common';
 import { Ctx, Payload } from '@nestjs/microservices';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -12,14 +13,7 @@ import {
   Tool,
 } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createStreamableClient } from './utils';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { randomUUID } from 'crypto';
-import {
-  CallToolRequest,
-  CallToolResultSchema,
-  ListToolsRequest,
-  ListToolsResultSchema,
-} from '@modelcontextprotocol/sdk/types.js';
 
 @Injectable()
 class MockUserRepository {
@@ -337,8 +331,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
               name: 'request-scope-test',
               arguments: { testId: testId1 },
             },
-          },
-          CallToolResultSchema,
+          }
         ),
         client.request(
           {
@@ -347,8 +340,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
               name: 'request-scope-test',
               arguments: { testId: testId2 },
             },
-          },
-          CallToolResultSchema,
+          }
         ),
       ]);
 
@@ -400,8 +392,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
                 name: 'fastify-hello-world',
                 arguments: testArgs,
               },
-            },
-            CallToolResultSchema,
+            }
           ),
           fastifyClient.request(
             {
@@ -410,8 +401,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
                 name: 'fastify-hello-world',
                 arguments: testArgs,
               },
-            },
-            CallToolResultSchema,
+            }
           ),
         ]);
 
@@ -445,15 +435,13 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
             {
               method: 'tools/list',
               params: {},
-            },
-            ListToolsResultSchema,
+            }
           ),
           fastifyClient.request(
             {
               method: 'tools/list',
               params: {},
-            },
-            ListToolsResultSchema,
+            }
           ),
         ]);
 

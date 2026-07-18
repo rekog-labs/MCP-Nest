@@ -11,8 +11,7 @@
  *
  * Honors PORT / SERVER_URL to reach a server started on a non-default port.
  */
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 const PORT = Number(process.env.PORT ?? 3030);
 const SERVER_URL = process.env.SERVER_URL ?? `http://localhost:${PORT}`;

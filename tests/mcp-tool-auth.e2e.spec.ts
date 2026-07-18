@@ -17,9 +17,8 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { Progress } from '@modelcontextprotocol/sdk/types.js';
+import { Progress, Client } from "@modelcontextprotocol/client";
 import { bootstrapMcpApp, createStreamableClient } from './utils';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 /**
  * AUTHENTICATION for HTTP transports is a NestJS guard on the MCP route, not
@@ -182,7 +181,6 @@ describe('E2E: MCP Server Tool with Authentication', () => {
         name: 'auth-hello-world',
         arguments: { name: 'Authenticated User' },
       },
-      undefined,
       {
         onprogress: () => {
           progressCount++;

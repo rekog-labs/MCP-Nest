@@ -1,7 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { BaseRpcContext } from '@nestjs/microservices';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Progress } from '@modelcontextprotocol/sdk/types.js';
+import { McpServer, Progress } from "@modelcontextprotocol/server";
 import { Context, McpRequest, SerializableValue } from '../interfaces';
 
 export type McpTransportKind = 'stdio' | 'streamable-http';
