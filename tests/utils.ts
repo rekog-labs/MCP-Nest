@@ -27,6 +27,8 @@ export interface BootstrapMcpConfig {
   allowUnauthenticatedAccess?: boolean;
   /** Extra MCP server capabilities merged with the auto-derived ones. */
   capabilities?: Record<string, unknown>;
+  /** SEP-2549 per-operation cache hints for modern-era cacheable results. */
+  cacheHints?: Record<string, { ttlMs?: number; cacheScope?: string }>;
   serverMutator?: (server: any) => any;
   /**
    * Hook to configure the app after the microservice is connected but BEFORE
@@ -51,6 +53,7 @@ export async function bootstrapMcpApp(
     version: config.version ?? '0.0.1',
     allowUnauthenticatedAccess: config.allowUnauthenticatedAccess,
     ...('capabilities' in config ? { capabilities: config.capabilities } : {}),
+    ...(config.cacheHints ? { cacheHints: config.cacheHints as any } : {}),
     serverMutator: config.serverMutator,
     transports: config.transports ?? [
       new StreamableHttpTransport({ statefulMode: true }),

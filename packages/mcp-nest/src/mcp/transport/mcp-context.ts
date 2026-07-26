@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { BaseRpcContext } from '@nestjs/microservices';
 import {
+  BAGGAGE_META_KEY,
   CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
   ClientCapabilities,
@@ -9,6 +10,8 @@ import {
   PROTOCOL_VERSION_META_KEY,
   Progress,
   ServerContext,
+  TRACEPARENT_META_KEY,
+  TRACESTATE_META_KEY,
 } from '@modelcontextprotocol/server';
 import { Context, McpRequest, SerializableValue } from '../interfaces';
 
@@ -26,6 +29,28 @@ export type McpTransportKind = 'stdio' | 'streamable-http';
  * fact, not a server-wide one.
  */
 export type McpProtocolEra = 'legacy' | 'modern';
+
+/**
+ * W3C trace-context values a client attached to a request (SEP-414).
+ *
+ * `traceparent`, `tracestate` and `baggage` are *reserved* `_meta` keys — the
+ * only sanctioned exception to the "`_meta` keys are reverse-DNS prefixed" rule
+ * — so they are read verbatim, not under an `io.modelcontextprotocol/` prefix.
+ * Each field is absent when the client did not send it.
+ *
+ * Surfaced as sent, not validated: the spec says the values MUST follow the W3C
+ * formats, but a value that does not is still a client bug, not something to
+ * silently drop. Hand them to your tracer's own propagator, which will reject
+ * malformed input properly.
+ */
+export interface McpTraceContext {
+  /** W3C `traceparent`, e.g. `00-4bf92f...4736-00f067aa0ba902b7-01`. */
+  traceparent?: string;
+  /** W3C `tracestate`, e.g. `vendor1=value1,vendor2=value2`. */
+  tracestate?: string;
+  /** W3C Baggage, e.g. `userId=alice,serverRegion=us-east-1`. */
+  baggage?: string;
+}
 
 export interface McpSessionInfo {
   /**
@@ -173,6 +198,43 @@ export class McpContext
    */
   getClientInfo(): Implementation | undefined {
     return this.sdkContext?.mcpReq.envelope?.[CLIENT_INFO_META_KEY];
+  }
+
+  /**
+   * The OpenTelemetry trace context the caller propagated, for stitching this
+   * handler's spans into the client's trace.
+   *
+   * Unlike {@link getProtocolVersion} and friends these are ordinary request
+   * `_meta` keys, not modern-envelope fields, so they work on **both** eras —
+   * `2026-07-28` merely reserved the key names and pinned the value formats. In
+   * practice only a client that knows about SEP-414 sends them, so expect an
+   * empty object from 2025-era clients.
+   *
+   * Reachable from `@Tool`, `@Resource`/`@ResourceTemplate` and `@Prompt`
+   * handlers — the requests that carry `params._meta`. The list operations
+   * (`tools/list` and friends) take no per-request context in mcp-nest, so
+   * nothing is available for them on either era.
+   *
+   * ```ts
+   * const { traceparent, baggage } = context.getTraceContext();
+   * ```
+   */
+  getTraceContext(): McpTraceContext {
+    const meta = this.mcpRequest.params?._meta as
+      | Record<string, unknown>
+      | undefined;
+    const read = (key: string): string | undefined => {
+      const value = meta?.[key];
+      return typeof value === 'string' ? value : undefined;
+    };
+    const trace: McpTraceContext = {};
+    const traceparent = read(TRACEPARENT_META_KEY);
+    const tracestate = read(TRACESTATE_META_KEY);
+    const baggage = read(BAGGAGE_META_KEY);
+    if (traceparent !== undefined) trace.traceparent = traceparent;
+    if (tracestate !== undefined) trace.tracestate = tracestate;
+    if (baggage !== undefined) trace.baggage = baggage;
+    return trace;
   }
 
   private get progressToken(): string | number | undefined {

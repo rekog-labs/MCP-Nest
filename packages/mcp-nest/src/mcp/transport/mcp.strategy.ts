@@ -18,7 +18,10 @@ import {
 } from '@modelcontextprotocol/server';
 import { firstValueFrom } from 'rxjs';
 import { z } from 'zod';
-import { resolveToolSchema } from './tool-schema';
+import {
+  assertNoMcpParamHeaderMirroring,
+  resolveToolSchema,
+} from './tool-schema';
 import type { ToolInputSchema } from '../decorators/tool.decorator';
 
 import {
@@ -143,6 +146,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     try {
       this.buildCapabilities();
       this.warnIfNamedServerHasNoDecoratorCapabilities();
+      this.warnIfToolListCacheHintIsPublic();
       const ctx = this.createTransportContext();
       for (const transport of this.options.transports) {
         await transport.start(ctx);
@@ -207,6 +211,31 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         `'${this.options.server}' }) exists and is listed in a module's ` +
         `controllers. (Safe to ignore if this server is populated at runtime ` +
         `via strategy.registerTool()/registerResource()/registerPrompt().)`,
+    );
+  }
+
+  /**
+   * Warn — but do not refuse — when `tools/list` is hinted `cacheScope: 'public'`
+   * on a server whose tool list depends on who is asking. See
+   * {@link McpServerOptions.cacheHints} for what that leaks.
+   *
+   * A warning rather than a hard failure: a `public` hint is not *always* wrong
+   * (an operator may front the endpoint with a cache keyed on the access token,
+   * or know the list is uniform in ways we cannot see — authorization enforced
+   * entirely inside a guard, tools registered dynamically after startup).
+   * Refusing to boot on a spec-legal configuration would be overruling the
+   * operator; refusing *silently* is what this actually fixes.
+   */
+  private warnIfToolListCacheHintIsPublic(): void {
+    if (this.options.cacheHints?.['tools/list']?.cacheScope !== 'public') return;
+    if (!this.toolListVariesByCaller()) return;
+    this.logger.warn(
+      `cacheHints['tools/list'].cacheScope is 'public', but this server filters ` +
+        `tools/list per caller (@ToolScopes / @ToolRoles / ` +
+        `allowUnauthenticatedAccess). A public result may be cached by a client ` +
+        `and reused outside the requesting caller's authorization context, so one ` +
+        `principal's visible tool set can be served to another. Use ` +
+        `cacheScope: 'private' unless the list is genuinely identical for every caller.`,
     );
   }
 
@@ -298,6 +327,14 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     if (isPublic !== undefined) base.isPublic = isPublic;
     if (requiredScopes) base.requiredScopes = requiredScopes;
     if (requiredRoles) base.requiredRoles = requiredRoles;
+    // Fail at startup rather than serving a schema whose SEP-2243 contract we
+    // cannot honour — see `assertNoMcpParamHeaderMirroring`.
+    if (base.parameters) {
+      assertNoMcpParamHeaderMirroring(
+        base.parameters,
+        `@Tool({ name: '${base.name}' })`,
+      );
+    }
     return base;
   }
 
@@ -313,6 +350,29 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private getTools(): ToolCapability[] {
     return [...this.tools, ...this.dynamicTools.values()];
+  }
+
+  /**
+   * Whether `tools/list` can answer differently for different callers.
+   *
+   * `tools/list` always runs through `canAccessTool`, but that only *narrows* the
+   * list when per-tool authorization is actually declared: freemium mode
+   * (`allowUnauthenticatedAccess`, where an undecorated tool needs a resolved
+   * `req.user`) or a tool carrying `@ToolScopes()`/`@ToolRoles()`.
+   * `@PublicTool()` alone never narrows anything outside freemium mode.
+   *
+   * Used to judge a SEP-2549 `cacheScope: 'public'` hint on `tools/list`: a
+   * public hint lets a client cache the result and reuse it across authorization
+   * contexts, which on a caller-dependent list means one principal's visible tool
+   * set leaking to another.
+   */
+  private toolListVariesByCaller(): boolean {
+    if (this.options.allowUnauthenticatedAccess) return true;
+    return this.getTools().some(
+      ({ metadata }) =>
+        (metadata.requiredScopes?.length ?? 0) > 0 ||
+        (metadata.requiredRoles?.length ?? 0) > 0,
+    );
   }
   private getResources(): ResourceCapability[] {
     return [...this.resources, ...this.dynamicResources.values()];
@@ -374,7 +434,15 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         ...(this.options.websiteUrl && { websiteUrl: this.options.websiteUrl }),
         ...(this.options.icons && { icons: this.options.icons }),
       },
-      { capabilities, instructions: this.options.instructions ?? '' },
+      {
+        capabilities,
+        instructions: this.options.instructions ?? '',
+        // Era-blind by design: the SDK carries the hint to the wire codec on a
+        // symbol-keyed property that is never serialized, so it fills the
+        // required `ttlMs`/`cacheScope` fields on 2026-era results and leaves
+        // 2025-era responses byte-identical.
+        ...(this.options.cacheHints && { cacheHints: this.options.cacheHints }),
+      },
     );
 
     return this.options.serverMutator
@@ -753,6 +821,12 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   registerTool(definition: DynamicToolDefinition): void {
     const handler: DynamicToolHandler = definition.handler;
+    if (definition.parameters) {
+      assertNoMcpParamHeaderMirroring(
+        definition.parameters,
+        `registerTool('${definition.name}')`,
+      );
+    }
     this.dynamicTools.set(definition.name, {
       metadata: {
         name: definition.name,

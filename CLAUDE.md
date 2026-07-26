@@ -16,7 +16,7 @@ Do not read `LATEST_PROTOCOL_VERSION` from the SDK as "the newest revision we sp
 - `packages/mcp-nest` → **`@rekog/mcp-nest`** (core). `McpStrategy` (a NestJS
   `CustomTransportStrategy`), `@McpController`, the `@Tool`/`@Resource`/`@ResourceTemplate`/`@Prompt`
   decorators, Streamable HTTP + STDIO transports, and per-tool authorization primitives
-  (`@RequireScopes`/`@RequireRoles`). Deliberately dependency-light.
+  (`@ToolScopes`/`@ToolRoles`). Deliberately dependency-light.
 - `packages/mcp-nest-auth` → **`@rekog/mcp-nest-auth`** (optional). A *built-in OAuth
   authorization server* (`McpAuthModule`): your Nest app itself implements the MCP auth spec —
   dynamic client registration, consent, token issuance — while federating user login to an IdP

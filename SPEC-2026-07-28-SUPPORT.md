@@ -220,10 +220,10 @@ transport — irrelevant to us.
 
 Independent of the era work — these are places we don't currently meet the spec.
 
-- [ ] **`Origin` validation.** "Servers **MUST** validate the `Origin` header on all incoming
-      connections… **MUST** respond with HTTP 403 Forbidden." We do not. The SDK entry is
-      deliberately validation-free and expects the host to do it. Decide: enforce by default
-      (breaking-ish) or opt-in option, defaulting on for localhost binds.
+- [x] **`Origin` validation.** "Servers **MUST** validate the `Origin` header on all incoming
+      connections… **MUST** respond with HTTP 403 Forbidden." Now available as
+      `StreamableHttpTransport({ security: { allowedOrigins, allowedHosts } })` — opt-in, see
+      Tier 3 in §10 for why the default is off rather than localhost-on.
 - [x] **Resource-not-found error code.** Was `MethodNotFound` (`-32601`) for an unknown
       resource URI; now `InvalidParams` (`-32602`) per the spec's MUST.
 - [x] **Never return an empty error body.** A conforming client that gets a `400` with an empty
@@ -438,11 +438,13 @@ legacy wiring), a feature could work on one and break on the other. This closes 
       code change, and modern clients start working immediately.
 - [?] Should `statefulMode: true` be deprecated in docs (legacy-only by construction) while
       staying fully supported?
-- [?] `Origin` validation default — on, off, or on-for-localhost. **Not implemented**: the spec
-      says servers MUST validate `Origin` and answer `403`, and we do not. The SDK entry is
-      deliberately validation-free and exports framework-neutral helpers
-      (`validateOriginHeader` / `originValidationResponse`) for the host to apply. This is a
-      pre-existing gap, not a regression, but it is a real MUST.
+- [x] `Origin` validation default — **off unless an allowlist is configured** (Tier 3, §10).
+      The deciding facts: the MUST is narrow (403 only when `Origin` is *present* and invalid, so
+      every non-browser client is unaffected either way), and an allowlist is only ever correct if
+      it names the hostnames the deployment actually answers on — which the library cannot know.
+      A localhost-on default would 403 browser traffic to every proxied or real-domain server;
+      "allow everything" would be validation in name only. Enforcement uses the SDK's
+      framework-neutral `validateOriginHeader` / `validateHostHeader`.
 - [x] `mcpVersionsSupported` in the auth package: **added `2026-07-28` to the default.** The
       feared test edit turned out not to exist — see §5.
 
@@ -499,19 +501,87 @@ Two era-specific behaviours were discovered and are now pinned by test rather th
    round-trip until the client catches up. Deliberately not asserted end-to-end; revisit on the
    next SDK bump.
 
-### Tier 2 — authorization security 🚧
+### Tier 2 — authorization security ✅
 
-- [ ] Token `audience`/`issuer`/`type` validation (spec MUST, currently unmet)
-- [ ] Filter requested scopes against `scopesSupported`
-- [ ] `iss` in authorization responses (RFC 9207) + `authorization_response_iss_parameter_supported`
-- [ ] Canonical-issuer validation (`jwtIssuer` vs `serverUrl` divergence)
+All four items landed in `packages/mcp-nest-auth` only; core untouched. New spec
+`tests/mcp-oauth-security.e2e.spec.ts` (16 tests), no existing assertion edited.
+
+- [x] **Token `audience`/`issuer`/`type` validation.** `validateToken(token, expected?)`
+      now always checks `iss` and optionally pins `aud` (RFC 8707 §2) and the `type`
+      claim. The bearer guard demands `type: 'access'` + `aud === options.resource`;
+      the refresh grant demands `type: 'refresh'` + the same audience. Before this,
+      the *only* check was the HS256 signature — so a token minted by the same
+      authorization server for a sibling resource, a refresh token, or the
+      `type: 'user'` browser-cookie token all authenticated as bearer credentials.
+      ⚠️ Breaking for any deployment whose configured `resource` doesn't match the
+      `aud` it mints, or whose tokens predate a `jwtIssuer`/`serverUrl` change: 401,
+      with the reason logged at warn level.
+- [x] **Requested scopes are narrowed at `/authorize`.** Not against
+      `scopesSupported` alone — its default `['offline_access']` is a placeholder, so
+      strict filtering on it would strip every legitimate scope and make
+      `@ToolScopes()` deny everything. The allowed set is the union of the two
+      configured `scopesSupported` lists **and** every scope declared by a
+      `@ToolScopes()` tool, read off the `@McpController` prototypes via
+      `DiscoveryService` (core's tool list is private; the metadata keys are public
+      API). Unknown scopes are dropped, not rejected. Escape hatch:
+      `scopeValidation: 'passthrough'`. Narrowing happens once, at authorize, so the
+      session/auth code/token claim all record what was actually granted.
+- [x] **`iss` on authorization responses (RFC 9207 / SEP-2468)** + the paired
+      `authorization_response_iss_parameter_supported: true` in AS metadata. Also
+      split the authorize-path failures per RFC 6749 §4.1.2.1: failures *before*
+      `client_id`/`redirect_uri` are validated stay HTTP 400, and post-validation
+      ones (unsupported `response_type`) now redirect back with
+      `error`/`state`/`iss`.
+- [x] **Canonical issuer.** `jwtIssuer` (defaulting to `serverUrl`) is now the one
+      issuer used by the token `iss`, the AS metadata `issuer` (was `serverUrl`),
+      the protected-resource `authorization_servers`, and the `iss` redirect param.
+      A `jwtIssuer ≠ serverUrl` configuration **throws at bootstrap** — the draft
+      makes such metadata unusable client-side (MUST NOT), so the deployment is
+      already broken and failing fast is strictly better than failing at handshake.
+      Also fixed `generateUserToken`, which stamped `iss` from `process.env.SERVER_URL`
+      instead of the configured issuer.
+
+⚠️ **Not done, needs a follow-up outside this workstream:**
+`examples/per-tool-authorization-oauth/src/fake-auth.ts` and
+`e2e/per-tool-authorization-oauth.test.ts` hand-mint tokens with no `iss` and (in
+the e2e's case) a placeholder `aud` of `http://localhost/mcp`. Both relied on the
+signature-only check and will now 401. They need `iss: <serverUrl>` and the real
+`resource` value.
 
 ### Tier 3 — additive compliance 🚧
 
-- [ ] `cacheHints` transport option (SEP-2549) — default stays `private`
-- [ ] `Origin` / `Host` validation option
-- [ ] `x-mcp-header` (SEP-2243) handling
-- [ ] OpenTelemetry `_meta` keys on `McpContext`
+Core-package half ✅ (`tests` 649 → 698 on its own; four new suites):
+
+- [x] **`cacheHints` (SEP-2549) — default stays `private`.** Landed on `McpServerOptions`,
+      **not** on a transport: the SDK takes `cacheHints` on `ServerOptions` (the `McpServer`
+      constructor), not on `createMcpHandler`, and applies it in `Server._wrapHandler` — which
+      wraps exactly the raw `setRequestHandler` handlers mcp-nest registers. One setting therefore
+      covers streamable-HTTP *and* stdio (`serveStdio` has no `cacheHints` option of its own, so
+      there was no other way to reach stdio). Unset ⇒ the SDK's `{ ttlMs: 0, cacheScope: 'private' }`,
+      unchanged. `cacheScope: 'public'` on `tools/list` **warns** (does not refuse) when
+      `toolListVariesByCaller()` — any `@ToolScopes`/`@ToolRoles` tool, or freemium mode.
+- [x] **`Origin` / `Host` validation option.** `new StreamableHttpTransport({ security: {
+      allowedOrigins, allowedHosts } })`, each `string[] | 'localhost'`. **Off unless configured**
+      — the spec's MUST only bites when `Origin` is *present and invalid*, and a localhost-only
+      default would 403 every browser-originated request to a proxied or real-domain deployment.
+      Uses the SDK's `validateOriginHeader`/`validateHostHeader`; applies to POST/GET/DELETE before
+      the body is read; `403` carries a well-formed JSON-RPC error (`-32000`, `id: null`).
+- [x] **`x-mcp-header` (SEP-2243) — refused at registration.** The SDK's mirroring validation is
+      gated on the `toolInputSchemaJson` memo that only `McpServer.registerTool` populates, and
+      mcp-nest registers raw handlers, so the MUST ("reject a header/body mismatch with `-32020`")
+      would silently never run. `assertNoMcpParamHeaderMirroring` scans the resolved *input* JSON
+      Schema (so it catches raw JSON Schema **and** Zod `.meta()`) and throws from
+      `readToolMetadata` (startup) and `registerTool` (runtime). Anywhere in the document counts:
+      the spec makes an annotation outside a statically reachable `properties` chain invalid anyway.
+      ⚠️ Follow-up: implementing the real contract (base64 sentinel decoding, static-reachability
+      rules, numeric comparison) is untouched and still out of scope.
+- [x] **OpenTelemetry `_meta` keys on `McpContext`.** `context.getTraceContext()` →
+      `{ traceparent?, tracestate?, baggage? }`, read from `params._meta` via the SDK's
+      `TRACEPARENT_META_KEY`/`TRACESTATE_META_KEY`/`BAGGAGE_META_KEY`. These are ordinary `_meta`
+      keys, not modern-envelope fields, so it works on **both** eras (verified by test); the
+      revision only reserved the names. Non-string values are dropped. Not available on the list
+      operations, which take no per-request context in mcp-nest.
+
 - [ ] PKCE: require `code_challenge`, `S256` only
 - [ ] `offline_access` out of protected-resource `scopesSupported` (new SHOULD NOT)
 - [ ] `application_type` stored; `disableEndpoints.register`; DCR deprecation docs

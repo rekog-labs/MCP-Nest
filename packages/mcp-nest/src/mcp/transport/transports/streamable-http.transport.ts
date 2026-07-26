@@ -7,12 +7,19 @@ import {
 import {
   classifyInboundRequest,
   createMcpHandler,
+  localhostAllowedHostnames,
+  localhostAllowedOrigins,
   McpServer,
+  validateHostHeader,
+  validateOriginHeader,
   type McpHttpHandler as SdkMcpHttpHandler,
   type PerRequestResponseMode,
 } from '@modelcontextprotocol/server';
 import { HttpAdapterFactory } from '../../adapters/http-adapter.factory';
-import { HttpResponse } from '../../interfaces/http-adapter.interface';
+import {
+  HttpRequest,
+  HttpResponse,
+} from '../../interfaces/http-adapter.interface';
 import { McpTransport, McpTransportContext } from '../mcp-transport.interface';
 import type { McpHttpHandler } from '../mcp-http-handler';
 import { readJsonBody } from './read-body';
@@ -33,6 +40,33 @@ import { readJsonBody } from './read-body';
  *   are rejected.
  */
 export type McpProtocolPosture = 'dual' | 'modern-only' | 'legacy-only';
+
+/**
+ * `Origin` / `Host` allowlists for DNS-rebinding protection. `'localhost'` is
+ * shorthand for the SDK's localhost-class allowlists (`localhost`, `127.0.0.1`,
+ * `[::1]`).
+ */
+export interface McpTransportSecurityOptions {
+  /**
+   * Hostnames allowed in a request's `Origin` header, or `'localhost'`.
+   *
+   * Omit to skip the check entirely (the default — see
+   * {@link StreamableHttpTransportOptions.security}). Entries are **hostnames
+   * only**: no scheme, no port (the check is port-agnostic); bracket IPv6, e.g.
+   * `'[::1]'`.
+   */
+  allowedOrigins?: string[] | 'localhost';
+  /**
+   * Hostnames allowed in a request's `Host` header, or `'localhost'`.
+   *
+   * Stricter than {@link allowedOrigins}: an *absent* `Host` header is rejected,
+   * because a request that never names the host it thinks it reached cannot be
+   * checked against the allowlist. Behind a reverse proxy the value a client
+   * sent is usually rewritten, so allowlist the internal name the proxy
+   * forwards, not the public one.
+   */
+  allowedHosts?: string[] | 'localhost';
+}
 
 /** Per-request carrier for the Node request, so the SDK factory can recover it. */
 const requestStore = new AsyncLocalStorage<{ nodeRequest: unknown }>();
@@ -100,6 +134,35 @@ export interface StreamableHttpTransportOptions {
    */
   responseMode?: PerRequestResponseMode;
   /**
+   * `Origin` / `Host` header validation, for DNS-rebinding protection.
+   *
+   * **Off by default**, and deliberately so. The spec's MUST is narrow — a server
+   * must answer `403` when `Origin` is *present and invalid*; an absent `Origin`
+   * (every non-browser client) is not a violation — but an allowlist can only be
+   * correct if it names the hostnames *this* deployment answers on. Defaulting to
+   * a localhost allowlist would 403 every browser-originated request to a server
+   * behind a proxy or on a real domain, and defaulting to "allow everything"
+   * would be validation in name only. So: configure it and it is enforced,
+   * omit it and it is skipped.
+   *
+   * Turn it on for any server that a browser can reach — that is the only threat
+   * model this defends against. Rejections are answered `403` with a well-formed
+   * JSON-RPC error body and no meaningful `id`, on `POST`, `GET` and `DELETE`
+   * alike, before the body is read or an era is chosen.
+   *
+   * ```ts
+   * // A locally-launched server: only browser pages served from localhost may talk to it.
+   * new StreamableHttpTransport({ security: { allowedOrigins: 'localhost' } })
+   * // A deployed server, both checks pinned to the public hostname.
+   * new StreamableHttpTransport({
+   *   security: { allowedOrigins: ['app.example.com'], allowedHosts: ['mcp.example.com'] },
+   * })
+   * ```
+   *
+   * @default undefined (no validation)
+   */
+  security?: McpTransportSecurityOptions;
+  /**
    * Whether the transport mounts its own `POST`/`GET`/`DELETE` routes on the
    * Nest HTTP adapter.
    *
@@ -146,6 +209,9 @@ export class StreamableHttpTransport implements McpTransport {
 
   private readonly posture: McpProtocolPosture;
   private readonly responseMode: PerRequestResponseMode;
+  /** Resolved allowlists; `undefined` means "don't check this header". */
+  private readonly allowedOrigins?: string[];
+  private readonly allowedHosts?: string[];
   /** The SDK serving entry for `2026-07-28` traffic; absent when `legacy-only`. */
   private modernHandler?: SdkMcpHttpHandler;
   /** `toNodeHandler`-wrapped router — owns web↔Node conversion and SSE backpressure. */
@@ -173,6 +239,14 @@ export class StreamableHttpTransport implements McpTransport {
     this.mountOption = options.mount;
     this.posture = options.protocol ?? 'dual';
     this.responseMode = options.responseMode ?? 'auto';
+    this.allowedOrigins = resolveAllowlist(
+      options.security?.allowedOrigins,
+      localhostAllowedOrigins,
+    );
+    this.allowedHosts = resolveAllowlist(
+      options.security?.allowedHosts,
+      localhostAllowedHostnames,
+    );
   }
 
   /**
@@ -227,6 +301,51 @@ export class StreamableHttpTransport implements McpTransport {
       },
       { onerror: (error) => ctx.logger.error('MCP node adapter error', error) },
     );
+  }
+
+  /**
+   * Reject the request when its `Origin` / `Host` header fails the configured
+   * allowlist. Returns `true` when a `403` was written and the caller must stop.
+   *
+   * Runs on every verb, before the body is read and before the era is chosen: a
+   * DNS-rebinding probe should never reach a handler. The `403` body is a
+   * well-formed JSON-RPC error (matching the SDK's own
+   * `originValidationResponse`) — an empty or unrecognized error body makes a
+   * conforming client conclude the server is legacy and retry with `initialize`.
+   *
+   * The header helpers come from the SDK so the semantics are the ones the spec
+   * text was written against: an absent `Origin` passes (non-browser clients
+   * never send one, and DNS rebinding is a browser attack), while an unparseable
+   * one — including the literal `null` origin of an opaque context — is denied.
+   */
+  private rejectedByHeaderValidation(
+    req: HttpRequest,
+    res: HttpResponse,
+  ): boolean {
+    const deny = (message: string): true => {
+      res.status(403).json({
+        jsonrpc: '2.0',
+        error: { code: -32000, message },
+        id: null,
+      });
+      return true;
+    };
+
+    if (this.allowedOrigins) {
+      const result = validateOriginHeader(
+        firstHeader(req, 'origin'),
+        this.allowedOrigins,
+      );
+      if (!result.ok) return deny(result.message);
+    }
+    if (this.allowedHosts) {
+      const result = validateHostHeader(
+        firstHeader(req, 'host'),
+        this.allowedHosts,
+      );
+      if (!result.ok) return deny(result.message);
+    }
+    return false;
   }
 
   /**
@@ -323,6 +442,7 @@ export class StreamableHttpTransport implements McpTransport {
     const adapter = HttpAdapterFactory.getAdapter(req, res);
     const adaptedReq = adapter.adaptRequest(req);
     const adaptedRes = adapter.adaptResponse(res);
+    if (this.rejectedByHeaderValidation(adaptedReq, adaptedRes)) return;
     const body = await readJsonBody(adaptedReq);
 
     try {
@@ -483,6 +603,7 @@ export class StreamableHttpTransport implements McpTransport {
     const adapter = HttpAdapterFactory.getAdapter(req, res);
     const adaptedReq = adapter.adaptRequest(req);
     const adaptedRes = adapter.adaptResponse(res);
+    if (this.rejectedByHeaderValidation(adaptedReq, adaptedRes)) return;
 
     if (!this.statefulMode) {
       adaptedRes.status(405).json({
@@ -514,6 +635,7 @@ export class StreamableHttpTransport implements McpTransport {
     const adapter = HttpAdapterFactory.getAdapter(req, res);
     const adaptedReq = adapter.adaptRequest(req);
     const adaptedRes = adapter.adaptResponse(res);
+    if (this.rejectedByHeaderValidation(adaptedReq, adaptedRes)) return;
 
     if (!this.statefulMode) {
       adaptedRes.status(405).json({
@@ -562,6 +684,24 @@ function isInitializeRequest(body: unknown): boolean {
     'method' in msg &&
     (msg as { method?: unknown }).method === 'initialize';
   return Array.isArray(body) ? body.some(isInit) : isInit(body);
+}
+
+/**
+ * Turn a `string[] | 'localhost'` allowlist option into the array the SDK
+ * validators take. `undefined` stays `undefined` — the signal for "don't check".
+ */
+function resolveAllowlist(
+  option: string[] | 'localhost' | undefined,
+  localhost: () => string[],
+): string[] | undefined {
+  if (option === undefined) return undefined;
+  return option === 'localhost' ? localhost() : option;
+}
+
+/** Read one header value; Node exposes repeated headers as an array. */
+function firstHeader(req: HttpRequest, name: string): string | undefined {
+  const value = req.headers[name];
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function ensureLeadingSlash(endpoint: string): string {
