@@ -476,10 +476,16 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
               tool.metadata.outputSchema,
             ).toJsonSchema('output');
             if (output) {
-              schema.outputSchema = {
-                ...output,
-                type: 'object',
-              };
+              // Advertise the schema as authored. This used to force
+              // `type: 'object'`, which corrupted every non-object output
+              // schema: SEP-2106 widened `structuredContent` to any JSON value
+              // and the spec documents array `outputSchema`s explicitly, so a
+              // conforming client validating against a mangled schema fails on a
+              // perfectly valid result. (The override was always a no-op for the
+              // Zod path — `normalizeObjectSchema` only ever yields object
+              // schemas there — so this only unbreaks Standard Schema and raw
+              // JSON Schema output schemas.)
+              schema.outputSchema = output;
             }
           }
           return schema;
@@ -492,8 +498,14 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         (t) => t.metadata.name === request.params.name,
       );
       if (!tool) {
+        // An unknown *tool* is a bad `params.name`, not an unimplemented RPC
+        // *method*. The spec reserves -32601 for "the server does not implement
+        // the requested RPC method" (answered with HTTP 404), which clients also
+        // use for era/transport detection — so emitting it here invites a client
+        // to conclude `tools/call` itself is unsupported. The spec's own
+        // unknown-tool example uses -32602.
         throw new ProtocolError(
-          ProtocolErrorCode.MethodNotFound,
+          ProtocolErrorCode.InvalidParams,
           `Unknown tool: ${request.params.name}`,
         );
       }
@@ -617,8 +629,9 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         (p) => p.metadata.name === request.params.name,
       );
       if (!prompt) {
+        // -32602, not -32601 — same reasoning as the unknown-tool case above.
         throw new ProtocolError(
-          ProtocolErrorCode.MethodNotFound,
+          ProtocolErrorCode.InvalidParams,
           `Unknown prompt: ${request.params.name}`,
         );
       }
