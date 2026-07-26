@@ -14,6 +14,7 @@ import {
   ReadResourceResult,
   ServerCapabilities,
   ProtocolErrorCode,
+  ServerContext,
 } from '@modelcontextprotocol/server';
 import { firstValueFrom } from 'rxjs';
 import { z } from 'zod';
@@ -49,7 +50,7 @@ import {
   McpHandlerExtras,
   McpMethodRef,
 } from './mcp-transport.constants';
-import { McpContext, McpSessionInfo } from './mcp-context';
+import { McpContext, McpSessionSeed } from './mcp-context';
 import { McpServerOptions } from './mcp-server-options.interface';
 import { McpTransportContext } from './mcp-transport.interface';
 import {
@@ -332,6 +333,8 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       createServer: () => this.createServer(),
       bindRequestHandlers: (server, session, rawRequest) =>
         this.bindRequestHandlers(server, session, rawRequest),
+      createBoundServer: (session, rawRequest) =>
+        this.createBoundServer(session, rawRequest),
       httpAdapter: this.httpAdapter,
       options: this.options,
       logger: this.logger,
@@ -350,6 +353,14 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     }
     if (this.getPrompts().length > 0) {
       capabilities.prompts = capabilities.prompts ?? { listChanged: true };
+    }
+    // `Context.log` is available to every handler, and the spec requires that
+    // "servers that emit log message notifications MUST declare the `logging`
+    // capability". Opt out by passing the key explicitly as
+    // `capabilities: { logging: undefined }` — hence the `in` check rather than
+    // `??`, which cannot tell "absent" from "explicitly undefined".
+    if (!('logging' in capabilities)) {
+      capabilities.logging = {};
     }
 
     const server = new McpServer(
@@ -373,7 +384,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   bindRequestHandlers(
     server: McpServer,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
     this.bindToolHandlers(server, session, rawRequest);
@@ -381,18 +392,39 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     this.bindPromptHandlers(server, session, rawRequest);
   }
 
+  /**
+   * Create a server with its request handlers already bound — the shape the SDK
+   * serving entries (`createMcpHandler`, `serveStdio`) expect from an
+   * `McpServerFactory`.
+   *
+   * They call the factory once per serving unit (one HTTP request on the modern
+   * era, one connection on stdio) and own the transport themselves, so there is
+   * no separate `connect()` step for the caller.
+   */
+  createBoundServer(session: McpSessionSeed, rawRequest?: unknown): McpServer {
+    const server = this.createServer();
+    this.bindRequestHandlers(server, session, rawRequest);
+    return server;
+  }
+
   private buildContext(
     server: McpServer,
     request: McpRequest,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
+    sdkContext?: ServerContext,
   ): McpContext {
+    const era = session.era ?? 'legacy';
+    // Protocol sessions were removed in 2026-07-28, so a modern request never
+    // has one — don't go fishing for a session id on the transport there.
     const sessionId =
-      session.sessionId ??
-      (server.server.transport as { sessionId?: string } | undefined)
-        ?.sessionId;
+      era === 'modern'
+        ? undefined
+        : (session.sessionId ??
+          (server.server.transport as { sessionId?: string } | undefined)
+            ?.sessionId);
     return new McpContext(
-      [server, request, { ...session, sessionId }, rawRequest],
+      [server, request, { ...session, era, sessionId }, rawRequest, sdkContext],
       this.logger,
     );
   }
@@ -403,7 +435,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private bindToolHandlers(
     server: McpServer,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
     if (this.getTools().length === 0) return;
@@ -455,7 +487,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       return { tools } as unknown as ListToolsResult;
     });
 
-    server.server.setRequestHandler('tools/call', async (request) => {
+    server.server.setRequestHandler('tools/call', async (request, sdkCtx) => {
       const tool = this.getTools().find(
         (t) => t.metadata.name === request.params.name,
       );
@@ -490,7 +522,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         request.params.arguments = validation.data as Record<string, unknown>;
       }
 
-      const ctx = this.buildContext(server, request, session, rawRequest);
+      const ctx = this.buildContext(server, request, session, rawRequest, sdkCtx);
       try {
         const result = await tool.invoke(request.params.arguments ?? {}, ctx);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
@@ -504,7 +536,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private bindResourceHandlers(
     server: McpServer,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
     if (this.getResources().length + this.getTemplates().length === 0) return;
@@ -519,7 +551,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
     server.server.setRequestHandler(
       'resources/read',
-      async (request) => {
+      async (request, sdkCtx) => {
         const uri = request.params.uri;
         const templateMatch = matchResourceTemplateByUri(
           this.getTemplates().map((cap) => ({
@@ -542,13 +574,16 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           invoke = resourceMatch.resource.cap.invoke;
           params = { ...resourceMatch.params, ...request.params };
         } else {
+          // Spec: "If the requested resource does not exist, servers MUST
+          // return a JSON-RPC error with code -32602 (Invalid Params)." The
+          // older -32002 is reserved and MUST NOT be emitted on this revision.
           throw new ProtocolError(
-            ProtocolErrorCode.MethodNotFound,
+            ProtocolErrorCode.InvalidParams,
             `Unknown resource: ${uri}`,
           );
         }
 
-        const ctx = this.buildContext(server, request, session, rawRequest);
+        const ctx = this.buildContext(server, request, session, rawRequest, sdkCtx);
         return (await invoke(params, ctx)) as ReadResourceResult;
       },
     );
@@ -556,7 +591,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private bindPromptHandlers(
     server: McpServer,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
     if (this.getPrompts().length === 0) return;
@@ -577,7 +612,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       })),
     }));
 
-    server.server.setRequestHandler('prompts/get', async (request) => {
+    server.server.setRequestHandler('prompts/get', async (request, sdkCtx) => {
       const prompt = this.getPrompts().find(
         (p) => p.metadata.name === request.params.name,
       );
@@ -587,7 +622,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           `Unknown prompt: ${request.params.name}`,
         );
       }
-      const ctx = this.buildContext(server, request, session, rawRequest);
+      const ctx = this.buildContext(server, request, session, rawRequest, sdkCtx);
       return (await prompt.invoke(
         request.params.arguments,
         ctx,
@@ -689,6 +724,20 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   // Dynamic capability registration
   // ---------------------------------------------------------------------------
 
+  /** Fan a runtime capability change out to every transport that can deliver it. */
+  private announceListChanged(kind: 'tools' | 'resources' | 'prompts'): void {
+    for (const transport of this.options.transports) {
+      try {
+        transport.notifyListChanged?.(kind);
+      } catch (err) {
+        this.logger.error(
+          `Failed to announce ${kind} list change`,
+          err as Error,
+        );
+      }
+    }
+  }
+
   registerTool(definition: DynamicToolDefinition): void {
     const handler: DynamicToolHandler = definition.handler;
     this.dynamicTools.set(definition.name, {
@@ -708,6 +757,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           handler(payload as any, ctx, ctx.getRawRequest()) as unknown,
         ),
     });
+    this.announceListChanged('tools');
   }
 
   registerResource(definition: DynamicResourceDefinition): void {
@@ -725,6 +775,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           handler(payload as any, ctx, ctx.getRawRequest()) as unknown,
         ),
     });
+    this.announceListChanged('resources');
   }
 
   registerPrompt(definition: DynamicPromptDefinition): void {
@@ -740,15 +791,19 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           handler(payload as any, ctx, ctx.getRawRequest()) as unknown,
         ),
     });
+    this.announceListChanged('prompts');
   }
 
   removeTool(name: string): void {
     this.dynamicTools.delete(name);
+    this.announceListChanged('tools');
   }
   removeResource(uri: string): void {
     this.dynamicResources.delete(uri);
+    this.announceListChanged('resources');
   }
   removePrompt(name: string): void {
     this.dynamicPrompts.delete(name);
+    this.announceListChanged('prompts');
   }
 }

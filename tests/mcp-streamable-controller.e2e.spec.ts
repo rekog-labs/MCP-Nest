@@ -17,7 +17,7 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { createStreamableClient } from './utils';
+import { createEraClient, ERAS } from './utils';
 
 /**
  * Pins the "bring your own controller" contract for the streamable-HTTP
@@ -69,7 +69,7 @@ class GreetingTool {
 @UseGuards(HeaderGuard)
 class MyMcpController extends StreamableHttpController {}
 
-describe('E2E: StreamableHttpController (bring-your-own-controller)', () => {
+describe.each(ERAS)('E2E: StreamableHttpController (bring-your-own-controller) (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -106,7 +106,7 @@ describe('E2E: StreamableHttpController (bring-your-own-controller)', () => {
   });
 
   it('registers inherited routes + injects the handler, and serves MCP when the guard allows', async () => {
-    const client = await createStreamableClient(port, {
+    const client = await createEraClient(era, port, {
       requestInit: { headers: { 'x-allow': 'yes' } },
     });
 
@@ -128,6 +128,6 @@ describe('E2E: StreamableHttpController (bring-your-own-controller)', () => {
   it('runs the class-level guard on the inherited route (denied → connect fails)', async () => {
     // No `x-allow` header → guard denies the initialize POST → 401, so the
     // client cannot connect.
-    await expect(createStreamableClient(port)).rejects.toThrow();
+    await expect(createEraClient(era, port)).rejects.toThrow();
   });
 });

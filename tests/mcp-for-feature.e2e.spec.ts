@@ -2,9 +2,10 @@ import { INestApplication, Injectable, Module } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { McpController, Prompt, Resource, Tool } from '@rekog/mcp-nest';
 import {
-  createStreamableClient,
   McpStrategy,
   StreamableHttpTransport,
+  createEraClient,
+  ERAS,
 } from './utils';
 import { z } from 'zod';
 
@@ -176,7 +177,7 @@ async function bootstrapServer(config: {
   return { app, port };
 }
 
-describe('E2E: feature-module grouping (Streamable HTTP)', () => {
+describe.each(ERAS)('E2E: feature-module grouping (Streamable HTTP) (%s era)', (era) => {
   let mainApp: INestApplication;
   let analyticsApp: INestApplication;
   let combinedApp: INestApplication;
@@ -221,7 +222,7 @@ describe('E2E: feature-module grouping (Streamable HTTP)', () => {
 
   describe('Main Server - Should have user and order capabilities', () => {
     it('should list user and order tools registered for the server', async () => {
-      const client = await createStreamableClient(mainPort);
+      const client = await createEraClient(era, mainPort);
       try {
         const tools = await client.listTools();
 
@@ -239,7 +240,7 @@ describe('E2E: feature-module grouping (Streamable HTTP)', () => {
     });
 
     it('should call tools registered for the server', async () => {
-      const client = await createStreamableClient(mainPort);
+      const client = await createEraClient(era, mainPort);
       try {
         const result: any = await client.callTool({
           name: 'get-user',
@@ -255,7 +256,7 @@ describe('E2E: feature-module grouping (Streamable HTTP)', () => {
     });
 
     it('should have resources registered for the server', async () => {
-      const client = await createStreamableClient(mainPort);
+      const client = await createEraClient(era, mainPort);
       try {
         const resources = await client.listResources();
         expect(
@@ -267,7 +268,7 @@ describe('E2E: feature-module grouping (Streamable HTTP)', () => {
     });
 
     it('should have prompts registered for the server', async () => {
-      const client = await createStreamableClient(mainPort);
+      const client = await createEraClient(era, mainPort);
       try {
         const prompts = await client.listPrompts();
         expect(
@@ -281,7 +282,7 @@ describe('E2E: feature-module grouping (Streamable HTTP)', () => {
 
   describe('Analytics Server - Should have analytics tools only', () => {
     it('should list only analytics tools', async () => {
-      const client = await createStreamableClient(analyticsPort);
+      const client = await createEraClient(era, analyticsPort);
       try {
         const tools = await client.listTools();
 
@@ -301,7 +302,7 @@ describe('E2E: feature-module grouping (Streamable HTTP)', () => {
     });
 
     it('should call analytics tool', async () => {
-      const client = await createStreamableClient(analyticsPort);
+      const client = await createEraClient(era, analyticsPort);
       try {
         const result: any = await client.callTool({
           name: 'get-analytics',
@@ -317,7 +318,7 @@ describe('E2E: feature-module grouping (Streamable HTTP)', () => {
 
   describe('Combined Feature Module - Multiple providers in single forFeature call', () => {
     it('should list tools from multiple capability classes grouped in single forFeature', async () => {
-      const client = await createStreamableClient(combinedPort);
+      const client = await createEraClient(era, combinedPort);
       try {
         const tools = await client.listTools();
 
@@ -335,7 +336,7 @@ describe('E2E: feature-module grouping (Streamable HTTP)', () => {
 
   describe('Server isolation - capabilities go to correct server', () => {
     it('should not register analytics tools on the main server', async () => {
-      const client = await createStreamableClient(mainPort);
+      const client = await createEraClient(era, mainPort);
       try {
         const tools = await client.listTools();
 

@@ -10,8 +10,10 @@ import {
 } from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
-  createStreamableClient,
+  createEraClient,
   createStreamableClientWithElicitation,
+  ERAS,
+  type Era,
   StreamableHttpTransport,
 } from './utils';
 
@@ -335,10 +337,11 @@ describe('E2E: MCP ToolServer', () => {
   });
 
   const runClientTests = (
-    clientType: 'http+sse' | 'streamable http',
+    clientType: string,
     clientCreator: (port: number, options?: any) => Promise<Client>,
     requestScopedHeaderValue: string,
     stateless = false,
+    era: Era = 'legacy',
   ) => {
     describe(`using ${clientType} client${stateless ? ' (stateless)' : ''}`, () => {
       let port: number;
@@ -440,7 +443,18 @@ describe('E2E: MCP ToolServer', () => {
               },
             );
             if (!stateless) {
-              expect(progressCount).toBe(5);
+              // The tool emits 5 progress notifications, and the two eras
+              // deliver a different number of them — deterministically, and
+              // verified on the wire by the progress values themselves:
+              //   legacy → [20, 40, 60, 80]       (the final one is lost)
+              //   modern → [20, 40, 60, 80, 100]  (all five arrive)
+              // On the modern era a notification travels on the request-scoped
+              // stream that the response itself closes, so the response cannot
+              // overtake it. On legacy it goes out on the separate session
+              // stream and the last one loses the race: the client has already
+              // resolved the call and stopped listening. Asserted per era
+              // rather than loosened, so a change in either is caught.
+              expect(progressCount).toBe(era === 'modern' ? 6 : 5);
             }
             expect(result.content[0].text).toContain(
               'Hello, Repository User Name userRepo123!',
@@ -683,11 +697,17 @@ describe('E2E: MCP ToolServer', () => {
     });
   };
 
+  // Elicitation stays LEGACY-ONLY. It is a server->client request, which on the
+  // modern era has to travel back over the request-scoped stream rather than a
+  // session; that wiring (the MRTR wrapper) isn't in place yet. This is a gap in
+  // the product, not in the parameterisation — see SPEC-2026-07-28-SUPPORT.md.
   runElicitationTests('streamable http', createStreamableClientWithElicitation);
 
-  describe('Elicitation with non-elicitation clients', () => {
+  describe.each(ERAS)(
+    'Elicitation with non-elicitation clients (%s era)',
+    (era) => {
     it('falls back gracefully when client lacks elicitation capability', async () => {
-      const client = await createStreamableClient(statefulServerPort);
+      const client = await createEraClient(era, statefulServerPort);
       try {
         const result: any = await client.callTool({
           name: 'hello-world-elicitation',
@@ -700,13 +720,29 @@ describe('E2E: MCP ToolServer', () => {
         await client.close();
       }
     });
-  });
-
-  runClientTests('streamable http', createStreamableClient, 'streamable-value');
-  runClientTests(
-    'streamable http',
-    createStreamableClient,
-    'stateless-value',
-    true,
+    },
   );
+
+  // The whole tool surface, on both eras, against both a stateful and a
+  // stateless transport. (`statefulMode` is legacy-only, so the modern client
+  // sees the same sessionless behavior either way — running it against both
+  // confirms the option genuinely does not leak into the modern path.)
+  for (const era of ERAS) {
+    const createClient = (port: number, options?: any) =>
+      createEraClient(era, port, options);
+    runClientTests(
+      `streamable http (${era} era)`,
+      createClient,
+      'streamable-value',
+      false,
+      era,
+    );
+    runClientTests(
+      `streamable http (${era} era)`,
+      createClient,
+      'stateless-value',
+      true,
+      era,
+    );
+  }
 });

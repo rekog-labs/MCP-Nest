@@ -11,7 +11,7 @@ import {
   McpStrategy,
   Tool,
 } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 import { z } from 'zod';
 
 /**
@@ -130,7 +130,7 @@ class OutputSchemaToolService implements OnModuleInit {
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
+describe.each(ERAS)('E2E: Dynamic Tool Registration via McpStrategy (%s era)', (era) => {
   describe('Basic Dynamic Tools', () => {
     let app: INestApplication;
     let serverPort: number;
@@ -150,7 +150,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should list dynamically registered tools', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const tools = await client.listTools();
 
@@ -172,7 +172,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should execute dynamically registered tools', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result: any = await client.callTool({
           name: 'search-knowledge',
@@ -189,7 +189,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should execute dynamic tool without parameters', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result: any = await client.callTool({
           name: 'get-collections',
@@ -204,7 +204,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should have correct input schema for dynamic tools', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const tools = await client.listTools();
         const searchTool = tools.tools.find(
@@ -240,7 +240,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should list both decorator and dynamic tools', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const tools = await client.listTools();
 
@@ -262,7 +262,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should execute decorator-based tool alongside dynamic tools', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result: any = await client.callTool({
           name: 'static-tool',
@@ -295,7 +295,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should have outputSchema in tool listing', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const tools = await client.listTools();
         const tool = tools.tools.find(
@@ -312,7 +312,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should return structured content for tools with outputSchema', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result: any = await client.callTool({
           name: 'structured-output-tool',
@@ -372,7 +372,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should register dynamic tools to correct server (server 1)', async () => {
-      const client = await createStreamableClient(port1);
+      const client = await createEraClient(era, port1);
       try {
         const tools = await client.listTools();
 
@@ -388,7 +388,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should register dynamic tools to correct server (server 2)', async () => {
-      const client = await createStreamableClient(port2);
+      const client = await createEraClient(era, port2);
       try {
         const tools = await client.listTools();
 
@@ -404,8 +404,8 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should execute tools on their respective servers', async () => {
-      const client1 = await createStreamableClient(port1);
-      const client2 = await createStreamableClient(port2);
+      const client1 = await createEraClient(era, port1);
+      const client2 = await createEraClient(era, port2);
 
       try {
         const result1: any = await client1.callTool({
@@ -453,7 +453,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
         handler: async () => ({ content: [{ type: 'text', text: 'temp' }] }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         let tools = await client.listTools();
         expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeDefined();
@@ -468,7 +468,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
     });
 
     it('should return an error when calling a removed tool', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         await expect(
           client.callTool({ name: 'temp-tool', arguments: {} }),
@@ -492,7 +492,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
 
       strategy.removeTool('tool-to-remove');
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const tools = await client.listTools();
         expect(
@@ -513,7 +513,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
         handler: async () => ({ content: [{ type: 'text', text: 'hot' }] }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const tools = await client.listTools();
         expect(
@@ -541,7 +541,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const tools = await client.listTools();
         const matches = tools.tools.filter(
@@ -572,7 +572,7 @@ describe('E2E: Dynamic Tool Registration via McpStrategy', () => {
         handler: async () => ({ content: [{ type: 'text', text: 'second' }] }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const tools = await client.listTools();
         const matches = tools.tools.filter((t) => t.name === 'duplicate-tool');

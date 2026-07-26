@@ -17,7 +17,7 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { createStreamableClient } from './utils';
+import { createEraClient, ERAS } from './utils';
 
 @Injectable()
 class DenyGuard implements CanActivate {
@@ -58,7 +58,7 @@ class GreetingController {
   }
 }
 
-describe('E2E: McpStrategy (streamable-http)', () => {
+describe.each(ERAS)('E2E: McpStrategy (streamable-http) (%s era)', (era) => {
   let app: INestApplication;
   let strategy: McpStrategy;
   let port: number;
@@ -88,7 +88,7 @@ describe('E2E: McpStrategy (streamable-http)', () => {
   });
 
   it('lists the decorated tools', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const tools = await client.listTools();
     const names = tools.tools.map((t) => t.name).sort();
     expect(names).toEqual(['guarded', 'hello-world']);
@@ -96,14 +96,14 @@ describe('E2E: McpStrategy (streamable-http)', () => {
   });
 
   it('does not expose plain @MessagePattern handlers', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const tools = await client.listTools();
     expect(tools.tools.find((t) => t.name === 'plain-rpc')).toBeUndefined();
     await client.close();
   });
 
   it('calls a tool through the RPC pipeline (@Payload + @Ctx)', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const result = (await client.callTool({
       name: 'hello-world',
       arguments: { name: 'Alice' },
@@ -113,7 +113,7 @@ describe('E2E: McpStrategy (streamable-http)', () => {
   });
 
   it('runs NestJS guards on tool calls', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const result = (await client.callTool({
       name: 'guarded',
       arguments: {},

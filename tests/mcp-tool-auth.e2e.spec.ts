@@ -18,7 +18,7 @@ import {
   Tool,
 } from '@rekog/mcp-nest';
 import { Progress, Client } from "@modelcontextprotocol/client";
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 /**
  * AUTHENTICATION for HTTP transports is a NestJS guard on the MCP route, not
@@ -128,7 +128,7 @@ const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
 @UseGuards(AuthGuard)
 class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
-describe('E2E: MCP Server Tool with Authentication', () => {
+describe.each(ERAS)('E2E: MCP Server Tool with Authentication (%s era)', (era) => {
   let app: INestApplication;
   let testPort: number;
 
@@ -148,7 +148,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should list tools', async () => {
-    const client = await createStreamableClient(testPort, {
+    const client = await createEraClient(era, testPort, {
       requestInit: {
         headers: {
           Authorization: 'Bearer token-xyz',
@@ -167,7 +167,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
   });
 
   it('should inject authentication context into the tool', async () => {
-    const client = await createStreamableClient(testPort, {
+    const client = await createEraClient(era, testPort, {
       requestInit: {
         headers: {
           Authorization: 'Bearer token-xyz',
@@ -206,7 +206,7 @@ describe('E2E: MCP Server Tool with Authentication', () => {
     // Connection should be rejected by the auth middleware (401)
     let client: Client | undefined;
     try {
-      client = await createStreamableClient(testPort, {
+      client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer invalid-token',

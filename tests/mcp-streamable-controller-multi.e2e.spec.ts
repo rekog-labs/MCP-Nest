@@ -9,7 +9,7 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { createStreamableClient } from './utils';
+import { createEraClient, ERAS } from './utils';
 
 /**
  * Multi-server + bring-your-own-controller.
@@ -94,7 +94,7 @@ class TravelModule {}
 @Module({ imports: [WeatherModule, TravelModule] })
 class AppModule {}
 
-describe('E2E: StreamableHttpController (multi-server)', () => {
+describe.each(ERAS)('E2E: StreamableHttpController (multi-server) (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -119,7 +119,7 @@ describe('E2E: StreamableHttpController (multi-server)', () => {
   });
 
   it('routes /weather/mcp to the weather server only', async () => {
-    const client = await createStreamableClient(port, {
+    const client = await createEraClient(era, port, {
       endpoint: '/weather/mcp',
     });
     const names = (await client.listTools()).tools.map((t) => t.name);
@@ -128,7 +128,7 @@ describe('E2E: StreamableHttpController (multi-server)', () => {
   });
 
   it('routes /travel/mcp to the travel server only', async () => {
-    const client = await createStreamableClient(port, {
+    const client = await createEraClient(era, port, {
       endpoint: '/travel/mcp',
     });
     const names = (await client.listTools()).tools.map((t) => t.name);
@@ -137,7 +137,7 @@ describe('E2E: StreamableHttpController (multi-server)', () => {
   });
 
   it('calls the right tool on each endpoint', async () => {
-    const weather = await createStreamableClient(port, {
+    const weather = await createEraClient(era, port, {
       endpoint: '/weather/mcp',
     });
     const w = (await weather.callTool({
@@ -147,7 +147,7 @@ describe('E2E: StreamableHttpController (multi-server)', () => {
     expect(w.content[0].text).toBe('sunny');
     await weather.close();
 
-    const travel = await createStreamableClient(port, {
+    const travel = await createEraClient(era, port, {
       endpoint: '/travel/mcp',
     });
     const t = (await travel.callTool({

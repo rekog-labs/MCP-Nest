@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
 import { McpController, ResourceTemplate } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 /**
  * Regression coverage for the `{path*}` catch-all wildcard in resource template
@@ -57,7 +57,7 @@ function parse(resource: { contents: unknown[] }): any {
   return JSON.parse((resource.contents[0] as { text: string }).text);
 }
 
-describe('E2E: MCP Resource Template `{path*}` catch-all wildcard', () => {
+describe.each(ERAS)('E2E: MCP Resource Template `{path*}` catch-all wildcard (%s era)', (era) => {
   let app: INestApplication;
   let testPort: number;
 
@@ -76,7 +76,7 @@ describe('E2E: MCP Resource Template `{path*}` catch-all wildcard', () => {
   });
 
   it('advertises the raw `{path*}` template unchanged', async () => {
-    const client = await createStreamableClient(testPort);
+    const client = await createEraClient(era, testPort);
     try {
       const { resourceTemplates } = await client.listResourceTemplates();
       const tpl = resourceTemplates.find((r) => r.name === 'file-content');
@@ -87,7 +87,7 @@ describe('E2E: MCP Resource Template `{path*}` catch-all wildcard', () => {
   });
 
   it('matches a multi-segment path and joins it into one string', async () => {
-    const client = await createStreamableClient(testPort);
+    const client = await createEraClient(era, testPort);
     try {
       const resource = await client.readResource({
         uri: 'mcp://files/docs/readme.md',
@@ -99,7 +99,7 @@ describe('E2E: MCP Resource Template `{path*}` catch-all wildcard', () => {
   });
 
   it('matches a single-segment path', async () => {
-    const client = await createStreamableClient(testPort);
+    const client = await createEraClient(era, testPort);
     try {
       const resource = await client.readResource({
         uri: 'mcp://files/readme.md',
@@ -111,7 +111,7 @@ describe('E2E: MCP Resource Template `{path*}` catch-all wildcard', () => {
   });
 
   it('matches a named segment followed by a catch-all', async () => {
-    const client = await createStreamableClient(testPort);
+    const client = await createEraClient(era, testPort);
     try {
       const resource = await client.readResource({
         uri: 'mcp://repo/acme/src/deep/index.ts',

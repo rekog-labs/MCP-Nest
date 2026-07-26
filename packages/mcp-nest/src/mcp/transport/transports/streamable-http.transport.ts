@@ -1,11 +1,41 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'crypto';
-import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
-import { McpServer } from "@modelcontextprotocol/server";
+import {
+  NodeStreamableHTTPServerTransport,
+  toNodeHandler,
+} from '@modelcontextprotocol/node';
+import {
+  classifyInboundRequest,
+  createMcpHandler,
+  McpServer,
+  type McpHttpHandler as SdkMcpHttpHandler,
+  type PerRequestResponseMode,
+} from '@modelcontextprotocol/server';
 import { HttpAdapterFactory } from '../../adapters/http-adapter.factory';
 import { HttpResponse } from '../../interfaces/http-adapter.interface';
 import { McpTransport, McpTransportContext } from '../mcp-transport.interface';
 import type { McpHttpHandler } from '../mcp-http-handler';
 import { readJsonBody } from './read-body';
+
+/**
+ * How this endpoint answers the two protocol eras.
+ *
+ * - `dual` (default) — serve both. Each POST is classified with the SDK's own
+ *   `isLegacyRequest` predicate: modern (`2026-07-28`) traffic goes to the
+ *   stateless serving entry, 2025-era traffic to the classic wiring below
+ *   (including `statefulMode` sessions). The spec explicitly allows this:
+ *   "A dual-era server MAY serve both eras concurrently on the same endpoint
+ *   or process."
+ * - `modern-only` — answer 2025-era traffic with the unsupported-protocol-version
+ *   error naming the revisions this endpoint serves. Legacy clients cannot fall
+ *   forward, so that error is the only diagnostic they will see.
+ * - `legacy-only` — the pre-`2026-07-28` behaviour, unchanged. Modern clients
+ *   are rejected.
+ */
+export type McpProtocolPosture = 'dual' | 'modern-only' | 'legacy-only';
+
+/** Per-request carrier for the Node request, so the SDK factory can recover it. */
+const requestStore = new AsyncLocalStorage<{ nodeRequest: unknown }>();
 
 export interface StreamableHttpTransportOptions {
   /**
@@ -49,8 +79,26 @@ export interface StreamableHttpTransportOptions {
    * @default `!statefulMode` (JSON when stateless, SSE when stateful)
    */
   enableJsonResponse?: boolean;
-  /** Custom session id generator (stateful mode). */
+  /** Custom session id generator (stateful mode). Legacy era only — `2026-07-28` has no sessions. */
   sessionIdGenerator?: () => string;
+  /**
+   * Which protocol eras this endpoint serves. See {@link McpProtocolPosture}.
+   *
+   * @default 'dual'
+   */
+  protocol?: McpProtocolPosture;
+  /**
+   * Response shaping for **modern-era** exchanges (the `2026-07-28` equivalent of
+   * {@link enableJsonResponse}, which stays legacy-only):
+   *
+   * - `'auto'` (default) — a single JSON body, upgraded to an SSE stream only if
+   *   the handler emits something before its result (progress, logging).
+   * - `'sse'` — always stream.
+   * - `'json'` — never stream; mid-call progress/log notifications are dropped.
+   *
+   * @default 'auto'
+   */
+  responseMode?: PerRequestResponseMode;
   /**
    * Whether the transport mounts its own `POST`/`GET`/`DELETE` routes on the
    * Nest HTTP adapter.
@@ -96,6 +144,24 @@ export class StreamableHttpTransport implements McpTransport {
   private readonly servers: Record<string, McpServer> = {};
   private ctx?: McpTransportContext;
 
+  private readonly posture: McpProtocolPosture;
+  private readonly responseMode: PerRequestResponseMode;
+  /** The SDK serving entry for `2026-07-28` traffic; absent when `legacy-only`. */
+  private modernHandler?: SdkMcpHttpHandler;
+  /** `toNodeHandler`-wrapped router — owns web↔Node conversion and SSE backpressure. */
+  private modernNodeHandler?: (
+    req: any,
+    res: any,
+    parsedBody?: unknown,
+  ) => Promise<void>;
+  /**
+   * Maps the web `Request` the SDK serves to the Node request it came from.
+   * `McpRequestContext.requestInfo` is object-identical to what we hand
+   * `fetch()`, so this recovers the Express/Fastify request — which is what
+   * carries `req.user` from NestJS guards and what `@RawRequest()` exposes.
+   */
+  private readonly nodeRequestFor = new WeakMap<object, unknown>();
+
   constructor(options: StreamableHttpTransportOptions = {}) {
     this.endpoint = ensureLeadingSlash(options.endpoint ?? 'mcp');
     this.endpointExplicit = options.endpoint !== undefined;
@@ -105,6 +171,62 @@ export class StreamableHttpTransport implements McpTransport {
     this.sessionIdGenerator =
       options.sessionIdGenerator ?? (() => randomUUID());
     this.mountOption = options.mount;
+    this.posture = options.protocol ?? 'dual';
+    this.responseMode = options.responseMode ?? 'auto';
+  }
+
+  /**
+   * Build the `2026-07-28` serving entry.
+   *
+   * `legacy: 'reject'` because this transport keeps its own 2025-era leg: the
+   * entry's built-in stateless fallback cannot do sessions (`statefulMode`) and
+   * ignores `enableJsonResponse`, so routing in front of it with
+   * `isLegacyRequest` is the only way to preserve existing behaviour exactly.
+   */
+  private buildModernHandler(ctx: McpTransportContext): void {
+    if (this.posture === 'legacy-only') return;
+
+    this.modernHandler = createMcpHandler(
+      (reqCtx) => {
+        const nodeRequest =
+          (reqCtx.requestInfo
+            ? this.nodeRequestFor.get(reqCtx.requestInfo)
+            : undefined) ?? requestStore.getStore()?.nodeRequest;
+        return ctx.createBoundServer(
+          {
+            transport: this.kind,
+            // Every modern request is sessionless by construction — but unlike
+            // the legacy stateless mode it can still stream progress and logs
+            // back on its own response stream.
+            stateless: true,
+            era: 'modern',
+          },
+          nodeRequest,
+        );
+      },
+      {
+        legacy: 'reject',
+        responseMode: this.responseMode,
+        // The entry reports genuine faults AND routine protocol rejections
+        // (e.g. a legacy client hitting a `modern-only` endpoint) through this
+        // one callback, so it would be misleading to log all of it as an error.
+        onerror: (error) =>
+          ctx.logger.warn(`MCP modern-era handler: ${error.message}`),
+      },
+    );
+
+    this.modernNodeHandler = toNodeHandler(
+      {
+        fetch: (request, options) => {
+          const nodeRequest = requestStore.getStore()?.nodeRequest;
+          if (nodeRequest !== undefined) {
+            this.nodeRequestFor.set(request, nodeRequest);
+          }
+          return this.modernHandler!.fetch(request, options);
+        },
+      },
+      { onerror: (error) => ctx.logger.error('MCP node adapter error', error) },
+    );
   }
 
   /**
@@ -133,6 +255,7 @@ export class StreamableHttpTransport implements McpTransport {
     // needed — the handlers read it lazily whether we self-mount or a user
     // controller calls them.
     this.ctx = ctx;
+    this.buildModernHandler(ctx);
 
     // Auto-detect: self-mount unless a controller claimed the route by reading
     // `httpHandlers`. An explicit `mount` option overrides the heuristic.
@@ -173,9 +296,27 @@ export class StreamableHttpTransport implements McpTransport {
   }
 
   async close(): Promise<void> {
+    // Abort the modern leg FIRST: `subscriptions/listen` streams are long-lived
+    // by design, and leaving them open would stall shutdown.
+    await this.modernHandler?.close();
+    this.modernHandler = undefined;
+    this.modernNodeHandler = undefined;
     for (const sessionId of Object.keys(this.transports)) {
       await this.cleanupSession(sessionId);
     }
+  }
+
+  /**
+   * Publish a list-changed event to every open `subscriptions/listen` stream
+   * that opted into it. The SDK owns the wire semantics (filtering, the
+   * `io.modelcontextprotocol/subscriptionId` tag); we only source the event.
+   */
+  notifyListChanged(kind: 'tools' | 'resources' | 'prompts'): void {
+    const notifier = this.modernHandler?.notify;
+    if (!notifier) return;
+    if (kind === 'tools') notifier.toolsChanged();
+    else if (kind === 'resources') notifier.resourcesChanged();
+    else notifier.promptsChanged();
   }
 
   private async handlePost(req: any, res: any): Promise<void> {
@@ -185,6 +326,10 @@ export class StreamableHttpTransport implements McpTransport {
     const body = await readJsonBody(adaptedReq);
 
     try {
+      if (this.servedByModernEra(adaptedReq.raw, body)) {
+        await this.handleModern(adaptedReq.raw, adaptedRes.raw, body);
+        return;
+      }
       if (this.statefulMode) {
         await this.handleStateful(adaptedReq, adaptedRes, body);
       } else {
@@ -202,6 +347,48 @@ export class StreamableHttpTransport implements McpTransport {
     }
   }
 
+  /**
+   * Whether this POST belongs to the `2026-07-28` leg.
+   *
+   * Classification uses the SDK's own `classifyInboundRequest` — the very
+   * function the serving entry runs to make the same decision — so our routing
+   * can never disagree with it. Anything it does NOT call legacy (including its
+   * validation-ladder rejections, such as a malformed envelope or an
+   * unsupported version claim) MUST go to the modern handler: those error
+   * answers belong to it.
+   *
+   * This takes the already-parsed body and a few headers rather than a web
+   * `Request`, so the hot path allocates nothing: `toNodeHandler` builds the
+   * one `Request` the modern leg actually serves.
+   */
+  private servedByModernEra(nodeRequest: any, body: unknown): boolean {
+    if (!this.modernNodeHandler) return false;
+    if (this.posture === 'modern-only') return true;
+    const headers = (nodeRequest?.headers ?? {}) as Record<string, unknown>;
+    const header = (name: string): string | undefined => {
+      const value = headers[name];
+      return typeof value === 'string' ? value : undefined;
+    };
+    const outcome = classifyInboundRequest({
+      httpMethod: (nodeRequest?.method as string) ?? 'POST',
+      protocolVersionHeader: header('mcp-protocol-version'),
+      mcpMethodHeader: header('mcp-method'),
+      mcpNameHeader: header('mcp-name'),
+      body,
+    });
+    return outcome.kind !== 'legacy';
+  }
+
+  private async handleModern(
+    nodeRequest: unknown,
+    nodeResponse: unknown,
+    body: unknown,
+  ): Promise<void> {
+    await requestStore.run({ nodeRequest }, () =>
+      this.modernNodeHandler!(nodeRequest, nodeResponse, body),
+    );
+  }
+
   private async handleStateless(
     req: ReturnType<
       ReturnType<typeof HttpAdapterFactory.getAdapter>['adaptRequest']
@@ -217,7 +404,7 @@ export class StreamableHttpTransport implements McpTransport {
     await server.connect(transport);
     this.ctx!.bindRequestHandlers(
       server,
-      { transport: this.kind, stateless: true },
+      { transport: this.kind, stateless: true, era: 'legacy' },
       req.raw,
     );
 
@@ -254,7 +441,7 @@ export class StreamableHttpTransport implements McpTransport {
       await server.connect(transport);
       this.ctx!.bindRequestHandlers(
         server,
-        { transport: this.kind, stateless: false },
+        { transport: this.kind, stateless: false, era: 'legacy' },
         req.raw,
       );
       await transport.handleRequest(req.raw, res.raw, body);
@@ -275,7 +462,7 @@ export class StreamableHttpTransport implements McpTransport {
       // Re-bind so the per-request auth context is current.
       this.ctx!.bindRequestHandlers(
         server,
-        { transport: this.kind, stateless: false, sessionId },
+        { transport: this.kind, stateless: false, sessionId, era: 'legacy' },
         req.raw,
       );
       await transport.handleRequest(req.raw, res.raw, body);

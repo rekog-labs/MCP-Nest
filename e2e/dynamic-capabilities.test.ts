@@ -1,7 +1,7 @@
 /**
  * e2e for `examples/dynamic-capabilities` — verifies the behaviors documented
  * in docs/dynamic-capabilities.md against a real, spawned example server,
- * driven by a pinned old MCP client.
+ * driven by both a pinned old (1.10.0) and a modern (2026-07-28) client.
  *
  * Run:  bun test dynamic-capabilities.test.ts        (from the e2e/ directory)
  *
@@ -21,22 +21,27 @@
  *     `/server-b/mcp`; only server A gets a dynamically registered tool
  *     (`server-a-tool`), proving per-strategy isolation.
  *
- * Green on `main` = an old (1.10.0) client fully interoperates with dynamic
- * capability registration/deregistration. If the v1->v2 SDK migration (or any
- * future server change) breaks that, one of these assertions fails and names
- * exactly what regressed.
+ * Green = both eras interoperate with dynamic capability registration and
+ * deregistration. A break names exactly which era regressed.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
-import { createLegacyClient, getFreePort, startExample, type RunningExample } from './harness';
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import {
+  createEraClient,
+  ERAS,
+  getFreePort,
+  startExample,
+  type Era,
+  type EraClient,
+  type RunningExample,
+} from './harness';
 
 const BOOT_MS = 90_000;
 
 let server: RunningExample;
-let client: Client;
-let clientA: Client;
-let clientB: Client;
+const mainClients: Partial<Record<Era, EraClient>> = {};
+const aClients: Partial<Record<Era, EraClient>> = {};
+const bClients: Partial<Record<Era, EraClient>> = {};
 
 function text(result: any): string {
   return (result?.content ?? []).map((c: any) => c.text ?? '').join('\n');
@@ -45,21 +50,34 @@ function text(result: any): string {
 beforeAll(async () => {
   const port = await getFreePort();
   server = await startExample('dynamic-capabilities', port, { readyTimeoutMs: BOOT_MS });
-  client = await createLegacyClient(server.url);
-  clientA = await createLegacyClient(`http://127.0.0.1:${server.port}/server-a/mcp`);
-  clientB = await createLegacyClient(`http://127.0.0.1:${server.port}/server-b/mcp`);
+  for (const era of ERAS) {
+    mainClients[era] = await createEraClient(era, server.url);
+    aClients[era] = await createEraClient(
+      era,
+      `http://127.0.0.1:${server.port}/server-a/mcp`,
+    );
+    bClients[era] = await createEraClient(
+      era,
+      `http://127.0.0.1:${server.port}/server-b/mcp`,
+    );
+  }
 }, BOOT_MS);
 
 afterAll(async () => {
-  await client?.close?.();
-  await clientA?.close?.();
-  await clientB?.close?.();
+  for (const era of ERAS) {
+    await mainClients[era]?.close();
+    await aClients[era]?.close();
+    await bClients[era]?.close();
+  }
   await server?.stop();
 });
 
-describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.10.0 client)', () => {
+describe.each(ERAS)('examples/dynamic-capabilities e2e (%s era)', (era) => {
+  const client = () => mainClients[era]!;
+  const clientA = () => aClients[era]!;
+  const clientB = () => bClients[era]!;
   test('tools/list on the main endpoint reflects static + dynamic + external tools, minus removed/gated ones', async () => {
-    const { tools } = await client.listTools();
+    const { tools } = await client().listTools();
     const names = tools.map((t) => t.name).sort();
     // 'gone-tool' was registered then removed before the server ever serves
     // (deregistration). 'admin-operation' has requiredScopes/requiredRoles
@@ -79,23 +97,23 @@ describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('re-registration after removal uses the new handler (my-tool v1 -> updated)', async () => {
-    const { tools } = await client.listTools();
+    const { tools } = await client().listTools();
     const myTool = tools.find((t) => t.name === 'my-tool');
     expect(myTool?.description).toBe('Updated version');
 
-    const res = await client.callTool({ name: 'my-tool', arguments: {} });
+    const res = await client().callTool({ name: 'my-tool', arguments: {} });
     expect(text(res)).toContain('new result');
     expect(text(res)).not.toContain('old result');
   });
 
   test('calling a removed-and-never-re-registered tool errors (MethodNotFound)', async () => {
-    await expect(client.callTool({ name: 'gone-tool', arguments: {} })).rejects.toThrow(
+    await expect(client().callTool({ name: 'gone-tool', arguments: {} })).rejects.toThrow(
       /gone-tool/i,
     );
   });
 
   test('dynamic tool loaded like from a database interpolates config into its result', async () => {
-    const res = await client.callTool({
+    const res = await client().callTool({
       name: 'search-knowledge',
       arguments: { query: 'hello' },
     });
@@ -103,7 +121,7 @@ describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('dynamic tool with an enum built from runtime data validates and executes', async () => {
-    const res = await client.callTool({
+    const res = await client().callTool({
       name: 'search-collection',
       arguments: { query: 'widgets', collection: 'docs' },
     });
@@ -112,39 +130,39 @@ describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('isPublic dynamic tool is reachable without a user', async () => {
-    const res = await client.callTool({ name: 'public-search', arguments: {} });
+    const res = await client().callTool({ name: 'public-search', arguments: {} });
     expect(text(res)).toContain('Results...');
   });
 
   test('requiredScopes/requiredRoles dynamic tool rejects an anonymous caller', async () => {
     await expect(
-      client.callTool({ name: 'admin-operation', arguments: {} }),
+      client().callTool({ name: 'admin-operation', arguments: {} }),
     ).rejects.toThrow(/authentication/i);
   });
 
   test('mixed mode: decorator-based static tool works alongside dynamic ones', async () => {
-    const res = await client.callTool({ name: 'static-tool', arguments: { input: 'hi' } });
+    const res = await client().callTool({ name: 'static-tool', arguments: { input: 'hi' } });
     expect(text(res)).toContain('Static: hi');
   });
 
   test('dynamic-tool (plain dynamic registration) executes', async () => {
-    const res = await client.callTool({ name: 'dynamic-tool', arguments: {} });
+    const res = await client().callTool({ name: 'dynamic-tool', arguments: {} });
     expect(text(res)).toContain('Dynamic result');
   });
 
   test('tool registered from an external module (ExternalCapabilitiesService) executes', async () => {
-    const res = await client.callTool({ name: 'external-tool', arguments: {} });
+    const res = await client().callTool({ name: 'external-tool', arguments: {} });
     expect(text(res)).toContain('result');
   });
 
   test('resources/list reflects registration and deregistration', async () => {
-    const { resources } = await client.listResources();
+    const { resources } = await client().listResources();
     const uris = resources.map((r) => r.uri).sort();
     expect(uris).toEqual(['mcp://app-config']);
   });
 
   test('reading a dynamic resource returns its JSON content', async () => {
-    const res = await client.readResource({ uri: 'mcp://app-config' });
+    const res = await client().readResource({ uri: 'mcp://app-config' });
     expect(res.contents).toHaveLength(1);
     const content = res.contents[0] as { uri: string; mimeType: string; text: string };
     expect(content.mimeType).toBe('application/json');
@@ -152,19 +170,19 @@ describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('reading a removed-and-never-re-registered resource errors', async () => {
-    await expect(client.readResource({ uri: 'mcp://gone-resource' })).rejects.toThrow(
+    await expect(client().readResource({ uri: 'mcp://gone-resource' })).rejects.toThrow(
       /gone-resource/i,
     );
   });
 
   test('prompts/list reflects registration and deregistration', async () => {
-    const { prompts } = await client.listPrompts();
+    const { prompts } = await client().listPrompts();
     const names = prompts.map((p) => p.name).sort();
     expect(names).toEqual(['greeting', 'summarize']);
   });
 
   test('dynamic prompt with parameters interpolates args (default style)', async () => {
-    const res = await client.getPrompt({
+    const res = await client().getPrompt({
       name: 'summarize',
       arguments: { text: 'Sample text' },
     });
@@ -181,7 +199,7 @@ describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('dynamic prompt with parameters honors an explicit optional arg', async () => {
-    const res = await client.getPrompt({
+    const res = await client().getPrompt({
       name: 'summarize',
       arguments: { text: 'Sample text', style: 'detailed' },
     });
@@ -195,7 +213,7 @@ describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('dynamic prompt without parameters', async () => {
-    const res = await client.getPrompt({ name: 'greeting' });
+    const res = await client().getPrompt({ name: 'greeting' });
     expect(res.description).toBe('A simple greeting prompt');
     expect(res.messages).toEqual([
       { role: 'user', content: { type: 'text', text: 'Hello!' } },
@@ -203,7 +221,7 @@ describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('getting a removed-and-never-re-registered prompt errors', async () => {
-    await expect(client.getPrompt({ name: 'gone-prompt' })).rejects.toThrow(/gone-prompt/i);
+    await expect(client().getPrompt({ name: 'gone-prompt' })).rejects.toThrow(/gone-prompt/i);
   });
 
   test('multi-server isolation: server-a-tool is only visible on /server-a/mcp', async () => {
@@ -211,9 +229,9 @@ describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.
     // `@McpController` (`static-tool`) binds to all three -- only the
     // *dynamically* registered `server-a-tool` is scoped to a single strategy.
     const [listA, listB, listMain] = await Promise.all([
-      clientA.listTools(),
-      clientB.listTools(),
-      client.listTools(),
+      clientA().listTools(),
+      clientB().listTools(),
+      client().listTools(),
     ]);
     expect(listA.tools.map((t) => t.name).sort()).toEqual(['server-a-tool', 'static-tool']);
     expect(listB.tools.map((t) => t.name)).toEqual(['static-tool']);
@@ -221,10 +239,10 @@ describe('examples/dynamic-capabilities e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('multi-server isolation: server-a-tool is callable on server A only', async () => {
-    const res = await clientA.callTool({ name: 'server-a-tool', arguments: {} });
+    const res = await clientA().callTool({ name: 'server-a-tool', arguments: {} });
     expect(text(res)).toContain('server-a');
 
-    await expect(clientB.callTool({ name: 'server-a-tool', arguments: {} })).rejects.toThrow();
-    await expect(client.callTool({ name: 'server-a-tool', arguments: {} })).rejects.toThrow();
+    await expect(clientB().callTool({ name: 'server-a-tool', arguments: {} })).rejects.toThrow();
+    await expect(client().callTool({ name: 'server-a-tool', arguments: {} })).rejects.toThrow();
   });
 });

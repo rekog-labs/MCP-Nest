@@ -9,14 +9,21 @@ describe('resolveToolSchema', () => {
   describe('Zod', () => {
     const schema = z.object({ name: z.string(), age: z.number() });
 
-    it('emits the same JSON Schema as z.toJSONSchema (draft-7, input)', () => {
+    it('emits the same JSON Schema as z.toJSONSchema (draft-2020-12, input)', () => {
       const resolved = resolveToolSchema(schema);
       expect(resolved.toJsonSchema('input')).toEqual(
-        z.toJSONSchema(schema, { target: 'draft-7', io: 'input' }) as Record<
-          string,
-          unknown
-        >,
+        z.toJSONSchema(schema, {
+          target: 'draft-2020-12',
+          io: 'input',
+        }) as Record<string, unknown>,
       );
+    });
+
+    // Guards the dialect itself, not just parity with Zod: SDK v2 clients
+    // reject an outputSchema declaring any dialect but 2020-12.
+    it('advertises the 2020-12 dialect', () => {
+      const emitted = resolveToolSchema(schema).toJsonSchema('input');
+      expect(emitted?.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
     });
 
     it('returns undefined JSON Schema for a non-object Zod schema', () => {

@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { z } from 'zod';
 import { Payload } from '@nestjs/microservices';
 import { McpController, Tool } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 /**
  * Represents authentication that authorizes through means other than a user
@@ -40,7 +40,7 @@ export class SimpleGreetingTool {
   }
 }
 
-describe('E2E: MCP Server with Guard but no User', () => {
+describe.each(ERAS)('E2E: MCP Server with Guard but no User (%s era)', (era) => {
   let app: INestApplication;
   let testPort: number;
 
@@ -63,7 +63,7 @@ describe('E2E: MCP Server with Guard but no User', () => {
   });
 
   it('should list tools even when guard does not set request.user', async () => {
-    const client = await createStreamableClient(testPort);
+    const client = await createEraClient(era, testPort);
     const tools = await client.listTools();
 
     // This should work because the gate allowed the request through
@@ -75,7 +75,7 @@ describe('E2E: MCP Server with Guard but no User', () => {
   });
 
   it('should execute tool even when guard does not set request.user', async () => {
-    const client = await createStreamableClient(testPort);
+    const client = await createEraClient(era, testPort);
 
     const result: any = await client.callTool({
       name: 'simple-hello',

@@ -16,7 +16,7 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { createStreamableClient } from './utils';
+import { createEraClient, ERAS } from './utils';
 
 /**
  * `McpHttpControllerFor(transport)` — the legible binding: the controller names
@@ -98,7 +98,7 @@ class TravelModule {}
 @Module({ imports: [WeatherModule, TravelModule] })
 class AppModule {}
 
-describe('E2E: McpHttpControllerFor (direct transport binding)', () => {
+describe.each(ERAS)('E2E: McpHttpControllerFor (direct transport binding) (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -123,7 +123,7 @@ describe('E2E: McpHttpControllerFor (direct transport binding)', () => {
   });
 
   it('binds each controller to its own transport (isolation)', async () => {
-    const travel = await createStreamableClient(port, {
+    const travel = await createEraClient(era, port, {
       endpoint: '/travel/mcp',
     });
     expect((await travel.listTools()).tools.map((t) => t.name)).toEqual([
@@ -131,7 +131,7 @@ describe('E2E: McpHttpControllerFor (direct transport binding)', () => {
     ]);
     await travel.close();
 
-    const weather = await createStreamableClient(port, {
+    const weather = await createEraClient(era, port, {
       endpoint: '/weather/mcp',
       requestInit: { headers: { 'x-allow': 'yes' } },
     });
@@ -144,11 +144,11 @@ describe('E2E: McpHttpControllerFor (direct transport binding)', () => {
   it('runs the guard on the guarded server only', async () => {
     // weather requires the header → denied without it
     await expect(
-      createStreamableClient(port, { endpoint: '/weather/mcp' }),
+      createEraClient(era, port, { endpoint: '/weather/mcp' }),
     ).rejects.toThrow();
 
     // travel is open → connects fine with no header
-    const travel = await createStreamableClient(port, {
+    const travel = await createEraClient(era, port, {
       endpoint: '/travel/mcp',
     });
     const r = (await travel.callTool({

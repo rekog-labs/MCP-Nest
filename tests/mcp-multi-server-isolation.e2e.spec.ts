@@ -8,7 +8,7 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { createStreamableClient } from './utils';
+import { createEraClient, ERAS } from './utils';
 
 jest.setTimeout(15000);
 
@@ -89,7 +89,7 @@ function textOf(result: any): string {
   return (result.content as Array<{ type: string; text: string }>)[0].text;
 }
 
-describe('E2E: Multiple isolated MCP servers (domains) in one app', () => {
+describe.each(ERAS)('E2E: Multiple isolated MCP servers (domains) in one app (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -138,7 +138,7 @@ describe('E2E: Multiple isolated MCP servers (domains) in one app', () => {
   });
 
   it('exposes only the weather domain tools on the weather endpoint', async () => {
-    const client = await createStreamableClient(port, {
+    const client = await createEraClient(era, port, {
       endpoint: '/weather/mcp',
     });
     try {
@@ -152,7 +152,7 @@ describe('E2E: Multiple isolated MCP servers (domains) in one app', () => {
   });
 
   it('exposes only the travel domain tools on the travel endpoint', async () => {
-    const client = await createStreamableClient(port, {
+    const client = await createEraClient(era, port, {
       endpoint: '/travel/mcp',
     });
     try {
@@ -166,10 +166,10 @@ describe('E2E: Multiple isolated MCP servers (domains) in one app', () => {
   });
 
   it('maps the shared tool NAME to the correct per-server handler', async () => {
-    const weatherClient = await createStreamableClient(port, {
+    const weatherClient = await createEraClient(era, port, {
       endpoint: '/weather/mcp',
     });
-    const travelClient = await createStreamableClient(port, {
+    const travelClient = await createEraClient(era, port, {
       endpoint: '/travel/mcp',
     });
     try {

@@ -49,7 +49,12 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
   protectedResourceMetadata: {
     scopesSupported: ['offline_access'],
     bearerMethodsSupported: ['header'],
-    mcpVersionsSupported: ['2025-06-18'],
+    /**
+     * Matches the default transport posture, which serves both protocol eras
+     * (`protocol: 'dual'`). Narrow this to a single revision if you pin the
+     * endpoint with `protocol: 'legacy-only'` / `'modern-only'`.
+     */
+    mcpVersionsSupported: ['2026-07-28', '2025-06-18'],
   },
   authorizationServerMetadata: {
     responseTypesSupported: ['code'],

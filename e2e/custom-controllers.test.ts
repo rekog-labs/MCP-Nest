@@ -2,24 +2,30 @@
  * e2e for `examples/custom-controllers` — verifies the two-layer pipeline
  * (HTTP layer vs RPC layer: middleware, interceptors, exception filters)
  * documented in docs/custom-controllers.md against a real, spawned example
- * server, driven by a pinned old MCP client.
+ * server, driven by both a pinned old (1.10.0) and a modern (2026-07-28) client.
  *
  * Run:  bun test custom-controllers   (from the e2e/ directory)
  *
- * Green on `main` = an old (1.10.0) client fully interoperates with the
- * current server's custom controller pipeline. If a future server change
+ * Green = both eras interoperate with the custom controller pipeline. If a future server change
  * breaks how tools/results flow through interceptors and exception filters,
  * one of these assertions fails and names exactly what regressed.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
-import { createLegacyClient, getFreePort, startExample, type RunningExample } from './harness';
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import {
+  createEraClient,
+  ERAS,
+  getFreePort,
+  startExample,
+  type Era,
+  type EraClient,
+  type RunningExample,
+} from './harness';
 
 const BOOT_MS = 90_000;
 
 let server: RunningExample;
-let client: Client;
+const clients: Partial<Record<Era, EraClient>> = {};
 
 function text(result: any): string {
   return (result?.content ?? []).map((c: any) => c.text ?? '').join('\n');
@@ -28,23 +34,27 @@ function text(result: any): string {
 beforeAll(async () => {
   const port = await getFreePort();
   server = await startExample('custom-controllers', port, { readyTimeoutMs: BOOT_MS });
-  client = await createLegacyClient(server.url);
+  // One server, both eras: also the dual-era concurrency proof.
+  for (const era of ERAS) {
+    clients[era] = await createEraClient(era, server.url);
+  }
 }, BOOT_MS);
 
 afterAll(async () => {
-  await client?.close?.();
+  for (const era of ERAS) await clients[era]?.close();
   await server?.stop();
 });
 
-describe('examples/custom-controllers e2e (pinned @modelcontextprotocol/sdk@1.10.0 client)', () => {
+describe.each(ERAS)('examples/custom-controllers e2e (%s era)', (era) => {
+  const client = () => clients[era]!;
   test('tools/list advertises both demo tools', async () => {
-    const { tools } = await client.listTools();
+    const { tools } = await client().listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(['boom', 'greet']);
   });
 
   test('RPC-layer class interceptor tags the result of a successful tool call', async () => {
-    const res: any = await client.callTool({ name: 'greet', arguments: { name: 'Ada' } });
+    const res: any = await client().callTool({ name: 'greet', arguments: { name: 'Ada' } });
     expect(res.isError).toBeFalsy();
     // RpcLoggingInterceptor (class-level, on every tool) appends ' [rpc]' to the
     // returned text — proof the RPC layer ran and could rewrite the result.
@@ -52,7 +62,7 @@ describe('examples/custom-controllers e2e (pinned @modelcontextprotocol/sdk@1.10
   });
 
   test('RPC exception filter (extends McpExceptionFilter) surfaces the real thrown message', async () => {
-    const res: any = await client.callTool({ name: 'boom', arguments: {} });
+    const res: any = await client().callTool({ name: 'boom', arguments: {} });
     expect(res.isError).toBe(true);
     // Without RpcLoggingExceptionFilter -> McpExceptionFilter, this would arrive
     // as an opaque "Internal server error" instead of the real message.
@@ -87,7 +97,7 @@ describe('examples/custom-controllers e2e (pinned @modelcontextprotocol/sdk@1.10
   test('a normal request without the failure header is unaffected by the HTTP filter', async () => {
     // Sanity check that the HTTP-layer pieces are opt-in per request: a plain
     // tool call still goes through the RPC layer as usual.
-    const res: any = await client.callTool({ name: 'greet', arguments: { name: 'Bob' } });
+    const res: any = await client().callTool({ name: 'greet', arguments: { name: 'Bob' } });
     expect(res.isError).toBeFalsy();
     expect(text(res)).toBe('Hello, Bob! [rpc]');
   });

@@ -9,7 +9,7 @@ import { Payload } from '@nestjs/microservices';
 import { Observable, of } from 'rxjs';
 import { z } from 'zod';
 import { McpController, Prompt, Resource, Tool } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 class CustomError extends Error {
   constructor(
@@ -219,7 +219,7 @@ class TestPrompts {
   }
 }
 
-describe('E2E: MCP UseFilters', () => {
+describe.each(ERAS)('E2E: MCP UseFilters (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -239,7 +239,7 @@ describe('E2E: MCP UseFilters', () => {
   describe('Tools', () => {
     describe('Method Level', () => {
       it('should use method-level filter over class-level filter', async () => {
-        const client = await createStreamableClient(port);
+        const client = await createEraClient(era, port);
         try {
           const result: any = await client.callTool({
             name: 'method-filter-tool',
@@ -258,7 +258,7 @@ describe('E2E: MCP UseFilters', () => {
 
     describe('Class Level', () => {
       it('should catch any error with catch-all filter', async () => {
-        const client = await createStreamableClient(port);
+        const client = await createEraClient(era, port);
         try {
           const result: any = await client.callTool({
             name: 'class-filter-tool',
@@ -273,7 +273,7 @@ describe('E2E: MCP UseFilters', () => {
       });
 
       it('should not affect successful calls', async () => {
-        const client = await createStreamableClient(port);
+        const client = await createEraClient(era, port);
         try {
           const result: any = await client.callTool({
             name: 'success-tool',
@@ -292,7 +292,7 @@ describe('E2E: MCP UseFilters', () => {
   describe('Resources', () => {
     describe('Method Level', () => {
       it('should use method-level filter over class-level filter', async () => {
-        const client = await createStreamableClient(port);
+        const client = await createEraClient(era, port);
         try {
           const result = await client.readResource({
             uri: 'mcp://method-filter-resource',
@@ -308,7 +308,7 @@ describe('E2E: MCP UseFilters', () => {
 
     describe('Class Level', () => {
       it('should catch any error with catch-all filter', async () => {
-        const client = await createStreamableClient(port);
+        const client = await createEraClient(era, port);
         try {
           const result = await client.readResource({
             uri: 'mcp://class-filter-resource',
@@ -322,7 +322,7 @@ describe('E2E: MCP UseFilters', () => {
       });
 
       it('should not affect successful calls', async () => {
-        const client = await createStreamableClient(port);
+        const client = await createEraClient(era, port);
         try {
           const result = await client.readResource({
             uri: 'mcp://success-resource',
@@ -339,7 +339,7 @@ describe('E2E: MCP UseFilters', () => {
   describe('Prompts', () => {
     describe('Method Level', () => {
       it('should use method-level filter over class-level filter', async () => {
-        const client = await createStreamableClient(port);
+        const client = await createEraClient(era, port);
         try {
           const result = await client.getPrompt({
             name: 'method-filter-prompt',
@@ -355,7 +355,7 @@ describe('E2E: MCP UseFilters', () => {
 
     describe('Class Level', () => {
       it('should catch any error with catch-all filter', async () => {
-        const client = await createStreamableClient(port);
+        const client = await createEraClient(era, port);
         try {
           const result = await client.getPrompt({
             name: 'class-filter-prompt',
@@ -369,7 +369,7 @@ describe('E2E: MCP UseFilters', () => {
       });
 
       it('should not affect successful calls', async () => {
-        const client = await createStreamableClient(port);
+        const client = await createEraClient(era, port);
         try {
           const result = await client.getPrompt({ name: 'success-prompt' });
 

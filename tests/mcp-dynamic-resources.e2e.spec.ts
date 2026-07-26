@@ -11,7 +11,7 @@ import {
   McpStrategy,
   Resource,
 } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 // ============================================================================
 // Test Setup: Dynamic resource registration service (injects the strategy via
@@ -83,7 +83,7 @@ class StaticResource {
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
+describe.each(ERAS)('E2E: Dynamic Resource Registration via McpStrategy (%s era)', (era) => {
   describe('Basic Dynamic Resources', () => {
     let app: INestApplication;
     let serverPort: number;
@@ -103,7 +103,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should list dynamically registered resources', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listResources();
 
@@ -119,7 +119,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should include resource metadata in listing', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listResources();
         const configResource = result.resources.find(
@@ -137,7 +137,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should read a dynamically registered resource', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.readResource({
           uri: 'mcp://dynamic-config',
@@ -155,7 +155,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should read a dynamic resource without explicit mimeType', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.readResource({
           uri: 'mcp://dynamic-status',
@@ -188,7 +188,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should list both decorator and dynamic resources', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listResources();
 
@@ -208,7 +208,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should read decorator-based resource alongside dynamic resources', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.readResource({
           uri: 'mcp://static-resource',
@@ -278,7 +278,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should register dynamic resources to correct server (server 1)', async () => {
-      const client = await createStreamableClient(port1);
+      const client = await createEraClient(era, port1);
       try {
         const result = await client.listResources();
 
@@ -294,7 +294,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should register dynamic resources to correct server (server 2)', async () => {
-      const client = await createStreamableClient(port2);
+      const client = await createEraClient(era, port2);
       try {
         const result = await client.listResources();
 
@@ -310,8 +310,8 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should read resources on their respective servers', async () => {
-      const client1 = await createStreamableClient(port1);
-      const client2 = await createStreamableClient(port2);
+      const client1 = await createEraClient(era, port1);
+      const client2 = await createEraClient(era, port2);
       try {
         const result1 = await client1.readResource({
           uri: 'mcp://server1-resource',
@@ -365,7 +365,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         let result = await client.listResources();
         expect(
@@ -384,7 +384,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
     });
 
     it('should return an error when reading a removed resource', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         await expect(
           client.readResource({ uri: 'mcp://temp-resource' }),
@@ -426,7 +426,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
 
       strategy.removeResource('mcp://resource-to-remove');
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listResources();
         expect(
@@ -456,7 +456,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listResources();
         expect(
@@ -498,7 +498,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listResources();
         const matches = result.resources.filter(
@@ -546,7 +546,7 @@ describe('E2E: Dynamic Resource Registration via McpStrategy', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listResources();
         const matches = result.resources.filter(

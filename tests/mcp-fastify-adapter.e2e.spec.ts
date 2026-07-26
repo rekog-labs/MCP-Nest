@@ -12,7 +12,7 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -114,7 +114,7 @@ export class RequestScopedTool {
 
 const TOOL_CONTROLLERS = [FastifyTestTool, RequestScopedTool];
 
-describe('E2E: Fastify HTTP Adapter Support', () => {
+describe.each(ERAS)('E2E: Fastify HTTP Adapter Support (%s era)', (era) => {
   let expressApp: INestApplication;
   let fastifyApp: INestApplication;
   let expressPort: number;
@@ -177,7 +177,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
       if (!expressPort) {
         throw new Error('Express server not available');
       }
-      client = await createStreamableClient(expressPort);
+      client = await createEraClient(era, expressPort);
     });
 
     afterEach(async () => {
@@ -247,7 +247,7 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
       if (!fastifyPort) {
         throw new Error('Fastify server not available');
       }
-      client = await createStreamableClient(fastifyPort);
+      client = await createEraClient(era, fastifyPort);
     });
 
     afterEach(async () => {
@@ -377,8 +377,8 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
 
   describe('Framework Compatibility', () => {
     it('should produce identical tool results regardless of framework', async () => {
-      const expressClient = await createStreamableClient(expressPort);
-      const fastifyClient = await createStreamableClient(fastifyPort);
+      const expressClient = await createEraClient(era, expressPort);
+      const fastifyClient = await createEraClient(era, fastifyPort);
 
       try {
         // Test the same tool on both frameworks
@@ -426,8 +426,8 @@ describe('E2E: Fastify HTTP Adapter Support', () => {
     });
 
     it('should list identical tools on both frameworks', async () => {
-      const expressClient = await createStreamableClient(expressPort);
-      const fastifyClient = await createStreamableClient(fastifyPort);
+      const expressClient = await createEraClient(era, expressPort);
+      const fastifyClient = await createEraClient(era, fastifyPort);
 
       try {
         const [expressTools, fastifyTools] = await Promise.all([

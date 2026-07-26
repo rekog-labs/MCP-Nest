@@ -19,8 +19,9 @@ import {
 } from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
-  createStreamableClient,
   StreamableHttpTransport,
+  createEraClient,
+  ERAS,
 } from './utils';
 
 /**
@@ -296,13 +297,13 @@ const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
 @UseGuards(IdentityGuard)
 class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
-describe('E2E: Tool Guards via native @UseGuards()', () => {
+describe.each(ERAS)('E2E: Tool Guards via native @UseGuards() (%s era)', (era) => {
   describe.each([
     {
       transportName: 'Streamable HTTP (stateful)',
       makeTransports: () => [mcpTransport],
       createClient: (port: number, headers?: Record<string, string>) =>
-        createStreamableClient(
+        createEraClient(era, 
           port,
           headers ? { requestInit: { headers } } : {},
         ),

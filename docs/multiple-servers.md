@@ -204,10 +204,10 @@ tools per server. See [Dynamic Capabilities → Multi-Server Isolation](./dynami
   each endpoint exposes, not *who* may call them. Layer `@UseGuards()` per
   server as needed — see
   [Per-Tool Authorization](./per-tool-authorization.md) and the auth section of
-  the [migration guide](./migration-to-strategy.md#6-authentication--authorization).
+  the [migration guide](./migration-to-v2.md#6-authentication--authorization).
 
 ## See also
 
-- [Migration to the Strategy API](./migration-to-strategy.md) — the `forFeature` → named-servers mapping.
+- [Migration to the Strategy API](./migration-to-v2.md) — the `forFeature` → named-servers mapping.
 - [Tool Discovery and Registration](./tool-discovery-and-registration.md) — how controllers are discovered.
 - [Dynamic Capabilities](./dynamic-capabilities.md) — runtime registration, also per-server.

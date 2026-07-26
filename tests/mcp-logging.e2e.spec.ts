@@ -3,9 +3,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { z } from 'zod';
 import { McpController, Tool } from '@rekog/mcp-nest';
 import {
-  createStreamableClient,
   McpStrategy,
   StreamableHttpTransport,
+  createEraClient,
+  ERAS,
 } from './utils';
 import type { McpServerOptions } from '@rekog/mcp-nest';
 import { Ctx, Payload } from '@nestjs/microservices';
@@ -59,7 +60,7 @@ async function bootstrapWithLogging(
   return { app, port };
 }
 
-describe('MCP Logging Configuration (e2e)', () => {
+describe.each(ERAS)('MCP Logging Configuration (e2e) (%s era)', (era) => {
   let app: INestApplication;
   let testPort: number;
 
@@ -77,7 +78,7 @@ describe('MCP Logging Configuration (e2e)', () => {
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createStreamableClient(testPort);
+      const client = await createEraClient(era, testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -96,7 +97,7 @@ describe('MCP Logging Configuration (e2e)', () => {
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createStreamableClient(testPort);
+      const client = await createEraClient(era, testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -119,7 +120,7 @@ describe('MCP Logging Configuration (e2e)', () => {
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createStreamableClient(testPort);
+      const client = await createEraClient(era, testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -140,7 +141,7 @@ describe('MCP Logging Configuration (e2e)', () => {
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createStreamableClient(testPort);
+      const client = await createEraClient(era, testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },
@@ -159,7 +160,7 @@ describe('MCP Logging Configuration (e2e)', () => {
       app = bootstrapped.app;
       testPort = bootstrapped.port;
 
-      const client = await createStreamableClient(testPort);
+      const client = await createEraClient(era, testPort);
       const result = await client.callTool({
         name: 'test-tool',
         arguments: { message: 'hello' },

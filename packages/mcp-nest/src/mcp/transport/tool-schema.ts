@@ -32,15 +32,30 @@ export interface ResolvedToolSchema {
 // -----------------------------------------------------------------------------
 
 /**
+ * The JSON Schema dialect MCP tool schemas are advertised in.
+ *
+ * 2020-12 is what the spec requires (SEP-1613) and what SDK v2 clients enforce:
+ * their default validator compiles `outputSchema` as 2020-12 and REJECTS a
+ * schema declaring any other `$schema`, so a draft-07 dialect makes every tool
+ * with an output schema uncallable by a conforming modern client — it fails
+ * client-side, before the request is even sent.
+ *
+ * This was `draft-7`, inherited from the v1 SDK's `toJsonSchemaCompat`
+ * defaults. For ordinary object schemas the only difference is the `$schema`
+ * URI, and legacy clients don't validate against it at all.
+ */
+const JSON_SCHEMA_TARGET = 'draft-2020-12';
+
+/**
  * Zod schema → JSON Schema for the manually built `tools/list` result.
  * Replaces the v1 SDK's `toJsonSchemaCompat` (removed in SDK v2), keeping its
- * defaults (draft-7 target, input side of pipes).
+ * input-side-of-pipes default.
  */
 function zodToJsonSchema(
   schema: ZodType,
   io: 'input' | 'output',
 ): Record<string, unknown> {
-  return z.toJSONSchema(schema, { target: 'draft-7', io }) as Record<
+  return z.toJSONSchema(schema, { target: JSON_SCHEMA_TARGET, io }) as Record<
     string,
     unknown
   >;
@@ -136,9 +151,10 @@ function resolveStandard(schema: StandardSchemaLike): ResolvedToolSchema {
             `raw JSON Schema object.`,
         );
       }
+      // Same dialect requirement as Zod above — see JSON_SCHEMA_TARGET.
       return io === 'input'
-        ? converter.input({ target: 'draft-07' })
-        : converter.output({ target: 'draft-07' });
+        ? converter.input({ target: JSON_SCHEMA_TARGET })
+        : converter.output({ target: JSON_SCHEMA_TARGET });
     },
     async validate(value) {
       const result = await std.validate(value);

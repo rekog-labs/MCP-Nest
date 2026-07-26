@@ -1,7 +1,6 @@
 /**
  * e2e for `examples/server-mutation` — verifies the behaviors documented in
- * docs/server-mutation.md against a real, spawned example server, driven by a
- * pinned old MCP client.
+ * docs/server-mutation.md against a real, spawned example server, driven by both a pinned old (1.10.0) and a modern (2026-07-28) client.
  *
  * Run:  bun test server-mutation.test.ts        (from the e2e/ directory)
  *
@@ -21,13 +20,20 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
-import { createLegacyClient, getFreePort, startExample, type RunningExample } from './harness';
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import {
+  createEraClient,
+  ERAS,
+  getFreePort,
+  startExample,
+  type Era,
+  type EraClient,
+  type RunningExample,
+} from './harness';
 
 const BOOT_MS = 90_000;
 
 let server: RunningExample;
-let client: Client;
+const clients: Partial<Record<Era, EraClient>> = {};
 
 function text(result: any): string {
   return (result?.content ?? []).map((c: any) => c.text ?? '').join('\n');
@@ -55,30 +61,34 @@ async function waitForOutput(pattern: RegExp | string, timeoutMs = 5_000): Promi
 beforeAll(async () => {
   const port = await getFreePort();
   server = await startExample('server-mutation', port, {});
-  client = await createLegacyClient(server.url);
+  // One server, both eras: also the dual-era concurrency proof.
+  for (const era of ERAS) {
+    clients[era] = await createEraClient(era, server.url);
+  }
 }, BOOT_MS);
 
 afterAll(async () => {
-  await client?.close?.();
+  for (const era of ERAS) await clients[era]?.close();
   await server?.stop();
 });
 
-describe('examples/server-mutation e2e (pinned @modelcontextprotocol/sdk@1.10.0 client)', () => {
+describe.each(ERAS)('examples/server-mutation e2e (%s era)', (era) => {
+  const client = () => clients[era]!;
   test('tools/list advertises the decorator-discovered tool', async () => {
-    const { tools } = await client.listTools();
+    const { tools } = await client().listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(['greet-user']);
   });
 
   test('serverMutator (loggingMutator) fires once the session is created', async () => {
     // createServer() -- and thus the mutator -- runs at initialize time for a
-    // stateful session, which client.connect() has already completed by the
+    // stateful session, which client().connect() has already completed by the
     // time beforeAll resolves.
     await waitForOutput('[audit] mcp server session created');
   });
 
   test('decorator tool still works end-to-end through the wrapped server', async () => {
-    const res = await client.callTool({
+    const res = await client().callTool({
       name: 'greet-user',
       arguments: { name: 'Rinor' },
     });
@@ -93,13 +103,13 @@ describe('examples/server-mutation e2e (pinned @modelcontextprotocol/sdk@1.10.0 
   });
 
   test('tracingMutator observes non-tool-call requests too (span falls back to method)', async () => {
-    await client.listTools();
+    await client().listTools();
     await waitForOutput(/\[trace\] tools\/list tools\/list ok \d+ms/);
   });
 
   test('unknown tool call still errors correctly through the mutated dispatch path', async () => {
     await expect(
-      client.callTool({ name: 'does-not-exist', arguments: {} }),
+      client().callTool({ name: 'does-not-exist', arguments: {} }),
     ).rejects.toThrow();
   });
 });

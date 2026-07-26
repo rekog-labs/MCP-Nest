@@ -1,7 +1,16 @@
 /**
  * e2e for `examples/per-tool-authorization-oauth` — verifies the behaviors
  * documented in docs/per-tool-authorization-oauth.md against a real, spawned
- * example server, driven by a pinned old MCP client.
+ * example server, driven by the pinned old (1.10.0) MCP client.
+ *
+ * LEGACY-ONLY, deliberately. Every other e2e file runs its assertions on both
+ * protocol eras (see `ERAS` in harness.ts), but the OAuth files do not: the
+ * two client packages ship different client-side OAuth implementations, so
+ * porting these would be a rewrite against a different auth API rather than a
+ * parameterisation. The MCP era and the OAuth handshake are independent —
+ * per-tool authorization on the modern era is already covered by
+ * per-tool-authorization{,-jwt}.test.ts, which drive the same guards with a
+ * bearer header on both eras. Revisit if the auth surface converges.
  *
  * Run:  bun test per-tool-authorization-oauth.test.ts        (from the e2e/ directory)
  *
@@ -31,7 +40,7 @@
  * roles ['super-admin', 'admin', 'user'] (NO 'premium'), so it can call
  * super-admin-greet but is still denied premium-greet.
  *
- * Green on `main` = an old (1.10.0) client fully interoperates with the OAuth
+ * Green = an old (1.10.0) client fully interoperates with the OAuth
  * per-tool authorization server. If a server change breaks that, one of these
  * assertions fails and names exactly what regressed.
  */

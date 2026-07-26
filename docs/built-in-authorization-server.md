@@ -1,6 +1,25 @@
 # Built-in Authorization Server
 
-The `McpAuthModule` provides a complete OAuth 2.1 compliant Identity Provider (IdP) implementation for securing MCP servers. It fully implements the [MCP Authorization specification (2025-06-18)](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) and includes built-in support for popular OAuth providers like [GitHub](../packages/mcp-nest-auth/src/providers/github.provider.ts) and [Google](../packages/mcp-nest-auth/src/providers/google.provider.ts).
+The `McpAuthModule` provides a complete OAuth 2.1 compliant Identity Provider (IdP) implementation for securing MCP servers. It implements the [MCP Authorization specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) (against revision `2025-06-18`) and includes built-in support for popular OAuth providers like [GitHub](../packages/mcp-nest-auth/src/providers/github.provider.ts) and [Google](../packages/mcp-nest-auth/src/providers/google.provider.ts).
+
+> **Protocol revisions.** Authorization is an HTTP-layer concern — a Bearer token
+> on the transport request — so it is independent of which MCP protocol era
+> serves that request. The same `McpAuthJwtGuard` gates 2025-era and
+> `2026-07-28` clients alike (see [Protocol Revisions](protocol-revisions.md)).
+> What *is* revision-specific is the advertised
+> `mcp_versions_supported` in the protected-resource metadata. It defaults to
+> `['2026-07-28', '2025-06-18']`, matching the default dual-era transport
+> posture. If you pin the endpoint to one era with
+> `protocol: 'legacy-only'` / `'modern-only'`, narrow it to match:
+>
+> ```typescript
+> McpAuthModule.forRoot({
+>   // ... required options
+>   protectedResourceMetadata: {
+>     mcpVersionsSupported: ['2025-06-18'],
+>   },
+> });
+> ```
 
 ## Features
 
@@ -188,6 +207,7 @@ Pass a field name to project a single property, e.g. `@McpUser('email') email?: 
 | `endpoints` | `object` | See below | Custom endpoint paths |
 | `disableEndpoints` | `{ wellKnownAuthorizationServerMetadata?: boolean; wellKnownProtectedResourceMetadata?: boolean }` | `{ wellKnownAuthorizationServerMetadata: false, wellKnownProtectedResourceMetadata: false }` | Disable specific discovery endpoints without changing their paths |
 | `storeConfiguration` | [`IOAuthStore`](../packages/mcp-nest-auth/src/stores/oauth-store.interface.ts) | In-memory | Storage backend configuration |
+| `protectedResourceMetadata` | `{ scopesSupported?: string[]; bearerMethodsSupported?: string[]; mcpVersionsSupported?: string[] }` | `{ scopesSupported: ['offline_access'], bearerMethodsSupported: ['header'], mcpVersionsSupported: ['2026-07-28', '2025-06-18'] }` | Values advertised at the protected-resource metadata endpoint. Shallow-merged with the defaults, so you can override one key. Set `mcpVersionsSupported` to the MCP protocol revisions your endpoint actually serves. |
 
 ### Endpoint Configuration
 

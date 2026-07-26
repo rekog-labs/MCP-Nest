@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { MCP_STRATEGY, McpStrategy } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 import { z } from 'zod';
 
 /**
@@ -139,7 +139,7 @@ class ServerBExternalTools implements OnModuleInit {
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic registration from an external module', () => {
+describe.each(ERAS)('E2E: Dynamic registration from an external module (%s era)', (era) => {
   describe('Tools, resources, and prompts registered from a separate module', () => {
     let app: INestApplication;
     let serverPort: number;
@@ -164,7 +164,7 @@ describe('E2E: Dynamic registration from an external module', () => {
 
     describe('Dynamic tools', () => {
       it('should list tools registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+        const client = await createEraClient(era, serverPort);
         try {
           const { tools } = await client.listTools();
           expect(tools.find((t) => t.name === 'external-tool')).toBeDefined();
@@ -177,7 +177,7 @@ describe('E2E: Dynamic registration from an external module', () => {
       });
 
       it('should execute a tool registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+        const client = await createEraClient(era, serverPort);
         try {
           const result: any = await client.callTool({
             name: 'external-tool',
@@ -190,7 +190,7 @@ describe('E2E: Dynamic registration from an external module', () => {
       });
 
       it('should execute a parameterless tool from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+        const client = await createEraClient(era, serverPort);
         try {
           const result: any = await client.callTool({
             name: 'external-tool-no-params',
@@ -205,7 +205,7 @@ describe('E2E: Dynamic registration from an external module', () => {
 
     describe('Dynamic resources', () => {
       it('should list resources registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+        const client = await createEraClient(era, serverPort);
         try {
           const { resources } = await client.listResources();
           expect(
@@ -217,7 +217,7 @@ describe('E2E: Dynamic registration from an external module', () => {
       });
 
       it('should read a resource registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+        const client = await createEraClient(era, serverPort);
         try {
           const result: any = await client.readResource({
             uri: 'mcp://external-config',
@@ -232,7 +232,7 @@ describe('E2E: Dynamic registration from an external module', () => {
 
     describe('Dynamic prompts', () => {
       it('should list prompts registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+        const client = await createEraClient(era, serverPort);
         try {
           const { prompts } = await client.listPrompts();
           expect(
@@ -244,7 +244,7 @@ describe('E2E: Dynamic registration from an external module', () => {
       });
 
       it('should get a prompt registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+        const client = await createEraClient(era, serverPort);
         try {
           const result: any = await client.getPrompt({
             name: 'external-prompt',
@@ -288,7 +288,7 @@ describe('E2E: Dynamic registration from an external module', () => {
     });
 
     it('server A should only have its own external tool', async () => {
-      const client = await createStreamableClient(portA);
+      const client = await createEraClient(era, portA);
       try {
         const { tools } = await client.listTools();
         expect(
@@ -303,7 +303,7 @@ describe('E2E: Dynamic registration from an external module', () => {
     });
 
     it('server B should only have its own external tool', async () => {
-      const client = await createStreamableClient(portB);
+      const client = await createEraClient(era, portB);
       try {
         const { tools } = await client.listTools();
         expect(
@@ -318,8 +318,8 @@ describe('E2E: Dynamic registration from an external module', () => {
     });
 
     it('should execute tools on their respective servers', async () => {
-      const clientA = await createStreamableClient(portA);
-      const clientB = await createStreamableClient(portB);
+      const clientA = await createEraClient(era, portA);
+      const clientB = await createEraClient(era, portB);
       try {
         const resultA: any = await clientA.callTool({
           name: 'server-a-external-tool',

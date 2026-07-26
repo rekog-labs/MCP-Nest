@@ -1,6 +1,7 @@
 ## Documentation
 
-- [Migration to the Strategy API](./migration-to-strategy.md) — Moving from `McpModule.forRoot(options)` to `McpStrategy` + `@McpController`.
+- [Migration to the Strategy API](./migration-to-v2.md) — Moving from `McpModule.forRoot(options)` to `McpStrategy` + `@McpController`.
+- [Protocol Revisions & Dual-Era Serving](./protocol-revisions.md) — One endpoint serving both the 2025-era protocol and the stateless `2026-07-28` revision: what changes for tool authors (nothing), what breaks, and the new transport/context options.
 - [Tools Guide](./tools.md) — How to create and register tools.
   - [Discovery and Registration of Tools](./tool-discovery-and-registration.md) — Automatic discovery via `@McpController` and runtime registration on the strategy.
   - [Dynamic Capabilities Guide](./dynamic-capabilities.md) — Register tools, resources, and prompts programmatically at runtime from databases or configuration.
@@ -13,12 +14,12 @@
 - [Prompts Guide](./prompts.md) — How to define and use prompts.
 - [Resource Templates Guide](./resource-templates.md) — Resource URI templates and usage.
 - [Resources Guide](./resources.md) — Defining and exposing resources.
-- [Dependency Injection](docs/dependency-injection.md) — Leverage NestJS DI system throughout MCP components.
-- [Server mutation and instrumentation](docs/server-mutation.md) — Mutate the underlying mcp server for custom logic or instrumentation purposes.
+- [Dependency Injection](./dependency-injection.md) — Leverage NestJS DI system throughout MCP components.
+- [Server mutation and instrumentation](./server-mutation.md) — Mutate the underlying mcp server for custom logic or instrumentation purposes.
 
 ### Advanced Usage
 
-- [Transports & endpoints](./migration-to-strategy.md#4-transports) — Configure `StreamableHttpTransport`/`StdioTransport` endpoints. The HTTP transport mounts its routes on the Nest HTTP adapter, so guards/interceptors/middleware apply via the standard NestJS RPC pipeline and `app.use(...)`.
+- [Transports & endpoints](./migration-to-v2.md#4-transports) — Configure `StreamableHttpTransport`/`StdioTransport` endpoints. The HTTP transport mounts its routes on the Nest HTTP adapter, so guards/interceptors/middleware apply via the standard NestJS RPC pipeline and `app.use(...)`.
 
 ### OAuth & Authorization
 

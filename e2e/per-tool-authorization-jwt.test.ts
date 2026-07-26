@@ -1,7 +1,8 @@
 /**
  * e2e for `examples/per-tool-authorization-jwt` — verifies the behaviors
  * documented in docs/per-tool-authorization-jwt.md against a real, spawned
- * example server, driven by a pinned old MCP client.
+ * example server, driven by both a pinned old (1.10.0) and a modern
+ * (2026-07-28) client.
  *
  * Run:  bun test per-tool-authorization-jwt.test.ts        (from the e2e/ directory)
  *
@@ -22,15 +23,22 @@
  * dependency. The signing secret is passed to the server via `startExample`'s
  * `env` so client-minted tokens and server-side verification agree.
  *
- * Green on `main` = an old (1.10.0) client fully interoperates with per-tool
+ * Green = both eras interoperate with per-tool
  * JWT authorization. If a server change breaks that, one of these assertions
  * fails and names exactly what regressed.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createHmac } from 'node:crypto';
 
-import { createLegacyClient, getFreePort, startExample, type RunningExample } from './harness';
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import {
+  createEraClient,
+  ERAS,
+  getFreePort,
+  startExample,
+  type Era,
+  type EraClient,
+  type RunningExample,
+} from './harness';
 
 const BOOT_MS = 90_000;
 
@@ -101,11 +109,11 @@ function text(result: any): string {
 }
 
 let server: RunningExample;
-let anonClient: Client;
-let basicClient: Client;
-let adminClient: Client;
-let premiumClient: Client;
-let superadminClient: Client;
+const anonClientByEra: Partial<Record<Era, EraClient>> = {};
+const basicClientByEra: Partial<Record<Era, EraClient>> = {};
+const adminClientByEra: Partial<Record<Era, EraClient>> = {};
+const premiumClientByEra: Partial<Record<Era, EraClient>> = {};
+const superadminClientByEra: Partial<Record<Era, EraClient>> = {};
 
 beforeAll(async () => {
   const port = await getFreePort();
@@ -113,57 +121,70 @@ beforeAll(async () => {
     readyTimeoutMs: BOOT_MS,
     env: { JWT_SECRET },
   });
-  anonClient = await createLegacyClient(server.url);
-  basicClient = await createLegacyClient(server.url, bearer(BASIC_USER));
-  adminClient = await createLegacyClient(server.url, bearer(ADMIN_USER));
-  premiumClient = await createLegacyClient(server.url, bearer(PREMIUM_USER));
-  superadminClient = await createLegacyClient(server.url, bearer(SUPERADMIN_USER));
+  for (const era of ERAS) {
+    anonClientByEra[era] = await createEraClient(era, server.url);
+    basicClientByEra[era] = await createEraClient(era, server.url, bearer(BASIC_USER));
+    adminClientByEra[era] = await createEraClient(era, server.url, bearer(ADMIN_USER));
+    premiumClientByEra[era] = await createEraClient(era, server.url, bearer(PREMIUM_USER));
+    superadminClientByEra[era] = await createEraClient(
+      era,
+      server.url,
+      bearer(SUPERADMIN_USER),
+    );
+  }
 }, BOOT_MS);
 
 afterAll(async () => {
-  await anonClient?.close?.();
-  await basicClient?.close?.();
-  await adminClient?.close?.();
-  await premiumClient?.close?.();
-  await superadminClient?.close?.();
+  for (const era of ERAS) {
+    await anonClientByEra[era]?.close();
+    await basicClientByEra[era]?.close();
+    await adminClientByEra[era]?.close();
+    await premiumClientByEra[era]?.close();
+    await superadminClientByEra[era]?.close();
+  }
   await server?.stop();
 });
 
-describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/sdk@1.10.0 client)', () => {
+describe.each(ERAS)('examples/per-tool-authorization-jwt e2e (%s era)', (era) => {
+  const anonClient = () => anonClientByEra[era]!;
+  const basicClient = () => basicClientByEra[era]!;
+  const adminClient = () => adminClientByEra[era]!;
+  const premiumClient = () => premiumClientByEra[era]!;
+  const superadminClient = () => superadminClientByEra[era]!;
   test(
     'an invalid/unsigned token is rejected at the HTTP layer (guard returns false)',
     async () => {
-      // createLegacyClient retries connect() for ~5s to absorb the "port open but
+      // createEraClient retries connect() for ~5s to absorb the "port open but
       // route not yet mounted" boot gap; a permanently-invalid token exhausts
       // that whole retry budget before surfacing, so this needs a longer timeout
       // than the default 5s test timeout.
       await expect(
-        createLegacyClient(server.url, bearer('not.a.validtoken')),
+        createEraClient(era, server.url, bearer('not.a.validtoken')),
       ).rejects.toThrow();
     },
     10_000,
   );
 
   test('anonymous tools/list: only the @PublicTool() tool is visible', async () => {
-    const { tools } = await anonClient.listTools();
+    const { tools } = await anonClient().listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(['public-greet-world']);
   });
 
   test('anonymous can call the public tool', async () => {
-    const res = await anonClient.callTool({ name: 'public-greet-world', arguments: {} });
+    const res = await anonClient().callTool({ name: 'public-greet-world', arguments: {} });
     expect(text(res)).toContain('Public Hello, World!');
   });
 
   test('anonymous is denied an undecorated (protected) tool: requires authentication', async () => {
     await expect(
-      anonClient.callTool({ name: 'greet-world', arguments: {} }),
+      anonClient().callTool({ name: 'greet-world', arguments: {} }),
     ).rejects.toThrow(/requires authentication/i);
   });
 
   test('anonymous is denied a scope/role-gated tool: requires authentication', async () => {
     await expect(
-      anonClient.callTool({
+      anonClient().callTool({
         name: 'admin-greet',
         arguments: { message: 'hi' },
       }),
@@ -171,7 +192,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
   });
 
   test('basic (authenticated, no scopes/roles) tools/list: public + undecorated protected tools, no gated ones', async () => {
-    const { tools } = await basicClient.listTools();
+    const { tools } = await basicClient().listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       ['public-greet-world', 'greet-world', 'greet-user', 'greet-logged-in-user'].sort(),
@@ -179,10 +200,10 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
   });
 
   test('basic user can call undecorated protected tools', async () => {
-    const world = await basicClient.callTool({ name: 'greet-world', arguments: {} });
+    const world = await basicClient().callTool({ name: 'greet-world', arguments: {} });
     expect(text(world)).toContain('Hello, World!');
 
-    const named = await basicClient.callTool({
+    const named = await basicClient().callTool({
       name: 'greet-user',
       arguments: { name: 'Alice' },
     });
@@ -190,13 +211,13 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
   });
 
   test("basic user's identity flows through @McpRawRequest() to req.user", async () => {
-    const res = await basicClient.callTool({ name: 'greet-logged-in-user', arguments: {} });
+    const res = await basicClient().callTool({ name: 'greet-logged-in-user', arguments: {} });
     expect(text(res)).toContain('Hello, Basic User!');
   });
 
   test('basic user is denied the admin-scoped tool: requires scopes', async () => {
     await expect(
-      basicClient.callTool({
+      basicClient().callTool({
         name: 'admin-greet',
         arguments: { message: 'hi' },
       }),
@@ -205,7 +226,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
 
   test('basic user is denied the premium-role tool: requires roles', async () => {
     await expect(
-      basicClient.callTool({
+      basicClient().callTool({
         name: 'premium-greet',
         arguments: { name: 'Alice', level: 'gold' },
       }),
@@ -213,7 +234,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
   });
 
   test('admin user tools/list: sees admin-greet, not premium-greet or super-admin-greet', async () => {
-    const { tools } = await adminClient.listTools();
+    const { tools } = await adminClient().listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
@@ -227,7 +248,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
   });
 
   test('admin user can call the admin-scoped tool', async () => {
-    const res = await adminClient.callTool({
+    const res = await adminClient().callTool({
       name: 'admin-greet',
       arguments: { message: 'message from admin' },
     });
@@ -236,7 +257,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
 
   test('admin user is denied the premium-role tool: requires roles', async () => {
     await expect(
-      adminClient.callTool({
+      adminClient().callTool({
         name: 'premium-greet',
         arguments: { name: 'Alice', level: 'gold' },
       }),
@@ -244,7 +265,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
   });
 
   test('premium user tools/list: sees premium-greet, not admin-greet or super-admin-greet', async () => {
-    const { tools } = await premiumClient.listTools();
+    const { tools } = await premiumClient().listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
@@ -258,7 +279,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
   });
 
   test('premium user can call the premium-role tool', async () => {
-    const res = await premiumClient.callTool({
+    const res = await premiumClient().callTool({
       name: 'premium-greet',
       arguments: { name: 'PremiumX', level: 'gold' },
     });
@@ -267,7 +288,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
 
   test('premium user is denied the admin-scoped tool: requires scopes', async () => {
     await expect(
-      premiumClient.callTool({
+      premiumClient().callTool({
         name: 'admin-greet',
         arguments: { message: 'hi' },
       }),
@@ -275,7 +296,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
   });
 
   test('superadmin user tools/list: sees every tool', async () => {
-    const { tools } = await superadminClient.listTools();
+    const { tools } = await superadminClient().listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
@@ -291,7 +312,7 @@ describe('examples/per-tool-authorization-jwt e2e (pinned @modelcontextprotocol/
   });
 
   test('superadmin user can call the scopes+role-gated tool', async () => {
-    const res = await superadminClient.callTool({
+    const res = await superadminClient().callTool({
       name: 'super-admin-greet',
       arguments: { target: 'BasicUser', action: 'approve' },
     });

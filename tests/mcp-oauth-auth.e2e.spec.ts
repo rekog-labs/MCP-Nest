@@ -27,7 +27,7 @@ import type {
   ClientRegistrationDto,
 } from '@rekog/mcp-nest-auth';
 import type { OAuthSession } from '@rekog/mcp-nest-auth';
-import { createStreamableClient } from './utils';
+import { createEraClient, ERAS } from './utils';
 
 // Mock OAuth Provider for testing
 const MockOAuthProvider: OAuthProviderConfig = {
@@ -197,7 +197,7 @@ const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
 @UseGuards(McpAuthJwtGuard)
 class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
-describe('E2E: McpAuthModule OAuth Flow', () => {
+describe.each(ERAS)('E2E: McpAuthModule OAuth Flow (%s era)', (era) => {
   let app: INestApplication;
   let testPort: number;
   let mockStore: MockOAuthStore;
@@ -524,7 +524,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
     });
 
     it('should allow access to protected MCP endpoints with valid token', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: `Bearer ${validAccessToken}`,
@@ -552,7 +552,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
       // Standard OAuth flow: connection without token should get 401
       // This triggers the MCP Authorization flow for the client
       await expect(
-        createStreamableClient(testPort, {
+        createEraClient(era, testPort, {
           requestInit: {
             headers: {},
           },
@@ -562,7 +562,7 @@ describe('E2E: McpAuthModule OAuth Flow', () => {
 
     it('should reject access to protected MCP endpoints with invalid token', async () => {
       await expect(
-        createStreamableClient(testPort, {
+        createEraClient(era, testPort, {
           requestInit: {
             headers: {
               Authorization: 'Bearer invalid-token',

@@ -3,7 +3,7 @@ import { Payload, RpcException } from '@nestjs/microservices';
 import { IsInt, IsString, Min, MinLength } from 'class-validator';
 import { z } from 'zod';
 import { McpController, Tool } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 class CreateUserDto {
   @IsString()
@@ -49,7 +49,7 @@ class ClassValidatorController {
   }
 }
 
-describe('E2E: McpStrategy with class-validator ValidationPipe', () => {
+describe.each(ERAS)('E2E: McpStrategy with class-validator ValidationPipe (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -67,7 +67,7 @@ describe('E2E: McpStrategy with class-validator ValidationPipe', () => {
   });
 
   it('accepts valid input and transforms the payload into the DTO instance', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const result = (await client.callTool({
       name: 'create-user',
       arguments: { name: 'Alice', age: 30 },
@@ -77,7 +77,7 @@ describe('E2E: McpStrategy with class-validator ValidationPipe', () => {
   });
 
   it('rejects input that violates a class-validator constraint Zod does not check (@Min)', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const result = (await client.callTool({
       name: 'create-user',
       arguments: { name: 'Bob', age: 10 },
@@ -88,7 +88,7 @@ describe('E2E: McpStrategy with class-validator ValidationPipe', () => {
   });
 
   it('rejects input that violates @MinLength', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const result = (await client.callTool({
       name: 'create-user',
       arguments: { name: 'A', age: 30 },

@@ -39,6 +39,15 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # Gate the release on the example e2e suite BEFORE anything is published.
+      # `npm test` covers the packages in isolation; this boots each
+      # examples/<name> as a real subprocess against the build we're about to
+      # ship and drives it with both protocol eras (a pinned old 1.10.0 client
+      # and a modern 2026-07-28 one). A break here stops the release instead of
+      # being discovered after the artifact is public.
+      - name: Run example e2e against the build being released
+        run: npm run e2e:local
+
       - name: Update package versions
         run: |
           TAG_VERSION=${{ github.event.release.tag_name }}
@@ -83,6 +92,10 @@ jobs:
         with:
           node-version: '24.x'
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+
       - name: Resolve published version
         id: ver
         run: |
@@ -121,3 +134,15 @@ jobs:
           npm pkg set "dependencies.@rekog/mcp-nest=$V"
           npm install --no-audit --no-fund
           npm run smoke
+
+      # The smoke above covers three variants of ONE example on the legacy era.
+      # This runs the whole e2e suite against the exact published artifact —
+      # every example, both protocol eras. Pinned to the released version
+      # rather than the `next` dist-tag (what `npm run e2e:published` uses), so
+      # it can't drift onto a different build mid-release.
+      - name: Run example e2e against the published package
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          bash scripts/use-examples.sh published "$V"
+          npm run e2e

@@ -7,7 +7,7 @@
     "call": "ts-node-dev scripts/call-tools.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/client": "^2.0.0-beta.4",
+    "@modelcontextprotocol/client": "^2.0.0-beta.5",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/microservices": "^11.0.0",

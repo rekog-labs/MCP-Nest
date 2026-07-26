@@ -2,9 +2,10 @@ import { INestApplication, Injectable } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { McpController, Tool } from '@rekog/mcp-nest';
 import {
-  createStreamableClient,
   McpStrategy,
   StreamableHttpTransport,
+  createEraClient,
+  ERAS,
 } from './utils';
 
 /**
@@ -112,7 +113,7 @@ async function bootstrapServer(config: {
   return { app, port };
 }
 
-describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
+describe.each(ERAS)('E2E: Tool Discovery Scope (Streamable HTTP) (%s era)', (era) => {
   let primaryApp: INestApplication;
   let secondaryApp: INestApplication;
   let explicitApp: INestApplication;
@@ -159,7 +160,7 @@ describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
 
   describe('Primary Server - Should NOT expose shared module tools', () => {
     it('should list only the primary tool', async () => {
-      const client = await createStreamableClient(primaryPort);
+      const client = await createEraClient(era, primaryPort);
       try {
         const tools = await client.listTools();
 
@@ -180,7 +181,7 @@ describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
     });
 
     it('should call the primary tool successfully', async () => {
-      const client = await createStreamableClient(primaryPort);
+      const client = await createEraClient(era, primaryPort);
       try {
         const result: any = await client.callTool({
           name: 'primary-tool',
@@ -194,7 +195,7 @@ describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
     });
 
     it('should fail when calling a shared module tool', async () => {
-      const client = await createStreamableClient(primaryPort);
+      const client = await createEraClient(era, primaryPort);
       try {
         await expect(
           client.callTool({
@@ -210,7 +211,7 @@ describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
 
   describe('Secondary Server - Should NOT expose shared module tools', () => {
     it('should list only the secondary tool', async () => {
-      const client = await createStreamableClient(secondaryPort);
+      const client = await createEraClient(era, secondaryPort);
       try {
         const tools = await client.listTools();
 
@@ -231,7 +232,7 @@ describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
     });
 
     it('should call the secondary tool successfully', async () => {
-      const client = await createStreamableClient(secondaryPort);
+      const client = await createEraClient(era, secondaryPort);
       try {
         const result: any = await client.callTool({
           name: 'secondary-tool',
@@ -247,7 +248,7 @@ describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
 
   describe('Explicit Import Server - SHOULD expose explicitly imported tools', () => {
     it('should list both explicitly imported and its own tools', async () => {
-      const client = await createStreamableClient(explicitPort);
+      const client = await createEraClient(era, explicitPort);
       try {
         const tools = await client.listTools();
 
@@ -269,7 +270,7 @@ describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
     });
 
     it('should call the explicitly imported tool successfully', async () => {
-      const client = await createStreamableClient(explicitPort);
+      const client = await createEraClient(era, explicitPort);
       try {
         const result: any = await client.callTool({
           name: 'explicitly-imported-tool',
@@ -283,7 +284,7 @@ describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
     });
 
     it('should call a shared utility tool successfully', async () => {
-      const client = await createStreamableClient(explicitPort);
+      const client = await createEraClient(era, explicitPort);
       try {
         const result: any = await client.callTool({
           name: 'shared-utility-tool',

@@ -5,7 +5,15 @@ This is a NestJS package that lets *users* expose their existing NestJS provider
 and prompts, with DI, guards, pipes, interceptors, and filters applying natively.
 
 Currently on the **v2 line** (`2.0.0-alpha.x`), built on the MCP TypeScript SDK v2
-(`@modelcontextprotocol/{core,server,node}` v2 betas, peer deps).
+(`@modelcontextprotocol/{core,server,node}` — **`^2.0.0-beta.5` minimum**, peer deps).
+
+**Dual-era**: one endpoint serves both the 2025-era protocol (`initialize` handshake, sessions)
+and the new stateless revision `2026-07-28`. Each POST is classified with the SDK's own
+`classifyInboundRequest`; modern traffic goes to `createMcpHandler`, 2025 traffic to the
+existing wiring. `GET`/`DELETE`, `statefulMode`, `enableJsonResponse` and `sessionIdGenerator`
+are all **legacy-era only**. See `docs/protocol-revisions.md` and `SPEC-2026-07-28-SUPPORT.md`.
+Do not read `LATEST_PROTOCOL_VERSION` from the SDK as "the newest revision we speak" — it is
+`2025-11-25`; the modern revision string is not exported and must be written literally.
 
 ## Packages
 - `packages/mcp-nest` → **`@rekog/mcp-nest`** (core). `McpStrategy` (a NestJS
@@ -28,7 +36,9 @@ Currently on the **v2 line** (`2.0.0-alpha.x`), built on the MCP TypeScript SDK 
   backward compatibility.
 
 ## Commands
-- `npm test` / `npm run test:watch` — bun test over `tests/` and `packages/**/*.spec.ts`
+- `npm test` / `npm run test:watch` — bun test over `tests/` and `packages/**/*.spec.ts`.
+  Most specs are parameterised over both protocol eras via `describe.each(ERAS)`; run one
+  era with `bun test tests/ -t "modern era"` (or `"legacy era"`).
 - `npm run e2e` — e2e suite driven by a pinned OLD MCP client; `npm run e2e:local` builds first
 - `npm run examples:local` / `npm run examples:published` — repoint examples at local vs published packages
 - Each `examples/<project>` is a standalone npm project — see `examples/README.md`

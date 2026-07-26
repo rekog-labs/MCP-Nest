@@ -2,7 +2,16 @@
  * e2e for `examples/built-in-authorization-server` — verifies the OFFLINE/FAKE
  * auth path documented in the example's README ("FAKE mode, MCP_FAKE_AUTH=1")
  * and docs/built-in-authorization-server.md, against a real, spawned example
- * server, driven by a pinned old MCP client.
+ * server, driven by the pinned old (1.10.0) MCP client.
+ *
+ * LEGACY-ONLY, deliberately. Every other e2e file runs its assertions on both
+ * protocol eras (see `ERAS` in harness.ts), but the OAuth files do not: the
+ * two client packages ship different client-side OAuth implementations, so
+ * porting these would be a rewrite against a different auth API rather than a
+ * parameterisation. The MCP era and the OAuth handshake are independent —
+ * per-tool authorization on the modern era is already covered by
+ * per-tool-authorization{,-jwt}.test.ts, which drive the same guards with a
+ * bearer header on both eras. Revisit if the auth surface converges.
  *
  * Run:  bun test built-in-authorization-server.test.ts     (from the e2e/ directory)
  *
@@ -140,6 +149,9 @@ describe('examples/built-in-authorization-server e2e (FAKE mode, pinned @modelco
     expect(meta.resource).toBe(`${serverUrl}/mcp`);
     expect(meta.bearer_methods_supported).toEqual(['header']);
     expect(meta.mcp_versions_supported).toContain('2025-06-18');
+    // The default advertises both eras, matching the default `protocol: 'dual'`
+    // transport posture.
+    expect(meta.mcp_versions_supported).toContain('2026-07-28');
   });
 
   test('Dynamic Client Registration (RFC 7591) returns a registered client', async () => {

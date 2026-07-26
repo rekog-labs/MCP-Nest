@@ -41,6 +41,7 @@ for pkg in "$ROOT"/examples/*/package.json; do
   dir="$(dirname "$pkg")"
   (
     cd "$dir"
+    changed=0
     for name in @rekog/mcp-nest @rekog/mcp-nest-auth; do
       # Skip deps this example doesn't declare (npm pkg get prints {} when absent).
       [ "$(npm pkg get "dependencies.$name")" = "{}" ] && continue
@@ -49,13 +50,30 @@ for pkg in "$ROOT"/examples/*/package.json; do
         @rekog/mcp-nest-auth) val="$AUTH" ;;
       esac
       npm pkg set "dependencies.$name=$val"
+      changed=1
       echo "  $(basename "$dir"): $name -> $val"
     done
+
+    # Drop the lockfile whenever we retarget a @rekog dep.
+    #
+    # This is load-bearing, not tidiness. A lockfile written in PUBLISHED mode
+    # records a registry resolution for @rekog/mcp-nest, and npm honours that
+    # entry over the `file:` spec we just wrote into package.json — so `local`
+    # mode would flip package.json while every install silently kept serving
+    # the published tarball, and tests would quietly stop exercising the local
+    # build. Lockfiles here are gitignored, so regenerating them costs nothing.
+    if [ "$changed" = "1" ] && [ -f package-lock.json ]; then
+      rm -f package-lock.json
+    fi
   )
 done
 
 echo
 echo "Done ($MODE). Run 'npm install' (or 'bun install') in an example to apply."
+echo "Lockfiles were dropped so the new source actually wins; they are gitignored."
 if [ "$MODE" = "local" ]; then
   echo "Reminder: 'bun run build' first so packages/*/dist exists."
+  echo "Note: npm 9 defaults install-links=true, which COPIES a file: dep instead"
+  echo "      of symlinking it — so a rebuild needs a reinstall to take effect."
+  echo "      Use 'npm install --install-links=false' to get a symlink instead."
 fi

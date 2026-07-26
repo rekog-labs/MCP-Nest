@@ -12,7 +12,7 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { createStreamableClient } from './utils';
+import { createEraClient, ERAS } from './utils';
 
 @Injectable()
 class Repo {
@@ -95,7 +95,7 @@ class Capabilities {
   }
 }
 
-describe('E2E: McpStrategy capabilities', () => {
+describe.each(ERAS)('E2E: McpStrategy capabilities (%s era)', (era) => {
   let app: INestApplication;
   let strategy: McpStrategy;
   let port: number;
@@ -135,7 +135,7 @@ describe('E2E: McpStrategy capabilities', () => {
   });
 
   it('invokes a tool with an injected dependency (DI works)', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const res = (await client.callTool({
       name: 'greet',
       arguments: { name: 'Bob' },
@@ -145,7 +145,7 @@ describe('E2E: McpStrategy capabilities', () => {
   });
 
   it('exposes the full @Ctx() surface', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const res = (await client.callTool({
       name: 'context-probe',
       arguments: {},
@@ -158,21 +158,21 @@ describe('E2E: McpStrategy capabilities', () => {
   });
 
   it('reads a static resource', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const res = await client.readResource({ uri: 'mcp://greeting' });
     expect((res.contents[0] as { text: string }).text).toBe('Hello World');
     await client.close();
   });
 
   it('reads a resource template with extracted params', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const res = await client.readResource({ uri: 'mcp://greeting/Alice' });
     expect((res.contents[0] as { text: string }).text).toBe('Hello Alice');
     await client.close();
   });
 
   it('gets a prompt', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const res = await client.getPrompt({
       name: 'greeting-prompt',
       arguments: { name: 'Carol' },
@@ -184,7 +184,7 @@ describe('E2E: McpStrategy capabilities', () => {
   });
 
   it('invokes a dynamically registered tool', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const tools = await client.listTools();
     expect(tools.tools.find((t) => t.name === 'dynamic-echo')).toBeDefined();
     const res = (await client.callTool({

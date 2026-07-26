@@ -2,8 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { McpController, Tool } from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
-  createStreamableClient,
   StreamableHttpTransport,
+  createEraClient,
+  ERAS,
 } from './utils';
 
 /**
@@ -38,7 +39,7 @@ class ToolsB {
   }
 }
 
-describe('E2E: Multiple MCP servers (Streamable HTTP)', () => {
+describe.each(ERAS)('E2E: Multiple MCP servers (Streamable HTTP) (%s era)', (era) => {
   const apps: INestApplication[] = [];
   let statefulPortA: number;
   let statefulPortB: number;
@@ -91,7 +92,7 @@ describe('E2E: Multiple MCP servers (Streamable HTTP)', () => {
       });
 
       it('should list tools for server A', async () => {
-        const client = await createStreamableClient(portA);
+        const client = await createEraClient(era, portA);
         try {
           const tools = await client.listTools();
           expect(tools.tools.length).toBe(1);
@@ -103,7 +104,7 @@ describe('E2E: Multiple MCP servers (Streamable HTTP)', () => {
       });
 
       it('should list tools for server B', async () => {
-        const client = await createStreamableClient(portB);
+        const client = await createEraClient(era, portB);
         try {
           const tools = await client.listTools();
           expect(tools.tools.length).toBe(1);

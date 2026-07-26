@@ -11,7 +11,7 @@ import {
   McpStrategy,
   Prompt,
 } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 import { z } from 'zod';
 
 // ============================================================================
@@ -98,7 +98,7 @@ class StaticPrompt {
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
+describe.each(ERAS)('E2E: Dynamic Prompt Registration via McpStrategy (%s era)', (era) => {
   describe('Basic Dynamic Prompts', () => {
     let app: INestApplication;
     let serverPort: number;
@@ -118,7 +118,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should list dynamically registered prompts', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listPrompts();
 
@@ -134,7 +134,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should include argument metadata for prompts with parameters', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listPrompts();
         const summarize = result.prompts.find((p) => p.name === 'summarize');
@@ -158,7 +158,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should execute a dynamically registered prompt with arguments', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result: any = await client.getPrompt({
           name: 'summarize',
@@ -173,7 +173,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should execute a dynamic prompt without parameters', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result: any = await client.getPrompt({
           name: 'translate',
@@ -208,7 +208,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should list both decorator and dynamic prompts', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listPrompts();
 
@@ -228,7 +228,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should execute decorator-based prompt alongside dynamic prompts', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result: any = await client.getPrompt({
           name: 'static-prompt',
@@ -296,7 +296,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should register dynamic prompts to correct server (server 1)', async () => {
-      const client = await createStreamableClient(port1);
+      const client = await createEraClient(era, port1);
       try {
         const result = await client.listPrompts();
 
@@ -312,7 +312,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should register dynamic prompts to correct server (server 2)', async () => {
-      const client = await createStreamableClient(port2);
+      const client = await createEraClient(era, port2);
       try {
         const result = await client.listPrompts();
 
@@ -328,8 +328,8 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should execute prompts on their respective servers', async () => {
-      const client1 = await createStreamableClient(port1);
-      const client2 = await createStreamableClient(port2);
+      const client1 = await createEraClient(era, port1);
+      const client2 = await createEraClient(era, port2);
       try {
         const result1: any = await client1.getPrompt({
           name: 'server1-prompt',
@@ -379,7 +379,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         let result = await client.listPrompts();
         expect(
@@ -398,7 +398,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
     });
 
     it('should return an error when getting a removed prompt', async () => {
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         await expect(
           client.getPrompt({ name: 'temp-prompt', arguments: {} }),
@@ -428,7 +428,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
 
       strategy.removePrompt('prompt-to-remove');
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listPrompts();
         expect(
@@ -452,7 +452,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listPrompts();
         expect(
@@ -486,7 +486,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listPrompts();
         const matches = result.prompts.filter(
@@ -527,7 +527,7 @@ describe('E2E: Dynamic Prompt Registration via McpStrategy', () => {
         }),
       });
 
-      const client = await createStreamableClient(serverPort);
+      const client = await createEraClient(era, serverPort);
       try {
         const result = await client.listPrompts();
         const matches = result.prompts.filter(

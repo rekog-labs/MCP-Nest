@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { McpController, Tool } from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
-  createStreamableClient,
   StreamableHttpTransport,
+  createEraClient,
+  ERAS,
 } from './utils';
 
 @McpController()
@@ -24,7 +25,7 @@ class Tools {
 // transport endpoint explicitly.
 const streamableEndpoint = '/api/mcp';
 
-describe('MCP under a prefixed endpoint (e2e)', () => {
+describe.each(ERAS)('MCP under a prefixed endpoint (e2e) (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -48,7 +49,7 @@ describe('MCP under a prefixed endpoint (e2e)', () => {
   });
 
   it('should reach MCP over streamable-http under the prefixed endpoint', async () => {
-    const client = await createStreamableClient(port, {
+    const client = await createEraClient(era, port, {
       endpoint: streamableEndpoint,
     });
     try {
@@ -61,9 +62,13 @@ describe('MCP under a prefixed endpoint (e2e)', () => {
   });
 
   it('should return 404 at the default (unprefixed) endpoint', async () => {
+    // Nothing is mounted here, so connecting fails in BOTH eras — they just
+    // surface it differently: the legacy client 404s on its `initialize` POST,
+    // while the modern client reports its pinned `server/discover` probe as
+    // unanswered. Asserting per era keeps both messages pinned down.
     await expect(
-      createStreamableClient(port, { endpoint: '/mcp' }),
-    ).rejects.toThrow(/404/);
+      createEraClient(era, port, { endpoint: '/mcp' }),
+    ).rejects.toThrow(era === 'legacy' ? /404/ : /Version negotiation failed/);
   });
 });
 
@@ -72,7 +77,7 @@ describe('MCP under a prefixed endpoint (e2e)', () => {
 // equivalent is simply a deeper endpoint path, which works the same way.
 const nestedEndpoint = '/api/service/custom/mcp';
 
-describe('MCP under a deeply-nested endpoint (e2e)', () => {
+describe.each(ERAS)('MCP under a deeply-nested endpoint (e2e) (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -96,7 +101,7 @@ describe('MCP under a deeply-nested endpoint (e2e)', () => {
   });
 
   it('should reach MCP under the deeply-nested endpoint', async () => {
-    const client = await createStreamableClient(port, {
+    const client = await createEraClient(era, port, {
       endpoint: nestedEndpoint,
     });
     try {
@@ -109,8 +114,9 @@ describe('MCP under a deeply-nested endpoint (e2e)', () => {
   });
 
   it('should return 404 at a shallower path', async () => {
+    // See the note above: same rejection, era-specific message.
     await expect(
-      createStreamableClient(port, { endpoint: '/api/mcp' }),
-    ).rejects.toThrow(/404/);
+      createEraClient(era, port, { endpoint: '/api/mcp' }),
+    ).rejects.toThrow(era === 'legacy' ? /404/ : /Version negotiation failed/);
   });
 });
