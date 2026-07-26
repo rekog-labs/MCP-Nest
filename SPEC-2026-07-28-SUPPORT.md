@@ -548,7 +548,7 @@ the e2e's case) a placeholder `aud` of `http://localhost/mcp`. Both relied on th
 signature-only check and will now 401. They need `iss: <serverUrl>` and the real
 `resource` value.
 
-### Tier 3 — additive compliance 🚧
+### Tier 3 — additive compliance ✅
 
 Core-package half ✅ (`tests` 649 → 698 on its own; four new suites):
 
@@ -582,9 +582,37 @@ Core-package half ✅ (`tests` 649 → 698 on its own; four new suites):
       revision only reserved the names. Non-string values are dropped. Not available on the list
       operations, which take no per-request context in mcp-nest.
 
-- [ ] PKCE: require `code_challenge`, `S256` only
-- [ ] `offline_access` out of protected-resource `scopesSupported` (new SHOULD NOT)
-- [ ] `application_type` stored; `disableEndpoints.register`; DCR deprecation docs
+Authorization-package half ✅ (commit `280a89c`, +27 tests):
+
+- [x] **PKCE required, S256 only.** Three holes were open at once: the method defaulted to
+      `'plain'` when absent, verification ran only `if (authCode.code_challenge)` so a client
+      sending no challenge got a token with *no* proof of possession, and `plain` was advertised.
+      `/authorize` now refuses a missing challenge and any non-`S256` method (as a redirect-mode
+      `invalid_request`, per the RFC 6749 §4.1.2.1 split Tier 2 introduced), and the token endpoint
+      refuses to redeem a code that is not S256-bound — closing the skip for codes from a custom
+      store or an older version. An absent `code_challenge_method` is treated as `plain` and
+      refused (RFC 7636 §4.3). `requirePkce: false` is the hatch, and deliberately does **not**
+      re-advertise `plain`.
+- [x] **`offline_access` out of protected-resource `scopesSupported`** (new SHOULD NOT — refresh
+      tokens are not a resource requirement). Default is now empty, and `scopes_supported` is
+      *omitted* rather than sent as `[]`: an empty array asserts "understands no scopes", which is
+      not what an unconfigured server means, and RFC 9728 makes the field optional. Also fixed a
+      pre-existing inconsistency — `enableRefreshTokens: false` stripped it from the
+      protected-resource list but not the AS list, so since Tier 2's narrowing it stayed both
+      advertised *and grantable* on a server that never issues refresh tokens.
+- [x] **`application_type` stored, not enforced.** The MUST is on clients, with an explicit carve-out
+      that "non-OIDC servers safely ignore the parameter" — and this is not an OIDC provider. It now
+      round-trips (new nullable column; previously the TypeORM store silently dropped it) and an
+      unknown value is a 400. The OIDC native/web redirect-URI constraints are **not** implemented:
+      they would reject legitimate clients.
+- [x] **`disableEndpoints.register`**, so a CIMD-only deployment can turn DCR off. When disabled,
+      `registration_endpoint` is also omitted from AS metadata — advertising a 404ing endpoint is
+      worse metadata than advertising none.
+- [x] **DCR deprecation documented, not implemented.** Deprecated upstream, *not* removed: earliest
+      removal is the first revision released on or after **2027-07-28**. The endpoint, the metadata
+      field and every option name stay; no per-request deprecation warning (an operator cannot act
+      on that noise). Callouts in `docs/built-in-authorization-server.md` and
+      `docs/external-authorization-server.md`.
 
 ### Tier 4 — consent screen, CIMD, step-up authorization ✅
 
@@ -693,6 +721,58 @@ Core-package half ✅ (`tests` 649 → 698 on its own; four new suites):
       - Tests: `tests/mcp-step-up-authorization.e2e.spec.ts`, 38 over both eras — including the
         SDK client surfacing `InsufficientScopeError` (proof step-up is reachable at all) and an
         option-off regression block.
+
+### Final tallies for the §10 workstream
+
+| Suite | Before | After |
+|---|---|---|
+| `npm test` | 637 pass / 0 fail, 47 files | **847 pass / 0 fail**, 56 files |
+| `npm run e2e` | 309 pass / 0 fail, 15 files | **316 pass / 0 fail**, 16 files |
+| `npm run build` | clean | clean |
+
+Landed as eight commits, one per tier plus follow-ups: `5938dd7` (Tier 1),
+`23d8d61` (Tier 2), `fd49cca` (Tier 3 core), `280a89c` (Tier 3 auth), `5fc2c3a`
+(step-up), `38f1ae0` (docs), `cd29df2` (consent + CIMD), `06f3dd0` (CIMD e2e).
+
+**Existing assertions changed across the whole workstream: five**, all in Tier 3's
+authorization half and all listed there — two are
+`code_challenge_methods_supported: ['plain','S256'] → ['S256']` (asserting the old
+value would assert the downgrade path back into existence), three are setup-only
+PKCE parameters in a file added earlier in the same workstream. Nothing else was
+touched, and no assertion was weakened to make a test pass.
+
+**Two `e2e/`-visible defaults were deliberately left alone** so the
+backward-compatibility gate keeps its meaning: step-up authorization's `403`
+(spec text is SHOULD) and `Origin`/`Host` validation (the MUST only bites on a
+*present-and-invalid* `Origin`). Both are one option away.
+
+⚠️ **The unit suite runs on Bun and cannot catch runtime-divergent bugs.** The CIMD
+SSRF guard overrides the `dns.lookup` hook `node:http` hands to `net`, and Node
+≥20 calls it with `{ all: true }` while Bun calls `(err, address, family)`. An
+implementation serving only Bun's shape passed all 46 CIMD unit tests and failed on
+real Node with `Invalid IP address: undefined`. `e2e/` is the only suite on Node,
+which is why `e2e/built-in-authorization-server-cimd.test.ts` exists. Keep that in
+mind for any future code touching Node built-ins directly.
+
+### Known gaps, deliberately not closed
+
+- **`private_key_jwt` / mTLS client authentication** — CIMD documents declaring them are
+  *refused at `/authorize`* with a clear message rather than failing late at `/token`. No JWKS
+  fetching or JWT-assertion verification.
+- **Multi-process CIMD caching and remembered consents** are per-replica, in memory. No
+  optional `IOAuthStore` methods were added. Consequence is extra document fetches and extra
+  consent prompts — never a correctness or safety issue.
+- **No CIMD trust policies** (the spec's MAY): no domain allowlist, reputation, domain-age or
+  certificate checks. Any routable `https` origin is accepted.
+- **`logo_uri` is parsed but never rendered** — on purpose: it would be an attacker-controlled
+  outbound request originating from the consent page.
+- **Consent is not wired for STDIO** (no browser) and there is no "revoke my approvals" route
+  (`ConsentService.clearConsents()` exists but is unexposed).
+- **Full SEP-2243 `x-mcp-header` support** — mirroring is refused, not implemented.
+- **Non-object `structuredContent`** cannot round-trip until the SDK client's `CallToolResult`
+  schema widens (Tier 1).
+- **`code_challenge` format validation** (RFC 7636's 43–128 unreserved characters) — a malformed
+  S256 challenge simply never verifies, so it adds no security.
 
 ### Verified as already covered — no work needed
 
