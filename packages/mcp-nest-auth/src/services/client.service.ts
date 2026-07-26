@@ -6,6 +6,7 @@ import type {
 } from '../stores/oauth-store.interface';
 import { randomBytes } from 'crypto';
 import type { OAuthModuleOptions } from '../providers/oauth-provider.interface';
+import { ClientIdMetadataService } from './client-id-metadata.service';
 
 @Injectable()
 export class ClientService {
@@ -13,14 +14,17 @@ export class ClientService {
     @Inject('IOAuthStore') private readonly store: IOAuthStore,
     @Inject('OAUTH_MODULE_OPTIONS')
     private readonly options: OAuthModuleOptions,
+    private readonly clientIdMetadata: ClientIdMetadataService,
   ) {}
 
   /**
    * Register a client application.
    * Always creates a new client record. client_name is not treated as unique.
    *
-   * Note: Left open for future enhancements (e.g., software statements,
-   * URL-based Client ID Metadata Documents) via preRegistrationChecks().
+   * Note: Left open for future enhancements (e.g., software statements) via
+   * preRegistrationChecks(). URL-based registration is no longer a "future
+   * enhancement" — see {@link ClientIdMetadataService}, which resolves
+   * URL-shaped client_ids without any registration record at all.
    */
   async registerClient(
     registrationDto: ClientRegistrationDto,
@@ -107,9 +111,8 @@ export class ClientService {
   }
 
   /**
-   * Hook for future registration policies (e.g., software statements per RFC 7591/7592,
-   * or URL-based Client Registration using Client ID Metadata Documents).
-   * Currently a no-op to keep behavior: always create a new client.
+   * Hook for future registration policies (e.g., software statements per RFC
+   * 7591/7592). Currently a no-op to keep behavior: always create a new client.
    */
 
   protected async preRegistrationChecks(
@@ -118,7 +121,27 @@ export class ClientService {
     // Intentionally left blank. Implement validations/attestations in the future.
   }
 
+  /**
+   * Resolve a `client_id` to a client record, from whichever registration
+   * mechanism produced it.
+   *
+   * Both keyspaces share one namespace safely: every `IOAuthStore` generates ids
+   * as `${normalizedName}_${suffix}` with `normalizedName` reduced to `[a-z0-9]`,
+   * so a registered id can never contain `://` and can never be mistaken for a
+   * Client ID Metadata Document URL. The DCR store therefore stays DCR-only and
+   * knows nothing about CIMD.
+   *
+   * Unlike the store path, the CIMD path **throws** (`BadRequestException`)
+   * instead of returning `null` — a document that fails to fetch or fails
+   * validation is a specific, reportable condition, and the draft says the
+   * authorization request SHOULD be aborted rather than silently retried as an
+   * unknown client.
+   */
   async getClient(clientId: string): Promise<OAuthClient | null> {
+    if (this.clientIdMetadata.isMetadataDocumentClientId(clientId)) {
+      return await this.clientIdMetadata.resolve(clientId);
+    }
+
     const client = await this.store.getClient(clientId);
     if (!client) {
       return null;

@@ -27,11 +27,13 @@ import type {
   OAuthSession,
   OAuthUserProfile,
 } from './providers/oauth-provider.interface';
+import { ClientIdMetadataService } from './services/client-id-metadata.service';
 import { ClientService } from './services/client.service';
+import { ConsentService } from './services/consent.service';
 import { JwtTokenService, TokenPair } from './services/jwt-token.service';
 import { OAuthStrategyService } from './services/oauth-strategy.service';
 import { ScopePolicyService } from './services/scope-policy.service';
-import type { IOAuthStore } from './stores/oauth-store.interface';
+import type { IOAuthStore, OAuthClient } from './stores/oauth-store.interface';
 
 interface OAuthCallbackRequest extends ExpressRequest {
   user?: {
@@ -53,6 +55,12 @@ export function createMcpOAuthController(
     disableWellKnownProtectedResourceMetadata?: boolean;
     disableWellKnownAuthorizationServerMetadata?: boolean;
     disableRegister?: boolean;
+    /**
+     * Registers `POST <endpoints.consent>`. Route registration happens when the
+     * controller class is built, so this cannot be read off the module options at
+     * request time — with consent off the route does not exist at all.
+     */
+    consentEnabled?: boolean;
   },
   authModuleId?: string,
 ) {
@@ -107,6 +115,8 @@ export function createMcpOAuthController(
       readonly clientService: ClientService,
       readonly oauthStrategyService: OAuthStrategyService,
       readonly scopePolicy: ScopePolicyService,
+      readonly consent: ConsentService,
+      readonly clientIdMetadata: ClientIdMetadataService,
     ) {
       this.serverUrl = options.serverUrl;
       this.isProduction = options.cookieSecure;
@@ -324,6 +334,19 @@ export function createMcpOAuthController(
          * the other, or a client cannot tell whether its absence is meaningful.
          */
         authorization_response_iss_parameter_supported: true,
+
+        /**
+         * Client ID Metadata Documents. Advertised only when actually enabled:
+         * clients are told to prefer CIMD over Dynamic Client Registration
+         * whenever they see this flag, so advertising it on a server that then
+         * rejects every URL `client_id` would push them into a dead end instead
+         * of the working `registration_endpoint` right next to it. The key is
+         * omitted rather than sent as `false`, matching how absence is defined to
+         * mean "unsupported".
+         */
+        ...(this.options.clientIdMetadataDocuments.enabled
+          ? { client_id_metadata_document_supported: true }
+          : {}),
       };
     }
 
@@ -367,17 +390,26 @@ export function createMcpOAuthController(
         throw new BadRequestException('Missing required parameters');
       }
 
-      // Validate client and redirect URI
+      // Validate client and redirect URI.
+      //
+      // For a Client ID Metadata Document client this is where the document is
+      // fetched, and `getClient` throws (rather than returning null) with the
+      // specific reason: bad URL shape, SSRF-refused destination, unreachable
+      // origin, `client_id` mismatch, missing field, forbidden auth method. All
+      // of those land here as an HTTP 400, which is what the draft's "SHOULD
+      // abort the authorization request" means for a client_id we cannot trust.
       const client = await this.clientService.getClient(client_id);
       if (!client) {
         throw new BadRequestException('Invalid client_id');
       }
 
-      const validRedirect = await this.clientService.validateRedirectUri(
-        client_id,
-        redirect_uri,
-      );
-      if (!validRedirect) {
+      // Was `clientService.validateRedirectUri(client_id, redirect_uri)`, which
+      // re-resolved the client. Identical comparison, but done against the record
+      // already in hand so a CIMD document is not fetched twice per authorization
+      // request. This is the "MUST validate redirect URIs presented in an
+      // authorization request against those in the metadata document" check —
+      // exact match, no prefix or wildcard matching.
+      if (!redirect_uri || !client.redirect_uris.includes(redirect_uri)) {
         throw new BadRequestException('Invalid redirect_uri');
       }
 
@@ -445,6 +477,15 @@ export function createMcpOAuthController(
         scope: grantedScope,
         resource,
         expiresAt: Date.now() + this.options.oauthSessionExpiresIn,
+        // Pin the document for the rest of the flow instead of re-fetching it
+        // when the code is minted and again when it is redeemed. Two reasons:
+        // the consent screen and the redemption then agree with each other by
+        // construction, and a document that changes mid-flow (a swapped
+        // `redirect_uris`, a different `token_endpoint_auth_method`) cannot
+        // retroactively alter a grant the user already approved.
+        ...(this.clientIdMetadata.isMetadataDocumentClientId(client_id)
+          ? { clientMetadata: client }
+          : {}),
       };
 
       await this.store.storeOAuthSession(sessionId, oauthSession);
@@ -560,8 +601,7 @@ export function createMcpOAuthController(
         maxAge: this.options.cookieMaxAge,
       });
 
-      // Clear temporary cookies
-      res.clearCookie('oauth_session');
+      // The passport state cookie has served its purpose either way.
       res.clearCookie('oauth_state');
 
       // Persist user profile and get stable profile_id
@@ -570,13 +610,59 @@ export function createMcpOAuthController(
         user.provider,
       );
 
-      // Generate authorization code
+      // The consent gate. It sits *here* — after the IdP round-trip, before the
+      // code exists — for two reasons: there is no authenticated principal to
+      // record a grant against any earlier, and the spec wants the redirect-URI
+      // hostname shown "during authorization", which stops being true once the
+      // code has been minted and the browser is already on its way back to the
+      // client.
+      if (
+        this.consent.isEnabled() &&
+        !this.consent.hasConsent(
+          user_profile_id,
+          session.clientId!,
+          session.scope,
+        )
+      ) {
+        await this.renderConsentScreen(
+          session,
+          user.profile,
+          user_profile_id,
+          res,
+        );
+        return;
+      }
+
+      // Clear temporary cookies
+      res.clearCookie('oauth_session');
+
+      await this.issueAuthorizationCode(
+        session,
+        user.profile.username,
+        user_profile_id,
+        res,
+      );
+    }
+
+    /**
+     * Mint the authorization code and hand it back on the client's redirect URI.
+     *
+     * Extracted from `processAuthenticationSuccess` so the direct path and the
+     * consent-approved path cannot drift: whatever the code is bound to (PKCE
+     * challenge, resource, narrowed scope, CIMD snapshot) is bound identically in
+     * both, and the RFC 9207 `iss` is emitted from one place.
+     */
+    async issueAuthorizationCode(
+      session: OAuthSession,
+      userId: string,
+      userProfileId: string,
+      res: Response,
+    ) {
       const authCode = randomBytes(32).toString('base64url');
 
-      // Store the auth code
       await this.store.storeAuthCode({
         code: authCode,
-        user_id: user.profile.username,
+        user_id: userId,
         client_id: session.clientId!,
         redirect_uri: session.redirectUri!,
         code_challenge: session.codeChallenge!,
@@ -584,7 +670,12 @@ export function createMcpOAuthController(
         expires_at: Date.now() + this.options.authCodeExpiresIn,
         resource: session.resource,
         scope: session.scope,
-        user_profile_id,
+        user_profile_id: userProfileId,
+        // Present for CIMD clients only; the token endpoint prefers it over a
+        // fresh fetch. See `AuthorizationCode.client_metadata`.
+        ...(session.clientMetadata
+          ? { client_metadata: session.clientMetadata }
+          : {}),
       });
 
       // Build redirect URL with authorization code
@@ -599,9 +690,148 @@ export function createMcpOAuthController(
       redirectUrl.searchParams.set('iss', this.options.jwtIssuer);
 
       // Clean up session
-      await this.store.removeOAuthSession(sessionId);
+      await this.store.removeOAuthSession(session.sessionId);
 
       res.redirect(redirectUrl.toString());
+    }
+
+    /**
+     * Park the authenticated principal on the session and answer with the consent
+     * page.
+     *
+     * `POST /consent` is a fresh request with no passport state, so the user has
+     * to survive on the session — which is also why the `oauth_session` cookie is
+     * kept here instead of being cleared as it is on the direct path.
+     */
+    async renderConsentScreen(
+      session: OAuthSession,
+      profile: OAuthUserProfile,
+      userProfileId: string,
+      res: Response,
+    ) {
+      await this.store.storeOAuthSession(session.sessionId, {
+        ...session,
+        consentPending: true,
+        userId: profile.username,
+        userProfileId,
+      });
+
+      const client =
+        session.clientMetadata ??
+        (await this.clientService.getClient(session.clientId!));
+      if (!client) {
+        throw new BadRequestException('Invalid client_id');
+      }
+
+      const html = await this.consent.render({
+        client,
+        clientId: session.clientId!,
+        isMetadataDocumentClient: this.clientIdMetadata.isMetadataDocumentClientId(
+          session.clientId!,
+        ),
+        redirectUri: session.redirectUri!,
+        // The MUST: "authorization servers ... MUST clearly display the redirect
+        // URI hostname during authorization".
+        redirectUriHost: hostnameOf(session.redirectUri!),
+        isLoopbackRedirect: this.consent.isLoopbackRedirect(
+          session.redirectUri!,
+        ),
+        isLoopbackOnlyClient: client.redirect_uris.every((uri) =>
+          this.consent.isLoopbackRedirect(uri),
+        ),
+        scopes: (session.scope ?? '').split(/\s+/).filter(Boolean),
+        user: profile,
+        // Absolute path. `endpoints.*` are stored without a leading slash (that
+        // is what `normalizeEndpoint` produces), so one is put back here — a
+        // relative action would resolve against `/callback` and 404.
+        formAction: `/${normalizeEndpoint(endpoints.consent ?? '')}`,
+        // The session `state` is already a 32-byte random value that only ever
+        // travels in httpOnly cookies, so it doubles as the CSRF token: a
+        // cross-site form cannot read it, and without it `POST /consent` refuses.
+        csrfToken: session.state,
+      });
+
+      res
+        .status(200)
+        .type('html')
+        // A consent decision must never be replayed from a cache, and the page
+        // names the user, so no intermediary should store it either.
+        .set('cache-control', 'no-store')
+        .send(html);
+    }
+
+    /**
+     * The user's decision. Only registered when consent is enabled.
+     *
+     * Not a `GET`: approving is a state change (it mints an authorization code),
+     * so it must not be reachable by a link, a prefetch or an image tag.
+     */
+    @OptionalPost(endpoints.consent, !!options?.consentEnabled)
+    async submitConsent(
+      @Body() body: any,
+      @Req() req: RequestWithRawBody,
+      @Res() res: Response,
+    ) {
+      const parsed = this.parseRequestBody(body, req);
+
+      const sessionId = req.cookies?.oauth_session as string | undefined;
+      if (!sessionId) {
+        throw new BadRequestException('Missing OAuth session');
+      }
+      const session = await this.store.getOAuthSession(sessionId);
+      if (!session?.consentPending || !session.userProfileId) {
+        throw new BadRequestException(
+          'No consent decision is pending for this session',
+        );
+      }
+
+      // CSRF. Without this check, a page on any other origin could POST here with
+      // the user's ambient cookies and silently approve a grant.
+      if (
+        typeof parsed.consent_token !== 'string' ||
+        parsed.consent_token !== session.state
+      ) {
+        throw new BadRequestException('Invalid consent token');
+      }
+
+      const approved = parsed.approve === 'true';
+      this.consent.logDecision(
+        approved,
+        session.userProfileId,
+        session.clientId!,
+        session.redirectUri!,
+      );
+
+      res.clearCookie('oauth_session');
+
+      if (!approved) {
+        await this.store.removeOAuthSession(sessionId);
+        // RFC 6749 §4.1.2.1: "access_denied — The resource owner or authorization
+        // server denied the request." The redirect URI was validated back at
+        // /authorize, so the refusal belongs on it rather than in a 400 the
+        // client never sees.
+        this.redirectAuthorizationError(
+          res,
+          session.redirectUri!,
+          'access_denied',
+          'The user denied the authorization request',
+          session.oauthState,
+        );
+        return;
+      }
+
+      this.consent.recordConsent(
+        session.userProfileId,
+        session.clientId!,
+        session.scope,
+      );
+
+      await this.issueAuthorizationCode(
+        session,
+        session.userId!,
+        session.userProfileId,
+        res,
+      );
     }
 
     @Post(endpoints.token)
@@ -750,7 +980,15 @@ export function createMcpOAuthController(
     }
 
     /**
-     * Validate client authentication based on the client's configured method
+     * Validate client authentication based on the client's configured method.
+     *
+     * A Client ID Metadata Document client always arrives here as
+     * `token_endpoint_auth_method: 'none'` — a public client, redeeming with PKCE
+     * and no secret. That is enforced upstream in
+     * `ClientIdMetadataService.validateDocument`, which refuses a document
+     * declaring anything else (`private_key_jwt` included) at `/authorize`, so the
+     * `default:` branch below is not the place a CIMD client discovers it is
+     * unsupported — it would already hold an authorization code by then.
      */
     validateClientAuthentication(
       client: any,
@@ -827,10 +1065,17 @@ export function createMcpOAuthController(
         throw new BadRequestException('Client ID mismatch');
       }
 
-      // Get client and validate authentication
-      const client = await this.clientService.getClient(
-        clientCredentials.client_id,
-      );
+      // Get client and validate authentication.
+      //
+      // A CIMD code carries its document with it: redeeming it is validated
+      // against the snapshot taken at /authorize, not against a fresh fetch. That
+      // pins the redemption to what the user consented to, and means the token
+      // endpoint neither depends on the client's origin still being reachable nor
+      // gives it a second chance to change `token_endpoint_auth_method` after the
+      // code was issued.
+      const client: OAuthClient | null =
+        authCode.client_metadata ??
+        (await this.clientService.getClient(clientCredentials.client_id));
       this.validateClientAuthentication(client, clientCredentials);
 
       // The PKCE check must not be skippable. Verification used to run only
@@ -1010,4 +1255,18 @@ export function createMcpOAuthController(
   }
 
   return McpOAuthController;
+}
+
+/**
+ * Hostname of a redirect URI, for the consent screen's mandatory display. Falls
+ * back to the raw string rather than throwing: a redirect URI that reached this
+ * point already matched the client's registered list exactly, so if it does not
+ * parse the honest thing is to show the user what is actually there.
+ */
+function hostnameOf(uri: string): string {
+  try {
+    return new URL(uri).hostname || uri;
+  } catch {
+    return uri;
+  }
 }

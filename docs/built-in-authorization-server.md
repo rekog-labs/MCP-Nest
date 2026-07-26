@@ -27,6 +27,8 @@ The `McpAuthModule` provides a complete OAuth 2.1 compliant Identity Provider (I
 - **🏪 Multiple Storage Options**: In-memory (testing), TypeORM (production), or custom storage backends
 - **🌐 Provider Support**: Built-in GitHub and Google OAuth providers with extensible provider system
 - **🔑 Dynamic Client Registration**: RFC 7591 compliant client registration ([deprecated upstream](#dynamic-client-registration-deprecated-upstream-still-supported-here), still fully supported here)
+- **🪪 Client ID Metadata Documents**: opt-in, SSRF-guarded [CIMD](#client-id-metadata-documents-cimd) support — the mechanism `2026-07-28` prefers over DCR
+- **✋ Consent screen**: opt-in [interactive consent](#consent-screen), with the redirect-URI hostname displayed as the spec requires
 - **📊 Authorization Server Discovery**: RFC 8414 and RFC 9728 compliant metadata endpoints
 - **🛡️ Security**: mandatory [PKCE](#pkce-required-s256-only) with S256, Resource Indicators (RFC 8707), and comprehensive token validation
 - **⚡ NestJS Integration**: Seamless integration with NestJS dependency injection and guards
@@ -202,6 +204,8 @@ Pass a field name to project a single property, e.g. `@McpUser('email') email?: 
 | `apiPrefix` | `string` | `''` | Prefix for all OAuth endpoints |
 | `scopeValidation` | `'strict' \| 'passthrough'` | `'strict'` | See [Scope narrowing](#scope-narrowing) |
 | `requirePkce` | `boolean` | `true` | Require `code_challenge` with `code_challenge_method=S256`. See [PKCE](#pkce-required-s256-only) |
+| `consent` | `{ enabled?: boolean; render?: (ctx) => string \| Promise<string>; rememberForMs?: number }` | `{ enabled: false, rememberForMs: 30 days }` | Interactive consent screen. `enabled` defaults to **`true`** whenever `clientIdMetadataDocuments.enabled` is set. See [Consent screen](#consent-screen) |
+| `clientIdMetadataDocuments` | `{ enabled?: boolean; allowInsecureClientIdScheme?: boolean; cacheTtlMs?: number; maxCacheEntries?: number; timeoutMs?: number; maxDocumentBytes?: number }` | `{ enabled: false, allowInsecureClientIdScheme: false, cacheTtlMs: 300000, maxCacheEntries: 256, timeoutMs: 5000, maxDocumentBytes: 5120 }` | Accept URL-shaped `client_id`s by fetching the client's own metadata document. See [CIMD](#client-id-metadata-documents-cimd) |
 | `cookieSecure` | `boolean` | `nodeEnv === 'production'` | Use secure cookies |
 | `cookieMaxAge` | `number` | `24 * 60 * 60 * 1000` | Cookie expiration (24 hours) |
 | `oauthSessionExpiresIn` | `number` | `10 * 60 * 1000` | OAuth session timeout (10 minutes) |
@@ -313,6 +317,8 @@ needs to discover it.
     authorize: '/authorize',
     callback: '/callback',
     token: '/token',
+    // Only registered when the consent screen is enabled.
+    consent: '/consent',
   }
 }
 ```
@@ -356,8 +362,12 @@ from the authorization-server metadata — advertising an endpoint that answers
 > stays, `registration_endpoint` stays in the authorization-server metadata,
 > no option is renamed, and registration does not emit a runtime warning. If you
 > want it off, that is an explicit choice via
-> `disableEndpoints: { register: true }`. CIMD support is tracked separately and
-> is not a prerequisite for anything here.
+> `disableEndpoints: { register: true }`.
+>
+> **CIMD is implemented** — see [Client ID Metadata Documents](#client-id-metadata-documents-cimd).
+> It is opt-in (`clientIdMetadataDocuments: { enabled: true }`) and independent of
+> DCR: both mechanisms can be on at once, they share one `client_id` keyspace
+> safely, and clients pick whichever the metadata advertises.
 
 Registration accepts the RFC 7591 fields plus the OIDC `application_type`:
 
@@ -391,6 +401,314 @@ Omitting it is not an error; a conforming pre-2026 client must not be locked out
 > `rekog_mcp_auth_clients`. With `synchronize: true` it is added automatically;
 > migration-managed deployments need an `ADD COLUMN application_type` (nullable
 > string). Existing rows keep `NULL`, which reads back as absent.
+
+### Consent screen
+
+Off by default. Turned on, the OAuth callback stops redirecting and instead
+answers with a page asking the signed-in user to approve the grant:
+
+```typescript
+McpAuthModule.forRoot({
+  // ... required options
+  consent: { enabled: true },
+});
+```
+
+```
+/authorize ──▶ IdP login ──▶ /callback ──▶ [consent screen]
+                                               │
+                              Approve ─────────┴───────── Deny
+                                 │                          │
+                     POST /consent                POST /consent
+                                 │                          │
+                     code on redirect_uri     error=access_denied
+```
+
+**Why it sits between the IdP callback and the authorization code.** Two
+constraints pin it there: recording an approval needs an authenticated principal,
+which only exists after the IdP round-trip; and the spec wants the redirect-URI
+hostname shown *during authorization*, which stops being true once the code has
+been minted and the browser is on its way back to the client.
+
+The built-in page is one self-contained HTML document (inline styles, no scripts,
+no external assets, light and dark) and shows:
+
+- the client name and the signed-in user,
+- **the redirect URI hostname**, as its own prominent field. This is a
+  MUST for a CIMD-capable authorization server: *"authorization servers ...
+  **MUST** clearly display the redirect URI hostname during authorization"*
+  ([security considerations](https://modelcontextprotocol.io/specification/draft/basic/authorization/security-considerations#client-id-metadata-document-security)),
+- an extra **warning when that hostname is loopback** (a SHOULD from the same
+  section): a Client ID Metadata Document cannot prevent `localhost`
+  impersonation, because any local process can bind a port and claim to be the
+  client whose document the server just fetched,
+- the scopes that will actually be granted — already
+  [narrowed](#scope-narrowing), so the user approves what they will get rather
+  than what was asked for,
+- **Approve** / **Deny** buttons in a form that POSTs to `/<apiPrefix>/consent`.
+
+`POST /<apiPrefix>/consent` requires the `oauth_session` cookie *and* a hidden
+`consent_token` matching the session's server-side `state`. The token only ever
+travels inside an `httpOnly` cookie and in the page's own markup, so a form on
+another origin — which would still carry the user's ambient cookies — cannot
+approve on their behalf. The route is not registered at all when consent is off,
+and a decided session is consumed, so an approval cannot be replayed for a second
+code.
+
+#### Remembering approvals
+
+An approval is remembered for the same **(user, client, scope)** triple for
+`rememberForMs` (default 30 days), so reconnecting does not re-prompt. Scope sets
+are order-normalised, and a client that later asks for *more* scope is prompted
+again. `rememberForMs: 0` prompts every time.
+
+> ⚠️ Remembered **in process memory**, not in the `IOAuthStore`. A restart or a
+> second replica re-prompts. That is deliberate: an approval is a "don't ask me
+> again" convenience, not authorization state — nothing is granted on the strength
+> of one without a live authenticated session as well — and adding required methods
+> to `IOAuthStore` (public API with a documented custom-store contract) would break
+> every custom store for a UX optimisation.
+
+#### Custom page
+
+`render` replaces the built-in page entirely. Return a complete HTML document; it
+is sent as `text/html` with `Cache-Control: no-store`.
+
+```typescript
+McpAuthModule.forRoot({
+  // ... required options
+  consent: {
+    enabled: true,
+    render: (ctx) => `
+      <!doctype html><html><body>
+        <h1>Allow ${escapeHtml(ctx.client.client_name)}?</h1>
+        <p>The authorization code will be sent to <b>${escapeHtml(ctx.redirectUriHost)}</b></p>
+        ${ctx.isLoopbackRedirect ? '<p>⚠️ That is an address on your own computer.</p>' : ''}
+        <form method="post" action="${ctx.formAction}">
+          <input type="hidden" name="consent_token" value="${ctx.csrfToken}">
+          <button name="approve" value="true">Approve</button>
+          <button name="approve" value="false">Deny</button>
+        </form>
+      </body></html>`,
+  },
+});
+```
+
+The context (`ConsentRenderContext`) carries `client`, `clientId`,
+`isMetadataDocumentClient`, `redirectUri`, `redirectUriHost`,
+`isLoopbackRedirect`, `isLoopbackOnlyClient`, `scopes`, `user`, `formAction` and
+`csrfToken`.
+
+Two things are on you in a custom renderer:
+
+1. **Escape everything.** With CIMD enabled, `client_name`, `client_uri` and
+   `logo_uri` come from a document hosted by whoever chose the `client_id`, and
+   your page renders on the authorization server's own origin — where the browser
+   session cookie lives. The built-in renderer escapes; a template that does not
+   is stored XSS.
+2. **Keep the hidden `consent_token` field**, or nothing can ever be approved,
+   and keep displaying `redirectUriHost` (and the loopback warning) or the
+   deployment drops out of conformance.
+
+### Client ID Metadata Documents (CIMD)
+
+MCP revision `2026-07-28` deprecates Dynamic Client Registration in favour of
+**Client ID Metadata Documents**
+([draft-ietf-oauth-client-id-metadata-document-00](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00),
+[MCP client registration](https://modelcontextprotocol.io/specification/draft/basic/authorization/client-registration#client-id-metadata-documents)).
+A client identifies itself with an `https` URL that serves its own metadata; the
+authorization server fetches it on demand. There is **no registration step and no
+stored client record**.
+
+```typescript
+McpAuthModule.forRoot({
+  // ... required options
+  clientIdMetadataDocuments: { enabled: true },
+  // consent.enabled becomes true automatically — see below
+});
+```
+
+Enabling it adds `client_id_metadata_document_supported: true` to the
+authorization-server metadata (the key is omitted, not sent as `false`, when
+disabled — clients are told to prefer CIMD whenever they see the flag, so
+advertising it on a server that rejects every URL `client_id` would push them into
+a dead end instead of the `registration_endpoint` right next to it).
+
+A client then just uses its document URL as `client_id`:
+
+```
+GET /auth/authorize
+  ?response_type=code
+  &client_id=https%3A%2F%2Fapp.example.com%2Fclient-metadata.json
+  &redirect_uri=http%3A%2F%2F127.0.0.1%3A33418%2Fcallback
+  &code_challenge=…&code_challenge_method=S256
+```
+
+```jsonc
+// https://app.example.com/client-metadata.json
+{
+  "client_id": "https://app.example.com/client-metadata.json",  // MUST match the URL exactly
+  "client_name": "Example MCP Client",
+  "client_uri": "https://app.example.com",
+  "logo_uri": "https://app.example.com/logo.png",
+  "redirect_uris": ["http://127.0.0.1:33418/callback"],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
+```
+
+`client_id`, `client_name` and `redirect_uris` are required. DCR and CIMD coexist:
+registered ids are always `${normalizedName}_${suffix}` with the name reduced to
+`[a-z0-9]`, so they can never contain `://` and the two keyspaces cannot collide.
+`ClientService.getClient()` dispatches on the shape of the id; the store stays
+DCR-only.
+
+#### Consent is required
+
+`clientIdMetadataDocuments.enabled` **forces `consent.enabled` on**, because the
+"MUST clearly display the redirect URI hostname" above cannot be satisfied without
+a screen. Setting `consent: { enabled: false }` together with CIMD **throws at
+bootstrap** rather than being ignored — a security property silently missing is
+worse than a boot failure that names it.
+
+#### What is validated
+
+Every failure is an HTTP `400` naming the reason, and the authorization request is
+aborted (*"if the authorization server fails to retrieve the client metadata
+document, it SHOULD abort the authorization request"*).
+
+On the `client_id` URL, before anything is fetched:
+
+| Rule | Notes |
+|---|---|
+| `https` scheme | unless [`allowInsecureClientIdScheme`](#development-only-escape-hatch) |
+| has a path component | `https://example.com` and `https://example.com/` are both refused |
+| no `.` / `..` segments | checked on the **raw string**: WHATWG URL parsing silently collapses them |
+| no fragment | |
+| no userinfo | |
+| a port is fine | |
+| a query string warns | a client-side SHOULD NOT, not a server-side MUST; harmless because the document's own `client_id` still has to match the whole URL |
+
+On the response and the document:
+
+- `200` only. A `3xx` is a failure: **redirects are not followed**, because each
+  hop would need the SSRF guard re-run against a target the client gets to choose
+  after its URL was already vetted.
+- Body capped at `maxDocumentBytes` (default **5120** — *"the recommended maximum
+  response size for client metadata documents is 5 kilobytes"*), enforced while
+  streaming and against `Content-Length`. Requests are sent with
+  `Accept-Encoding: identity` so a compressed bomb cannot slip past a wire-byte cap.
+- One hard deadline of `timeoutMs` (default 5000) over connect *and* read.
+- Valid JSON, and a JSON **object**.
+- `client_id` matched by **simple string comparison** (RFC 3986 §6.2.1) against the
+  id the client sent — no normalization, no case folding. This equality is the
+  entire binding between "the URL we fetched" and "the identity we are about to
+  grant", so it fails closed: a document whose `client_id` differs only by a
+  default port or host case is rejected.
+- `client_name` non-empty; `redirect_uris` a non-empty array of strings.
+- The **authorization request's `redirect_uri` must be one of them**, matched
+  exactly.
+- No `client_secret` / `client_secret_expires_at`, and not
+  `client_secret_post` / `client_secret_basic` / `client_secret_jwt` — a shared
+  secret cannot be established with an identity that is a public URL.
+- `token_endpoint_auth_method` must be `none` (absent counts as `none`).
+  **`private_key_jwt` is rejected at `/authorize`** with a "not supported"
+  message: it is legal in a CIMD document but unimplemented here, and accepting
+  the document only to fail at `/token` would hand the client a code it can never
+  redeem *after* the user had already consented. JWKS fetching and JWT-assertion
+  verification are not implemented.
+
+#### SSRF guard
+
+*"The authorization server takes a URL as input from an unknown client and fetches
+that URL. A malicious client could use this to trigger the authorization server to
+make requests to arbitrary URLs, such as requests to private administration
+endpoints."*
+
+The guard is not advisory:
+
+1. **DNS is resolved first**, and *every* address in the answer must be publicly
+   routable — a hostname with one public and one private `A` record is refused
+   outright rather than cherry-picked. Rejecting only IP *literals* would miss the
+   whole attack, which is a normal-looking name with a `127.0.0.1` record.
+2. **The connection is pinned** to the vetted address (via the HTTP agent's
+   `lookup` hook), so there is no DNS-rebinding window between the check and the
+   connect.
+3. Refused space, in both families and including the IPv4-mapped IPv6 spellings:
+   loopback, RFC 1918, link-local (`169.254/16`, `fe80::/10`), CGNAT
+   (`100.64/10`), unique-local (`fc00::/7`), unspecified, multicast and reserved.
+   Anything that fails to parse is treated as non-routable — the guard fails
+   closed.
+
+#### Caching
+
+Resolved documents are held in a **bounded in-process LRU** (`maxCacheEntries`,
+default 256), honouring a deliberately small subset of RFC 9111: `no-store` /
+`no-cache` suppress caching, `s-maxage` then `max-age` set the lifetime, `Expires`
+is the fallback, `cacheTtlMs` (default 5 min) applies when the origin says
+nothing, and everything is clamped to 24 hours so an origin cannot pin a stale
+identity in memory.
+
+**Nothing negative is ever cached**: *"the authorization server MUST NOT cache
+error responses. The authorization server also MUST NOT cache documents which are
+invalid or malformed."* Failures throw before the cache is written, so a client
+that fixes its document is served correctly on its very next request.
+
+Documents are **not** written to the `IOAuthStore`, and no store method was added:
+a document is an HTTP cache entry with mandated invalidation, not a durable
+registration, and `IOAuthStore` is public API whose custom implementations would
+all break. The consequence is that the cache is **per replica** — N replicas fetch
+a given document up to N times and expire it independently. Correctness is
+unaffected (every entry is fully re-validated on every fetch), only fetch volume.
+
+#### Snapshotting
+
+The document resolved at `/authorize` is snapshotted onto the OAuth session and
+then onto the authorization code (`AuthorizationCode.client_metadata`). The token
+endpoint validates client authentication against that snapshot rather than
+re-fetching, which pins the redemption to the metadata the user actually
+consented to: a document that swaps its `redirect_uris` or
+`token_endpoint_auth_method` after the code was issued cannot retroactively change
+how that code is redeemed, and redemption does not depend on the client's origin
+still being reachable.
+
+A **refresh_token** grant has no such snapshot, so it re-resolves the document
+(normally a cache hit). A CIMD client whose document has become permanently
+unreachable cannot refresh, and must run the authorization flow again.
+
+#### Development-only escape hatch
+
+```typescript
+clientIdMetadataDocuments: {
+  enabled: true,
+  allowInsecureClientIdScheme: true, // ⚠️ NEVER in production
+}
+```
+
+This accepts `http://` `client_id` URLs **and disables the SSRF guard's
+private/loopback refusal** — both are needed to serve a document from
+`http://localhost:<port>` without TLS, which is what
+`examples/built-in-authorization-server` does. With it on, an unauthenticated
+caller can make the server fetch `https://169.254.169.254/...` (the cloud
+instance-metadata endpoint). It logs a warning at bootstrap and defaults to
+`false`.
+
+> **TypeORM users:** the snapshot adds nullable `simple-json` columns
+> `client_metadata` on `rekog_mcp_auth_authorization_codes` and `clientMetadata`
+> (plus `consentPending`, `userId`, `userProfileId` for the consent step) on
+> `rekog_mcp_auth_sessions`. With `synchronize: true` they appear automatically;
+> migration-managed deployments need the matching `ADD COLUMN`s. They are only
+> populated for CIMD clients and pending consent respectively, so existing rows
+> keep `NULL`.
+
+#### Runnable demo
+
+`examples/built-in-authorization-server` has a copy-pasteable walkthrough of both
+features — consent screen, loopback warning, a metadata document served locally,
+and the rejection cases — behind the opt-in `MCP_CONSENT`, `MCP_CIMD` and
+`MCP_FAKE_IDP` flags. See its
+[README](../examples/built-in-authorization-server/README.md).
 
 ## Storage Backends
 
@@ -526,7 +844,8 @@ These are served under the configured `apiPrefix` (shown here with `apiPrefix: '
 
 - **POST** `/auth/register` - Dynamic client registration (RFC 7591) [can be disabled] — *deprecated by MCP revision `2026-07-28` in favour of Client ID Metadata Documents ([PR #2858](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2858)); earliest possible removal is the first revision released on or after 2027-07-28, and it remains fully supported here — see [Dynamic Client Registration](#dynamic-client-registration-deprecated-upstream-still-supported-here)*
 - **GET** `/auth/authorize` - Authorization endpoint (requires PKCE `S256`)
-- **GET** `/auth/callback` - OAuth callback endpoint
+- **GET** `/auth/callback` - OAuth callback endpoint. Answers with the [consent screen](#consent-screen) instead of redirecting when consent is enabled
+- **POST** `/auth/consent` - Consent decision *[only registered when `consent.enabled` resolves to `true`](#consent-screen)*
 - **POST** `/auth/token` - Token endpoint
 
 ## Environment Variables

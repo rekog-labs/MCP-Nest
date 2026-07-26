@@ -586,10 +586,88 @@ Core-package half ✅ (`tests` 649 → 698 on its own; four new suites):
 - [ ] `offline_access` out of protected-resource `scopesSupported` (new SHOULD NOT)
 - [ ] `application_type` stored; `disableEndpoints.register`; DCR deprecation docs
 
-### Tier 4 — consent screen, CIMD, step-up authorization 🚧
+### Tier 4 — consent screen, CIMD, step-up authorization ✅
 
-- [ ] Consent screen (prerequisite for CIMD's "MUST clearly display the redirect URI hostname")
-- [ ] Client ID Metadata Documents, opt-in, SSRF-guarded
+- [x] **Consent screen** — opt-in (`consent: { enabled, render, rememberForMs }`), off by
+      default so no existing deployment gains a flow hop by upgrading, and **forced on when
+      CIMD is enabled** because the "MUST clearly display the redirect URI hostname during
+      authorization" cannot otherwise be met. `consent: { enabled: false }` *together with*
+      CIMD throws at bootstrap rather than being ignored.
+      - Sits **after the IdP callback, before the code is minted**: recording an approval needs
+        an authenticated principal, and the hostname has to be shown *during* authorization,
+        which stops being true once the code is on its way back to the client. `/callback`
+        answers `200 text/html` instead of redirecting; the decision comes back on
+        `POST /<apiPrefix>/consent`, which is only registered when consent is on.
+      - The authenticated principal parks on the OAuth session (`consentPending`, `userId`,
+        `userProfileId`) because the consent POST is a fresh request with no passport state.
+        `issueAuthorizationCode()` was extracted so the direct and consent-approved paths
+        cannot drift.
+      - CSRF: the form carries the session's server-side `state` as a hidden `consent_token`.
+        It only ever travels in an httpOnly cookie and in the page's own markup, so a
+        cross-site POST carrying the user's ambient cookies cannot approve. A decided session
+        is consumed, so an approval cannot be replayed for a second code. Deny →
+        `error=access_denied` on the validated redirect URI (RFC 6749 §4.1.2.1).
+      - The built-in page is one self-contained document (inline styles, no scripts, light and
+        dark) showing the client name, the user, the **redirect-URI hostname** as its own
+        field, the **loopback warning**, and the already-narrowed scopes. Every interpolated
+        value is HTML-escaped — with CIMD on, `client_name` comes from an attacker-chosen
+        document and the page renders on the AS's own origin.
+      - Approvals are remembered per **(user, client, order-normalised scope)** for
+        `rememberForMs` (default 30d) in a bounded in-process map — *not* in `IOAuthStore`.
+        A wider scope re-prompts. Per-replica; a restart re-prompts, which is never unsafe.
+- [x] **Client ID Metadata Documents**, opt-in, SSRF-guarded
+      (`clientIdMetadataDocuments: { enabled, allowInsecureClientIdScheme, cacheTtlMs,
+      maxCacheEntries, timeoutMs, maxDocumentBytes }`). New `ClientIdMetadataService`;
+      `ClientService.getClient()` became a resolver dispatching on the id's shape. No
+      keyspace collision exists — every store generates `${normalizedName}_${suffix}` with
+      the name reduced to `[a-z0-9]`, so a registered id can never contain `://`.
+      - `client_id_metadata_document_supported: true` advertised **only when enabled** (key
+        omitted otherwise): clients prefer CIMD whenever they see the flag, so advertising it
+        on a server that rejects every URL id would push them past the working
+        `registration_endpoint` into a dead end.
+      - Validated: `https` scheme, path component present, no `.`/`..` segments (checked on
+        the **raw string** — WHATWG parsing collapses them), no fragment, no userinfo, port
+        allowed, query warns; `200` only (a `3xx` fails — **redirects are not followed**);
+        5 KB cap enforced while streaming *and* against `Content-Length`, with
+        `Accept-Encoding: identity` so a compressed bomb cannot pass a wire-byte cap; one
+        5 s deadline over connect+read; valid JSON object; `client_id` matched by **simple
+        string comparison** (RFC 3986 §6.2.1) against the id as sent; `client_name` and
+        `redirect_uris` present; the request's `redirect_uri` in that list; no
+        `client_secret`/`client_secret_expires_at`; not `client_secret_*` auth methods.
+      - **`private_key_jwt` is refused at `/authorize`** with a "not supported" message
+        rather than at `/token` — otherwise the client holds a code it can never redeem,
+        after the user already consented. JWKS fetch / JWT assertion verification NOT
+        implemented.
+      - **SSRF guard**: DNS resolved first and *every* answer must be publicly routable (a
+        mixed public/private answer is refused outright, not cherry-picked); the connection
+        is then **pinned** to the vetted address through the agent's `lookup` hook, closing
+        the rebinding window; loopback / RFC 1918 / link-local / CGNAT / ULA / unspecified /
+        multicast / reserved refused in both families including IPv4-mapped IPv6 spellings;
+        unparseable input treated as non-routable (fails closed).
+      - **Cache**: bounded in-process LRU honouring `no-store`/`no-cache`, `s-maxage`,
+        `max-age`, `Expires`, clamped to 24 h. **Nothing negative is cached** (the MUST NOT),
+        because every failure throws before the cache write. Deliberately *not* in
+        `IOAuthStore`: a document is an HTTP cache entry with mandated invalidation, not a
+        durable registration, and adding required store methods would break every custom
+        store. Consequence: per-replica fetch volume, no correctness impact.
+      - **Snapshot**, not re-fetch: the resolved document rides the session onto
+        `AuthorizationCode.client_metadata`, and the token endpoint validates against it — so
+        redemption is pinned to what the user consented to and cannot be widened by a
+        document that changes afterwards. `refresh_token` has no snapshot and re-resolves.
+      - `allowInsecureClientIdScheme` (default `false`, warns at bootstrap) accepts `http://`
+        **and** disables the private/loopback refusal — labelled development-only everywhere,
+        and the reason the example and the tests can serve a document from loopback.
+      - Tests: `tests/mcp-oauth-consent.e2e.spec.ts` (23) and
+        `tests/mcp-oauth-cimd.e2e.spec.ts` (46). CIMD documents are served by a **real local
+        `http.Server`** reached through the dev hatch, not a fetch seam — which is what caught
+        a genuine bug: Node ≥20's `net` calls the `lookup` hook with `all: true` and reads
+        `addresses[0]`, while Bun (the test runner) uses the classic
+        `(err, address, family)` shape, so the pinned-DNS override worked under `bun test` and
+        failed on real Node with `Invalid IP address: undefined`. Both shapes are now served.
+      - Demo: `examples/built-in-authorization-server` gained opt-in `MCP_CONSENT`,
+        `MCP_CIMD` and `MCP_FAKE_IDP` flags (all default off, default path byte-identical),
+        an offline stub IdP, a self-hosted `/client-metadata.json` and a `/demo-callback`
+        stand-in, with a verified copy-pasteable walkthrough in its README.
 - [x] **HTTP 403 + `WWW-Authenticate: error="insufficient_scope"` for per-tool scope failures**,
       plus `scope` on the 401 challenge.
       - `scope` on the 401 ships **unconditionally** (`McpAuthJwtGuard`), read from the resolved

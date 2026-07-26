@@ -11,7 +11,9 @@ import type {
   OAuthModuleDefaults,
   OAuthModuleOptions,
 } from './providers/oauth-provider.interface';
+import { ClientIdMetadataService } from './services/client-id-metadata.service';
 import { ClientService } from './services/client.service';
+import { ConsentService } from './services/consent.service';
 import { JwtTokenService } from './services/jwt-token.service';
 import { OAuthStrategyService } from './services/oauth-strategy.service';
 import { ScopePolicyService } from './services/scope-policy.service';
@@ -37,6 +39,31 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
   apiPrefix: '',
   scopeValidation: 'strict',
   requirePkce: true,
+  /**
+   * Off by default. Enabling it inserts an interactive page into a chain that is
+   * otherwise fully automatic, so no existing deployment should acquire it by
+   * upgrading. Forced on when Client ID Metadata Documents are enabled — see
+   * `mergeAndValidateOptions`.
+   */
+  consent: {
+    enabled: false,
+    rememberForMs: 30 * 24 * 60 * 60 * 1000, // 30 days
+  },
+  /**
+   * Off by default: enabling it makes this server fetch a URL supplied by an
+   * unauthenticated caller. That is a deliberate, guarded capability (see
+   * `ClientIdMetadataService`), not something to acquire silently.
+   */
+  clientIdMetadataDocuments: {
+    enabled: false,
+    allowInsecureClientIdScheme: false,
+    cacheTtlMs: 5 * 60 * 1000,
+    maxCacheEntries: 256,
+    timeoutMs: 5_000,
+    // "The recommended maximum response size for client metadata documents is
+    // 5 kilobytes" — draft-ietf-oauth-client-id-metadata-document-00.
+    maxDocumentBytes: 5 * 1024,
+  },
   endpoints: {
     wellKnownAuthorizationServerMetadata:
       '/.well-known/oauth-authorization-server',
@@ -45,6 +72,7 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
     authorize: '/authorize',
     callback: '/callback',
     token: '/token',
+    consent: '/consent',
   },
   disableEndpoints: {
     wellKnownAuthorizationServerMetadata: false,
@@ -218,7 +246,9 @@ export class McpAuthModule {
       },
       // Provide services using their class tokens
       OAuthStrategyService,
+      ClientIdMetadataService,
       ClientService,
+      ConsentService,
       JwtTokenService,
       ScopePolicyService,
       McpAuthJwtGuard,
@@ -237,6 +267,10 @@ export class McpAuthModule {
           resolvedOptions.disableEndpoints.wellKnownProtectedResourceMetadata ??
           false,
         disableRegister: resolvedOptions.disableEndpoints.register ?? false,
+        // Route registration is a build-time decision, so the flag has to reach
+        // the controller factory rather than being read off the options at
+        // request time: with consent off there is no POST /consent route at all.
+        consentEnabled: resolvedOptions.consent.enabled,
       },
       authModuleId,
     );
@@ -252,6 +286,8 @@ export class McpAuthModule {
         'IOAuthStore',
         JwtTokenService,
         ClientService,
+        ClientIdMetadataService,
+        ConsentService,
         OAuthStrategyService,
         ScopePolicyService,
         McpAuthJwtGuard,
@@ -266,6 +302,26 @@ export class McpAuthModule {
   ): OAuthModuleOptions {
     // Validate required options first
     this.validateRequiredOptions(options);
+
+    // Refuse the one combination that cannot be made conformant. Silently
+    // ignoring an explicit `consent: { enabled: false }` would leave the
+    // deployment advertising `client_id_metadata_document_supported` while never
+    // showing the redirect-URI hostname the draft makes a MUST — a security
+    // property quietly missing is worse than a boot failure that names it.
+    if (
+      options.clientIdMetadataDocuments?.enabled === true &&
+      options.consent?.enabled === false
+    ) {
+      throw new Error(
+        'OAuthModuleOptions: clientIdMetadataDocuments.enabled requires the ' +
+          'consent screen, but consent.enabled was explicitly set to false. A ' +
+          'Client ID Metadata Document client is identified only by a URL it ' +
+          'controls, so the specification requires the authorization server to ' +
+          'clearly display the redirect URI hostname during authorization — ' +
+          'which needs a consent screen. Either remove consent.enabled: false ' +
+          '(it defaults to true whenever CIMD is on) or turn CIMD off.',
+      );
+    }
 
     // Merge with defaults
     const resolvedOptions: OAuthModuleOptions = {
@@ -299,6 +355,27 @@ export class McpAuthModule {
       disableEndpoints: {
         ...defaults.disableEndpoints,
         ...(options.disableEndpoints || {}),
+      },
+      consent: {
+        ...defaults.consent,
+        ...(options.consent || {}),
+        /**
+         * Consent is a hard prerequisite for conformant CIMD support: the draft's
+         * security considerations say an authorization server "**MUST** clearly
+         * display the redirect URI hostname during authorization", and there is
+         * nowhere to display it without a screen. So enabling CIMD turns consent
+         * on unless the operator said something explicit — and if they explicitly
+         * said `false`, `validateResolvedOptions` refuses to boot rather than
+         * quietly overriding a security-relevant opt-out.
+         */
+        enabled:
+          options.consent?.enabled ??
+          options.clientIdMetadataDocuments?.enabled ??
+          defaults.consent.enabled,
+      },
+      clientIdMetadataDocuments: {
+        ...defaults.clientIdMetadataDocuments,
+        ...(options.clientIdMetadataDocuments || {}),
       },
     };
 
@@ -391,6 +468,20 @@ export class McpAuthModule {
       );
     }
 
+    // Same reasoning as the PKCE warning: a standing property of the deployment,
+    // actionable by flipping one option, so it belongs at bootstrap and not on
+    // every resolved document.
+    if (options.clientIdMetadataDocuments.allowInsecureClientIdScheme) {
+      new Logger(McpAuthModule.name).warn(
+        'clientIdMetadataDocuments.allowInsecureClientIdScheme: true is set — ' +
+          'http:// client_id URLs are accepted and the SSRF guard no longer ' +
+          'refuses loopback/private destinations, so any caller can make this ' +
+          'server fetch an internal URL. This is a development-only switch ' +
+          '(it exists so a metadata document can be served from localhost ' +
+          'without TLS); never enable it in production.',
+      );
+    }
+
     // Validate provider configuration
     if (!options.provider.name || !options.provider.strategy) {
       throw new Error(
@@ -456,6 +547,7 @@ function prepareEndpoints(
     wellKnownProtectedResourceMetadata:
       defaultEndpoints.wellKnownProtectedResourceMetadata,
     callback: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.callback}`),
+    consent: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.consent}`),
     token: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.token}`),
     authorize: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.authorize}`),
     register: normalizeEndpoint(`/${apiPrefix}/${defaultEndpoints.register}`),

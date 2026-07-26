@@ -41,6 +41,15 @@ export interface AuthorizationCode {
   used_at?: Date;
   // Link to stored user profile (if available)
   user_profile_id?: string;
+  /**
+   * For a Client ID Metadata Document client only: the document as it was
+   * resolved at `/authorize`. The token endpoint validates client authentication
+   * against this snapshot instead of re-fetching, so the redemption is bound to
+   * the metadata the user consented to — a document whose
+   * `token_endpoint_auth_method` or `jwks_uri` changes after the code was issued
+   * cannot alter how that code is redeemed.
+   */
+  client_metadata?: OAuthClient;
 }
 
 export interface ClientRegistrationDto {
