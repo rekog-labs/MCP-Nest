@@ -48,6 +48,18 @@ export interface OAuthEndpointDisableOptions {
   wellKnownProtectedResourceMetadata?: boolean;
 }
 
+/**
+ * How the `scope` a client requests at `/authorize` is treated.
+ *
+ * - `'strict'` (default) — the grant is narrowed to scopes this server actually
+ *   knows about: the configured `scopesSupported` lists plus every scope
+ *   declared with `@ToolScopes()`. Unknown scopes are dropped, not rejected.
+ * - `'passthrough'` — mint whatever was requested. This is the pre-2.0.0
+ *   behaviour and lets any client grant itself the scopes a `@ToolScopes()`
+ *   tool requires; use it only as a migration window.
+ */
+export type ScopeValidationMode = 'strict' | 'passthrough';
+
 export interface OAuthUserModuleOptions {
   provider: OAuthProviderConfig;
 
@@ -62,6 +74,13 @@ export interface OAuthUserModuleOptions {
   serverUrl?: string;
   resource?: string; // should be the endpoint clients connect to, e.g.: 'https://localhost:3000/mcp'
   // JWT Configuration
+  /**
+   * The canonical issuer identifier. Defaults to `serverUrl` and MUST name the
+   * same identifier: the authorization-server metadata document is served from
+   * `serverUrl` and advertises this value as its `issuer`, and clients MUST NOT
+   * use a metadata document whose `issuer` differs from the URL they built it
+   * from. A divergence is rejected at bootstrap.
+   */
   jwtIssuer?: string;
   jwtAudience?: string;
   jwtAccessTokenExpiresIn?: string;
@@ -93,6 +112,9 @@ export interface OAuthUserModuleOptions {
     codeChallengeMethodsSupported?: string[];
   };
 
+  /** See {@link ScopeValidationMode}. Defaults to `'strict'`. */
+  scopeValidation?: ScopeValidationMode;
+
   // Storage Configuration - single property for all storage options
   storeConfiguration?: StoreConfiguration;
   apiPrefix?: string;
@@ -115,6 +137,7 @@ export interface OAuthModuleDefaults {
   authCodeExpiresIn: number;
   nodeEnv: string;
   apiPrefix: string;
+  scopeValidation: ScopeValidationMode;
   endpoints: OAuthEndpointConfiguration;
   disableEndpoints: OAuthEndpointDisableOptions;
   protectedResourceMetadata: {

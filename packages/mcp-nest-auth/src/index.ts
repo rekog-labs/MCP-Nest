@@ -2,6 +2,7 @@ export * from './mcp-oauth.controller';
 export * from './mcp-oauth.module';
 export * from './providers/oauth-provider.interface';
 export * from './services/jwt-token.service';
+export * from './services/scope-policy.service';
 export * from './providers/google.provider';
 export * from './providers/github.provider';
 export * from './providers/azure-ad.provider';

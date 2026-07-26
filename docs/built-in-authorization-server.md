@@ -194,12 +194,13 @@ Pass a field name to project a single property, e.g. `@McpUser('email') email?: 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `serverUrl` | `string` | `'https://localhost:3000'` | Base URL of your server |
-| `jwtIssuer` | `string` | `serverUrl` | JWT issuer claim |
+| `jwtIssuer` | `string` | `serverUrl` | Canonical issuer identifier: the `iss` claim on every token, the `issuer` in the authorization-server metadata, and the RFC 9207 `iss` on authorization responses. Must name the same identifier as `serverUrl` (a trailing slash aside) or bootstrap throws — clients MUST NOT use metadata whose `issuer` differs from the URL they fetched it from. |
 | `jwtAudience` | `string` | `'mcp-client'` | JWT audience claim |
 | `jwtAccessTokenExpiresIn` | `string` | `'1d'` | Access token expiration |
 | `jwtRefreshTokenExpiresIn` | `string` | `'30d'` | Refresh token expiration |
 | `enableRefreshTokens` | `boolean` | `true` | Issue refresh tokens for offline access |
 | `apiPrefix` | `string` | `''` | Prefix for all OAuth endpoints |
+| `scopeValidation` | `'strict' \| 'passthrough'` | `'strict'` | See [Scope narrowing](#scope-narrowing) |
 | `cookieSecure` | `boolean` | `nodeEnv === 'production'` | Use secure cookies |
 | `cookieMaxAge` | `number` | `24 * 60 * 60 * 1000` | Cookie expiration (24 hours) |
 | `oauthSessionExpiresIn` | `number` | `10 * 60 * 1000` | OAuth session timeout (10 minutes) |
@@ -208,6 +209,42 @@ Pass a field name to project a single property, e.g. `@McpUser('email') email?: 
 | `disableEndpoints` | `{ wellKnownAuthorizationServerMetadata?: boolean; wellKnownProtectedResourceMetadata?: boolean }` | `{ wellKnownAuthorizationServerMetadata: false, wellKnownProtectedResourceMetadata: false }` | Disable specific discovery endpoints without changing their paths |
 | `storeConfiguration` | [`IOAuthStore`](../packages/mcp-nest-auth/src/stores/oauth-store.interface.ts) | In-memory | Storage backend configuration |
 | `protectedResourceMetadata` | `{ scopesSupported?: string[]; bearerMethodsSupported?: string[]; mcpVersionsSupported?: string[] }` | `{ scopesSupported: ['offline_access'], bearerMethodsSupported: ['header'], mcpVersionsSupported: ['2026-07-28', '2025-06-18'] }` | Values advertised at the protected-resource metadata endpoint. Shallow-merged with the defaults, so you can override one key. Set `mcpVersionsSupported` to the MCP protocol revisions your endpoint actually serves. |
+
+### Token validation
+
+`McpAuthJwtGuard` accepts a bearer token only if it is:
+
+- signed with `jwtSecret` (HS256) and unexpired,
+- issued by `jwtIssuer`,
+- audienced at this server's `resource` (RFC 8707 §2), and
+- of `type: 'access'`.
+
+So a token minted for a *sibling* MCP resource on the same authorization server
+is rejected, as is the browser-session cookie token replayed as a bearer
+credential. If your `resource` option is not the URL clients actually connect to,
+every request will 401 — the reason is logged at warn level by `JwtTokenService`.
+
+### Scope narrowing
+
+With the default `scopeValidation: 'strict'`, the `scope` a client requests at
+`/authorize` is narrowed to what this server actually declares before it is
+recorded on the session, the authorization code, and the token's `scope` claim.
+The allowed set is the union of:
+
+- `authorizationServerMetadata.scopesSupported` and
+  `protectedResourceMetadata.scopesSupported`, and
+- every scope declared with `@ToolScopes([...])` on a `@Tool` in your app.
+
+Unknown scopes are dropped (not rejected), which is what an authorization server
+is expected to do. Without this, any client could request the scopes your
+`@ToolScopes()` tools check for and grant itself access.
+
+Scopes attached to tools registered at runtime via `strategy.registerTool()` are
+not discoverable this way — list those in
+`authorizationServerMetadata.scopesSupported`.
+
+`scopeValidation: 'passthrough'` restores the previous unchecked behaviour as a
+migration window.
 
 ### Endpoint Configuration
 

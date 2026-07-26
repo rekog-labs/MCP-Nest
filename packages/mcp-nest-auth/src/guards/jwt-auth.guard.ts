@@ -2,6 +2,7 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
+  Logger,
   UnauthorizedException,
   Inject,
   Optional,
@@ -17,18 +18,24 @@ export interface AuthenticatedRequest extends Request {
 }
 
 /**
- * The subset of the resolved OAuth module options the guard needs to build the
- * RFC 9728 `WWW-Authenticate` challenge. Read from the `OAUTH_MODULE_OPTIONS`
- * token the module already exposes — no extra configuration required.
+ * The subset of the resolved OAuth module options the guard needs: the RFC 9728
+ * `WWW-Authenticate` challenge, plus the `resource` an access token has to be
+ * audienced for. Read from the `OAUTH_MODULE_OPTIONS` token the module already
+ * exposes — no extra configuration required.
  */
 interface ResolvedOAuthOptions {
   serverUrl?: string;
+  resource?: string;
   endpoints?: { wellKnownProtectedResourceMetadata?: string };
   disableEndpoints?: { wellKnownProtectedResourceMetadata?: boolean };
 }
 
 @Injectable()
 export class McpAuthJwtGuard implements CanActivate {
+  private readonly logger = new Logger(McpAuthJwtGuard.name);
+  /** Guards against repeating the "cannot verify audience" warning per request. */
+  private warnedMissingResource = false;
+
   constructor(
     @Optional() private readonly jwtTokenService: JwtTokenService | null,
     @Optional()
@@ -78,8 +85,24 @@ export class McpAuthJwtGuard implements CanActivate {
       throw new UnauthorizedException('Authentication service not available');
     }
 
-    // If a token is provided, it must be valid
-    const payload = jwtTokenService.validateToken(token);
+    // If a token is provided, it must be valid *for this resource*. RFC 8707 §2
+    // makes the audience check a MUST, and pinning `type` keeps the `type: 'user'`
+    // browser-cookie token — signed with the same secret, audienced at the client
+    // app — from being replayed here as a bearer credential.
+    const expectedAudience = this.resolveOAuthOptions()?.resource;
+    if (!expectedAudience && !this.warnedMissingResource) {
+      this.warnedMissingResource = true;
+      this.logger.warn(
+        'OAUTH_MODULE_OPTIONS is not reachable, so the access token audience ' +
+          'cannot be verified. Provide McpAuthJwtGuard from a module that ' +
+          'imports McpAuthModule.forRoot(...).',
+      );
+    }
+
+    const payload = jwtTokenService.validateToken(token, {
+      type: 'access',
+      audience: expectedAudience,
+    });
 
     if (!payload) {
       this.attachResourceMetadataChallenge(context);
@@ -135,6 +158,23 @@ export class McpAuthJwtGuard implements CanActivate {
   }
 
   /**
+   * The resolved module options, whether the guard was instantiated inside
+   * `McpAuthModule` (direct injection) or provided by the host module that
+   * imports it (container lookup). Returns `undefined` rather than throwing so
+   * neither the audience check nor the challenge header can break the response.
+   */
+  private resolveOAuthOptions(): ResolvedOAuthOptions | undefined {
+    if (this.oauthOptions) return this.oauthOptions;
+    try {
+      return this.moduleRef.get<ResolvedOAuthOptions>('OAUTH_MODULE_OPTIONS', {
+        strict: false,
+      });
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Set the RFC 9728 `WWW-Authenticate: Bearer resource_metadata="…"` challenge
    * on a 401 so MCP clients can discover the authorization server from the
    * response itself (instead of having to probe `.well-known` blindly).
@@ -146,11 +186,7 @@ export class McpAuthJwtGuard implements CanActivate {
    */
   private attachResourceMetadataChallenge(context: ExecutionContext): void {
     try {
-      const opts =
-        this.oauthOptions ||
-        this.moduleRef.get<ResolvedOAuthOptions>('OAUTH_MODULE_OPTIONS', {
-          strict: false,
-        });
+      const opts = this.resolveOAuthOptions();
 
       if (!opts?.serverUrl) return;
       if (opts.disableEndpoints?.wellKnownProtectedResourceMetadata) return;

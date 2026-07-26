@@ -22,10 +22,13 @@
  * (`MCP_FAKE_AUTH=1`) dummy GitHub creds let the module construct without ever
  * contacting an IdP, and the offline shortcut to a usable token is a JWT signed
  * locally with the SAME `jwtSecret` the server uses: `JwtTokenService.validateToken`
- * only HS256-verifies the signature (no aud/iss/interactive-flow check), so a
- * client-minted token is accepted by the `/mcp` guard exactly like a token the
- * AS would have issued via the browser leg — which is genuinely not runnable
- * offline. This mirrors `scripts/mint-jwt.ts`.
+ * HS256-verifies the signature and then checks `iss`, `aud` and `type` (RFC 8707
+ * §2 makes the audience check a MUST) — but it cannot tell a locally-minted token
+ * from one the AS issued, so a token carrying the right claims is accepted by the
+ * `/mcp` guard exactly like a token the AS would have issued via the browser leg,
+ * which is genuinely not runnable offline. That is why the payload below sets
+ * `iss`/`aud` from the example's own `serverUrl`, and it mirrors
+ * `scripts/mint-jwt.ts`.
  *
  * The pinned client (1.10.0) authenticates purely via the HTTP `Authorization`
  * header on the transport (`requestInit.headers`), never a browser OAuth flow.

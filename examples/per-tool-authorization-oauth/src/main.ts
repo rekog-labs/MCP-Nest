@@ -95,7 +95,9 @@ async function bootstrap() {
   if (fakeAuth) {
     console.log('--- FAKE tokens (Bearer) ---');
     for (const [label, user] of Object.entries(FAKE_USERS)) {
-      console.log(`${label}=${mintFakeToken(user, JWT_SECRET, RESOURCE)}`);
+      console.log(
+        `${label}=${mintFakeToken(user, JWT_SECRET, RESOURCE, SERVER_URL)}`,
+      );
     }
     console.log('--- end tokens ---');
   }

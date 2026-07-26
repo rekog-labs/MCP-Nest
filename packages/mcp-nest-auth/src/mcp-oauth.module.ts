@@ -1,5 +1,6 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { DiscoveryModule } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { McpAuthJwtGuard } from './guards/jwt-auth.guard';
@@ -13,6 +14,7 @@ import type {
 import { ClientService } from './services/client.service';
 import { JwtTokenService } from './services/jwt-token.service';
 import { OAuthStrategyService } from './services/oauth-strategy.service';
+import { ScopePolicyService } from './services/scope-policy.service';
 import { MemoryStore } from './stores/memory-store.service';
 import { normalizeEndpoint } from '@rekog/mcp-nest';
 import { OAUTH_TYPEORM_CONNECTION_NAME } from './stores/typeorm/constants';
@@ -33,6 +35,7 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
   authCodeExpiresIn: 10 * 60 * 1000, // 10 minutes
   nodeEnv: 'development',
   apiPrefix: '',
+  scopeValidation: 'strict',
   endpoints: {
     wellKnownAuthorizationServerMetadata:
       '/.well-known/oauth-authorization-server',
@@ -103,6 +106,8 @@ export class McpAuthModule {
     // Determine imports based on configuration
     const imports = [
       ConfigModule,
+      // Lets ScopePolicyService read @ToolScopes() off the app's @McpControllers.
+      DiscoveryModule,
       PassportModule.register({
         defaultStrategy: 'jwt',
         session: false,
@@ -196,6 +201,7 @@ export class McpAuthModule {
       OAuthStrategyService,
       ClientService,
       JwtTokenService,
+      ScopePolicyService,
       McpAuthJwtGuard,
     ];
 
@@ -227,6 +233,7 @@ export class McpAuthModule {
         JwtTokenService,
         ClientService,
         OAuthStrategyService,
+        ScopePolicyService,
         McpAuthJwtGuard,
         MemoryStore,
       ],
@@ -327,6 +334,22 @@ export class McpAuthModule {
       );
     }
 
+    // One canonical issuer, or none at all. The authorization-server metadata
+    // document is served from `serverUrl` and advertises `jwtIssuer` as its
+    // `issuer`; a client that fetched it MUST NOT use a document whose `issuer`
+    // differs from the identifier it built the well-known URL from. A server
+    // configured with divergent values is therefore unusable by any conforming
+    // client, so this fails at bootstrap rather than at handshake time.
+    if (canonicalIssuer(options.jwtIssuer) !== canonicalIssuer(options.serverUrl)) {
+      throw new Error(
+        `OAuthModuleOptions: jwtIssuer ('${options.jwtIssuer}') must be the same ` +
+          `identifier as serverUrl ('${options.serverUrl}'). Clients MUST NOT use ` +
+          `authorization server metadata whose 'issuer' differs from the URL it was ` +
+          `fetched from. Either omit jwtIssuer (it defaults to serverUrl), or set ` +
+          `serverUrl to the issuer you want to advertise.`,
+      );
+    }
+
     // Validate provider configuration
     if (!options.provider.name || !options.provider.strategy) {
       throw new Error(
@@ -371,6 +394,14 @@ export class McpAuthModule {
       `Unknown store configuration type: ${(storeConfiguration as any).type}`,
     );
   }
+}
+
+/**
+ * Compare issuer identifiers the way a client would: a trailing slash is not a
+ * difference, anything else is.
+ */
+function canonicalIssuer(url: string): string {
+  return url.replace(/\/+$/, '');
 }
 
 function prepareEndpoints(

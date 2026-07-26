@@ -30,6 +30,7 @@ import type {
 import { ClientService } from './services/client.service';
 import { JwtTokenService, TokenPair } from './services/jwt-token.service';
 import { OAuthStrategyService } from './services/oauth-strategy.service';
+import { ScopePolicyService } from './services/scope-policy.service';
 import type { IOAuthStore } from './stores/oauth-store.interface';
 
 interface OAuthCallbackRequest extends ExpressRequest {
@@ -96,6 +97,7 @@ export function createMcpOAuthController(
       readonly jwtTokenService: JwtTokenService,
       readonly clientService: ClientService,
       readonly oauthStrategyService: OAuthStrategyService,
+      readonly scopePolicy: ScopePolicyService,
     ) {
       this.serverUrl = options.serverUrl;
       this.isProduction = options.cookieSecure;
@@ -255,7 +257,12 @@ export function createMcpOAuthController(
     )
     getAuthorizationServerMetadata() {
       return {
-        issuer: this.serverUrl,
+        /**
+         * The canonical issuer. Identical to `serverUrl` (enforced at bootstrap),
+         * because a client MUST NOT use a metadata document whose `issuer`
+         * differs from the identifier it built this well-known URL from.
+         */
+        issuer: this.options.jwtIssuer,
         authorization_endpoint: normalizeEndpoint(
           `${this.serverUrl}/${endpoints.authorize}`,
         ),
@@ -279,6 +286,13 @@ export function createMcpOAuthController(
         code_challenge_methods_supported:
           this.options.authorizationServerMetadata
             .codeChallengeMethodsSupported,
+
+        /**
+         * RFC 9207. MUST be advertised because we do emit `iss` on both the
+         * success and the redirect-mode error response — never emit one without
+         * the other, or a client cannot tell whether its absence is meaningful.
+         */
+        authorization_response_iss_parameter_supported: true,
       };
     }
 
@@ -305,10 +319,10 @@ export function createMcpOAuthController(
         scope,
       } = query;
       const resource = this.options.resource;
-      if (response_type !== 'code') {
-        throw new BadRequestException('Only response_type=code is supported');
-      }
 
+      // Failures up to and including redirect-URI validation must NOT redirect
+      // (RFC 6749 §4.1.2.1) — the redirect target isn't trusted yet, so an
+      // attacker could use us to bounce errors anywhere. They stay HTTP 400s.
       if (!client_id) {
         throw new BadRequestException('Missing required parameters');
       }
@@ -327,6 +341,24 @@ export function createMcpOAuthController(
         throw new BadRequestException('Invalid redirect_uri');
       }
 
+      // From here the redirect URI is known-good, so authorization failures go
+      // back to the client on it with `error=`/`state=`/`iss=`.
+      if (response_type !== 'code') {
+        this.redirectAuthorizationError(
+          res,
+          redirect_uri,
+          'unsupported_response_type',
+          'Only response_type=code is supported',
+          state,
+        );
+        return;
+      }
+
+      // Narrow the grant before it is recorded anywhere, so the session, the
+      // authorization code and the token claim all agree on what was actually
+      // granted rather than on what was asked for.
+      const grantedScope = this.scopePolicy.narrow(scope);
+
       // Create OAuth session
       const sessionId = randomBytes(32).toString('base64url');
       const sessionState = randomBytes(32).toString('base64url');
@@ -339,7 +371,7 @@ export function createMcpOAuthController(
         codeChallenge: code_challenge,
         codeChallengeMethod: code_challenge_method || 'plain',
         oauthState: state,
-        scope: scope,
+        scope: grantedScope,
         resource,
         expiresAt: Date.now() + this.options.oauthSessionExpiresIn,
       };
@@ -364,6 +396,29 @@ export function createMcpOAuthController(
       passport.authenticate(this.strategyName, {
         state: req.cookies?.oauth_state,
       })(req, res, next);
+    }
+
+    /**
+     * Return an authorization error to the client on its (already validated)
+     * redirect URI, per RFC 6749 §4.1.2.1, carrying the RFC 9207 `iss` so the
+     * client can tell which authorization server answered — mixed-up-issuer
+     * protection works on error responses too, not just successful ones.
+     */
+    redirectAuthorizationError(
+      res: Response,
+      redirectUri: string,
+      error: string,
+      description: string,
+      state?: string,
+    ) {
+      const url = new URL(redirectUri);
+      url.searchParams.set('error', error);
+      url.searchParams.set('error_description', description);
+      if (state) {
+        url.searchParams.set('state', state);
+      }
+      url.searchParams.set('iss', this.options.jwtIssuer);
+      res.redirect(url.toString());
     }
 
     @Get(endpoints.callback)
@@ -467,6 +522,10 @@ export function createMcpOAuthController(
       if (session.oauthState) {
         redirectUrl.searchParams.set('state', session.oauthState);
       }
+      // RFC 9207 / SEP-2468: name the issuer so a client running several
+      // authorization servers cannot be tricked into redeeming this code at the
+      // wrong one. Advertised as `authorization_response_iss_parameter_supported`.
+      redirectUrl.searchParams.set('iss', this.options.jwtIssuer);
 
       // Clean up session
       await this.store.removeOAuthSession(sessionId);
@@ -761,9 +820,15 @@ export function createMcpOAuthController(
       refresh_token: string,
       clientCredentials: { client_id: string; client_secret?: string },
     ): Promise<TokenPair> {
-      // Verify the refresh token first to get client_id from token if not provided
-      const payload = this.jwtTokenService.validateToken(refresh_token);
-      if (!payload || payload.type !== 'refresh') {
+      // Verify the refresh token first to get client_id from token if not
+      // provided. The expectations are what stop an *access* token — same
+      // secret, same issuer — from being redeemed here, and what stops a
+      // refresh token minted for a sibling resource from being usable.
+      const payload = this.jwtTokenService.validateToken(refresh_token, {
+        type: 'refresh',
+        audience: this.options.resource,
+      });
+      if (!payload) {
         throw new BadRequestException('Invalid or expired refresh token');
       }
 
@@ -794,11 +859,6 @@ export function createMcpOAuthController(
 
       let newTokens: TokenPair | null = null;
       try {
-        const payload = this.jwtTokenService.validateToken(refresh_token);
-        if (!payload || payload.type !== 'refresh') {
-          throw new BadRequestException('Invalid or expired refresh token');
-        }
-
         let userData: Record<string, unknown> | undefined = undefined;
         if (payload.user_profile_id) {
           try {
