@@ -75,6 +75,60 @@ Notes:
   to the `McpStrategy` constructor. See the
   [E2E test](../tests/mcp-per-tool-auth.e2e.spec.ts).
 
+## Step-up authorization (`insufficient_scope`)
+
+By default a caller who is authenticated but lacks a tool's `@ToolScopes()` gets a
+JSON-RPC error inside an **HTTP 200**. That is a dead end for a well-behaved
+client: it never sees a `403` or a `WWW-Authenticate` challenge, so it has no way
+to learn *which* scopes to go and ask for. The spec's answer is step-up
+authorization:
+
+> the server **SHOULD** respond with `HTTP 403 Forbidden` … a `WWW-Authenticate`
+> header with the `Bearer` scheme and additional parameters:
+> `error="insufficient_scope"`, `scope="required_scope1 required_scope2"`,
+> `resource_metadata="…"`
+
+Turn it on per transport:
+
+```typescript
+new StreamableHttpTransport({ stepUpAuthorization: true });
+
+// If authentication is not @rekog/mcp-nest-auth (external AS, gateway, your own
+// guard), name the metadata URL — core cannot derive it:
+new StreamableHttpTransport({
+  stepUpAuthorization: {
+    resourceMetadataUrl: 'https://mcp.example.com/.well-known/oauth-protected-resource',
+  },
+});
+```
+
+The check runs **before dispatch**, so it works identically on both eras — on the
+modern era the SDK owns response writing, and once it starts writing the status is
+no longer ours to change.
+
+**It is opt-in and defaults to off.** The spec text is a SHOULD, and switching it
+on changes what a 2025-era client sees for a denial: an HTTP-level failure instead
+of a JSON-RPC error result. Enable it once you know your clients handle a `403`
+challenge.
+
+What is deliberately **not** challenged, because `insufficient_scope` would be a
+lie or actively harmful:
+
+| Case | Why |
+|---|---|
+| `@ToolRoles()` failure with scopes satisfied | A role deficiency has no scope to request; there is nothing the client could ask for. |
+| No resolved `req.user` | A self-mounted route has no guard and so no principal. mcp-nest does not invent authentication. |
+| `@PublicTool()`, or a tool with no `@ToolScopes()` | Nothing was required. |
+| JSON-RPC batches | A `403` fails the whole HTTP request, killing authorized siblings — and a status code cannot say "element 3 needs scopes". |
+
+The challenge advertises the tool's **full required** scope set, not just the
+missing subset: that is what the spec's example shows and what the client hands to
+`/authorize`.
+
+Independently of this option, the `401` challenge from `McpAuthJwtGuard` now
+always carries a `scope` parameter listing
+`protectedResourceMetadata.scopesSupported` (omitted when that list is empty).
+
 ## Define Tools
 
 Tools live on an `@McpController()` class. The decorators below are identical

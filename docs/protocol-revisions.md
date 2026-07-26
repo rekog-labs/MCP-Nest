@@ -252,6 +252,89 @@ it.
 > omit it. `getClientCapabilities()` must also not be inferred from an earlier
 > request — read it fresh each time, which is exactly what this accessor does.
 
+### Trace context
+
+`traceparent`, `tracestate` and `baggage` are reserved `_meta` keys in this
+revision — an explicit exception to the reverse-DNS prefix rule — carrying
+[W3C Trace Context](https://www.w3.org/TR/trace-context/) and
+[W3C Baggage](https://www.w3.org/TR/baggage/) values:
+
+```typescript
+const { traceparent, tracestate, baggage } = ctx.getTraceContext();
+```
+
+Unlike the accessors above this works on **both** eras: the revision only
+reserved the key names, and a 2025-era client could always put them in `_meta`.
+Non-string values are dropped rather than handed to a tracer. Absent keys are
+omitted. It is unavailable on the list operations, which take no per-request
+context in mcp-nest.
+
+---
+
+## Caching hints (`ttlMs` / `cacheScope`)
+
+The revision **requires** `ttlMs` and `cacheScope` on the cacheable results
+(`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`,
+`resources/read`, `server/discover`). The SDK fills them with a conservative
+`{ ttlMs: 0, cacheScope: 'private' }`, which is conforming but means **no client
+ever caches your tool list**. Set them on the strategy:
+
+```typescript
+new McpStrategy({
+  name: 'my-server',
+  version: '1.0.0',
+  cacheHints: {
+    'tools/list': { ttlMs: 300_000, cacheScope: 'public' },
+    'resources/read': { ttlMs: 30_000 },   // cacheScope stays 'private'
+  },
+  transports: [new StreamableHttpTransport()],
+});
+```
+
+It lives on the strategy rather than a transport because it reaches the SDK
+through `ServerOptions`, so one setting covers Streamable HTTP **and** stdio.
+Results are only affected on the modern era; 2025-era responses never carry
+cache fields.
+
+> ⚠️ **`cacheScope: 'public'` is a data-sharing decision, not a performance
+> knob.** The spec is explicit that a public result "may be shared between
+> callers even if the Result is coming from an authenticated endpoint … different
+> access tokens can leverage the same cache". If your `tools/list` is filtered
+> per caller — any `@ToolScopes()` / `@ToolRoles()` tool, or
+> `allowUnauthenticatedAccess` — a public hint can serve one principal's visible
+> tool set to another. mcp-nest warns at startup when it detects that
+> combination, but it does not refuse: the operator may legitimately front the
+> endpoint with a token-keyed cache. Leave it `private` unless the list is
+> genuinely identical for every caller.
+
+---
+
+## `Origin` / `Host` validation
+
+> Servers **MUST** validate the `Origin` header on all incoming connections to
+> prevent DNS rebinding attacks … **MUST** respond with HTTP 403 Forbidden.
+
+The MUST is narrower than it first reads: it applies only when `Origin` is
+**present and invalid**. Non-browser clients never send one, and DNS rebinding is
+a browser attack, so an absent header legitimately passes.
+
+```typescript
+new StreamableHttpTransport({
+  security: {
+    allowedOrigins: 'localhost',                    // or ['https://app.example.com']
+    allowedHosts: ['mcp.example.com'],              // optional, same shape
+  },
+});
+```
+
+**Off unless you configure an allowlist.** mcp-nest cannot know which hostnames
+your deployment answers on: defaulting to localhost-only would 403 every proxied
+or real-domain deployment, and "allow everything" would be validation in name
+only. Applies to POST, GET and DELETE, so bring-your-own-controller setups are
+covered too. A rejection is a 403 whose body is a well-formed JSON-RPC error —
+an empty body would make a conforming client conclude the server is legacy and
+retry with `initialize`.
+
 ---
 
 ## What breaks
