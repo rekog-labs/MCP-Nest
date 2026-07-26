@@ -37,7 +37,10 @@ import {
   ResourceTemplateMetadata,
   ToolMetadata,
 } from '../decorators';
-import { ToolAuthorizationService } from '../services/tool-authorization.service';
+import {
+  ToolAuthorizationService,
+  type ToolScopeDeficiency,
+} from '../services/tool-authorization.service';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 import type { McpRequest } from '../interfaces/mcp-tool.interface';
 import type {
@@ -395,6 +398,8 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         this.bindRequestHandlers(server, session, rawRequest),
       createBoundServer: (session, rawRequest) =>
         this.createBoundServer(session, rawRequest),
+      toolCallScopeDeficiency: (toolName, rawRequest) =>
+        this.toolCallScopeDeficiency(toolName, rawRequest),
       httpAdapter: this.httpAdapter,
       options: this.options,
       logger: this.logger,
@@ -499,6 +504,27 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private getUser(rawRequest?: unknown): any {
     return rawRequest ? (rawRequest as { user?: unknown }).user : undefined;
+  }
+
+  /**
+   * The scope shortfall a `tools/call` would be denied for, for a transport that
+   * wants to answer it as `403 insufficient_scope` instead of letting the
+   * JSON-RPC pipeline deny it inside an HTTP 200 (see
+   * {@link McpTransportContext.toolCallScopeDeficiency}).
+   *
+   * Resolves the tool exactly the way the `tools/call` handler does — including
+   * runtime-registered tools — and delegates the decision to the same
+   * `ToolAuthorizationService` instance, so this cannot drift from what the
+   * handler will do a moment later. An unknown tool yields `undefined`: it must
+   * reach the handler to get its `-32602`, not a 403.
+   */
+  private toolCallScopeDeficiency(
+    toolName: string,
+    rawRequest?: unknown,
+  ): ToolScopeDeficiency | undefined {
+    const tool = this.getTools().find((t) => t.metadata.name === toolName);
+    if (!tool) return undefined;
+    return this.authService.findScopeDeficiency(this.getUser(rawRequest), tool);
   }
 
   private bindToolHandlers(

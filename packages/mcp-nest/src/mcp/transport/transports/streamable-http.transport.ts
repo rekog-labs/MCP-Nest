@@ -21,6 +21,7 @@ import {
   HttpResponse,
 } from '../../interfaces/http-adapter.interface';
 import { McpTransport, McpTransportContext } from '../mcp-transport.interface';
+import { MCP_RESOURCE_METADATA_URL } from '../mcp-transport.constants';
 import type { McpHttpHandler } from '../mcp-http-handler';
 import { readJsonBody } from './read-body';
 
@@ -66,6 +67,29 @@ export interface McpTransportSecurityOptions {
    * forwards, not the public one.
    */
   allowedHosts?: string[] | 'localhost';
+}
+
+/**
+ * Step-up authorization: how a `tools/call` denied for lack of OAuth scope is
+ * answered on the wire. See
+ * {@link StreamableHttpTransportOptions.stepUpAuthorization}.
+ */
+export interface McpStepUpAuthorizationOptions {
+  /**
+   * The RFC 9728 protected-resource-metadata URL to advertise in the challenge's
+   * `resource_metadata` parameter — the pointer a client follows to discover which
+   * authorization server can issue the missing scopes.
+   *
+   * Usually unnecessary: `McpAuthJwtGuard` already publishes the URL it derives
+   * from the module's `serverUrl` onto the request ({@link MCP_RESOURCE_METADATA_URL}),
+   * and that is used when this is unset. Set it when authentication is something
+   * else — an external authorization server, a gateway, your own guard.
+   *
+   * When neither is available the challenge goes out without `resource_metadata`:
+   * `error` and `scope` are the parameters step-up actually turns on, and a
+   * guessed metadata URL would only send clients to a 404.
+   */
+  resourceMetadataUrl?: string;
 }
 
 /** Per-request carrier for the Node request, so the SDK factory can recover it. */
@@ -163,6 +187,59 @@ export interface StreamableHttpTransportOptions {
    */
   security?: McpTransportSecurityOptions;
   /**
+   * Answer a scope-deficient `tools/call` with `403` + a
+   * `WWW-Authenticate: Bearer error="insufficient_scope"` challenge, so a client
+   * can run **step-up authorization** and come back with the scopes the tool
+   * needs.
+   *
+   * Without this, a `@ToolScopes()` denial travels as a JSON-RPC error inside an
+   * HTTP `200`. That is a working denial but a dead end: `WWW-Authenticate` is an
+   * HTTP-status-bound mechanism, so a conforming client never learns *which*
+   * scopes to request and step-up can never trigger. The spec asks for the
+   * status-coded form:
+   *
+   * > If the request lacks the necessary scope, the server SHOULD respond with:
+   * > `HTTP 403 Forbidden` … `WWW-Authenticate` header with the `Bearer` scheme
+   * > and additional parameters: `error="insufficient_scope"`,
+   * > `scope="required_scope1 required_scope2"`, `resource_metadata="…"`.
+   *
+   * **Off by default**, because the text is a SHOULD and turning it on changes
+   * what every *existing* client sees for a denial — a transport-level `403`
+   * instead of a tool-level JSON-RPC error — which older clients (and any code
+   * asserting on the JSON-RPC error) do not expect. Opt in when your clients can
+   * act on the challenge.
+   *
+   * What it does and does not cover:
+   * - Era-independent: the check reads the parsed body before the era is chosen,
+   *   so it applies to `2026-07-28` and 2025-era traffic alike. That is also the
+   *   only place it *can* live on the modern era, where the SDK's own handler owns
+   *   response writing once dispatch starts.
+   * - Only a **scope** shortfall. `@ToolRoles()` failures are not scope failures —
+   *   there is no scope to name in the challenge and no authorization request that
+   *   would fix one — so they keep the JSON-RPC error. So does an unauthenticated
+   *   caller (a 401 case) and an unknown tool (which must still get its `-32602`).
+   * - Needs a resolved `req.user`, i.e. an authentication guard on the route.
+   *   A **self-mounted** route bypasses the Nest pipeline entirely, so there is no
+   *   user there and nothing changes; use an `McpHttpControllerFor` controller with
+   *   `@UseGuards(...)` (`httpHandlers`) for an authenticated server.
+   * - The `403` body is a well-formed JSON-RPC error carrying the request's own
+   *   `id` and the same message the in-pipeline denial uses — an empty body makes
+   *   a conforming client conclude the server is legacy and retry `initialize`.
+   *
+   * ```ts
+   * new StreamableHttpTransport({ stepUpAuthorization: true })
+   * // Authentication that is not @rekog/mcp-nest-auth: name the metadata URL.
+   * new StreamableHttpTransport({
+   *   stepUpAuthorization: {
+   *     resourceMetadataUrl: 'https://mcp.example.com/.well-known/oauth-protected-resource',
+   *   },
+   * })
+   * ```
+   *
+   * @default false
+   */
+  stepUpAuthorization?: boolean | McpStepUpAuthorizationOptions;
+  /**
    * Whether the transport mounts its own `POST`/`GET`/`DELETE` routes on the
    * Nest HTTP adapter.
    *
@@ -212,6 +289,8 @@ export class StreamableHttpTransport implements McpTransport {
   /** Resolved allowlists; `undefined` means "don't check this header". */
   private readonly allowedOrigins?: string[];
   private readonly allowedHosts?: string[];
+  /** Resolved `stepUpAuthorization`; `undefined` means the feature is off. */
+  private readonly stepUp?: McpStepUpAuthorizationOptions;
   /** The SDK serving entry for `2026-07-28` traffic; absent when `legacy-only`. */
   private modernHandler?: SdkMcpHttpHandler;
   /** `toNodeHandler`-wrapped router — owns web↔Node conversion and SSE backpressure. */
@@ -247,6 +326,11 @@ export class StreamableHttpTransport implements McpTransport {
       options.security?.allowedHosts,
       localhostAllowedHostnames,
     );
+    // `false`/absent ⇒ undefined ⇒ the pre-dispatch check is never even reached.
+    this.stepUp =
+      options.stepUpAuthorization === true
+        ? {}
+        : options.stepUpAuthorization || undefined;
   }
 
   /**
@@ -349,6 +433,74 @@ export class StreamableHttpTransport implements McpTransport {
   }
 
   /**
+   * Answer a scope-deficient `tools/call` with the spec's step-up challenge, and
+   * report whether it did (in which case the caller must stop).
+   *
+   * **Why this runs pre-dispatch.** The tool-level scope decision naturally lives
+   * inside the JSON-RPC pipeline — but by then the HTTP status is settled: the
+   * 2025-era SDK transport has already committed to `200`, and on the modern era
+   * `createMcpHandler` owns response writing outright, so once it begins there is
+   * no status left to change. `handlePost` already has the parsed body *and*, for
+   * a BYO-controller setup, a `req.user` populated by the Nest guard — everything
+   * the decision needs, at the last moment it can still choose a status. So the
+   * transport asks the strategy the question up front
+   * ({@link McpTransportContext.toolCallScopeDeficiency}, which reads the same
+   * `ToolAuthorizationService` the pipeline enforces with) and, on a shortfall,
+   * writes the `403` itself before the SDK ever sees the request.
+   *
+   * Reading the body rather than the `Mcp-Method`/`Mcp-Name` headers keeps this
+   * era-independent: 2025-era requests carry no such headers, and where they do
+   * exist the SDK cross-checks them against the body anyway (SEP-2243), so the
+   * body is the authoritative statement of what is being called.
+   *
+   * Batches are deliberately left alone. A `403` fails the *whole* HTTP request,
+   * which would take down every sibling call in a legacy batch — including
+   * authorized ones — and a status code cannot say "the third element needs
+   * scopes". Those keep the in-pipeline JSON-RPC denial, per element. (The modern
+   * era has no batching at all.)
+   */
+  private rejectedByInsufficientScope(
+    req: HttpRequest,
+    res: HttpResponse,
+    body: unknown,
+  ): boolean {
+    if (!this.stepUp || !this.ctx) return false;
+
+    const call = body as
+      | { method?: unknown; id?: unknown; params?: { name?: unknown } }
+      | null
+      | undefined;
+    if (!call || typeof call !== 'object' || Array.isArray(call)) return false;
+    if (call.method !== 'tools/call') return false;
+    const toolName = call.params?.name;
+    if (typeof toolName !== 'string') return false;
+
+    const deficiency = this.ctx.toolCallScopeDeficiency(toolName, req.raw);
+    if (!deficiency) return false;
+
+    // Same wording the in-pipeline denial uses, so the only difference a client
+    // sees between the two modes is the status code and the challenge header.
+    const message = `Tool '${toolName}' requires scopes: ${deficiency.requiredScopes.join(', ')}`;
+    res.setHeader?.(
+      'WWW-Authenticate',
+      buildInsufficientScopeChallenge(
+        deficiency.requiredScopes,
+        this.stepUp.resourceMetadataUrl ??
+          resourceMetadataUrlFromRequest(req.raw),
+        message,
+      ),
+    );
+    res.status(403).json({
+      jsonrpc: '2.0',
+      // The real request id, unlike the header-validation 403 — the body was
+      // parsed, so the client can correlate the failure with its own call.
+      id: call.id ?? null,
+      error: { code: -32600, message },
+    });
+    return true;
+  }
+
+  /**
    * The HTTP verb handlers, for bring-your-own-controller setups. Provide this
    * under `MCP_HTTP_HANDLER` and delegate to it from a `@Controller` (see
    * {@link StreamableHttpController}). The returned functions are bound to this
@@ -444,6 +596,9 @@ export class StreamableHttpTransport implements McpTransport {
     const adaptedRes = adapter.adaptResponse(res);
     if (this.rejectedByHeaderValidation(adaptedReq, adaptedRes)) return;
     const body = await readJsonBody(adaptedReq);
+    // Before the era is chosen and before the SDK owns the response: the only
+    // point at which a tool-level scope decision can still pick an HTTP status.
+    if (this.rejectedByInsufficientScope(adaptedReq, adaptedRes, body)) return;
 
     try {
       if (this.servedByModernEra(adaptedReq.raw, body)) {
@@ -696,6 +851,51 @@ function resolveAllowlist(
 ): string[] | undefined {
   if (option === undefined) return undefined;
   return option === 'localhost' ? localhost() : option;
+}
+
+/**
+ * The `WWW-Authenticate` value for a `403` step-up challenge, per the MCP
+ * authorization spec (RFC 6750 §3 / RFC 9728 for the parameters):
+ *
+ * `Bearer error="insufficient_scope", error_description="…", scope="a b", resource_metadata="…"`
+ *
+ * `scope` is space-delimited (OAuth 2.0's own encoding, so the client can hand it
+ * straight to `/authorize`). Parameter values are quoted-string, so `"` and `\`
+ * are escaped — a scope name is client-influenced input in the general case and an
+ * unescaped quote would let it forge extra parameters.
+ */
+function buildInsufficientScopeChallenge(
+  requiredScopes: string[],
+  resourceMetadataUrl: string | undefined,
+  description: string,
+): string {
+  const params = [
+    `error="insufficient_scope"`,
+    `error_description="${quote(description)}"`,
+    `scope="${quote(requiredScopes.join(' '))}"`,
+  ];
+  if (resourceMetadataUrl) {
+    params.push(`resource_metadata="${quote(resourceMetadataUrl)}"`);
+  }
+  return `Bearer ${params.join(', ')}`;
+}
+
+/** Escape a `WWW-Authenticate` quoted-string value. */
+function quote(value: string): string {
+  return value.replace(/[\\"]/g, '\\$&');
+}
+
+/**
+ * The protected-resource-metadata URL an authentication layer published on this
+ * request (see {@link MCP_RESOURCE_METADATA_URL}). `undefined` when nothing did —
+ * core has no way to derive one, so the challenge then omits `resource_metadata`
+ * rather than pointing clients at a URL that may not exist.
+ */
+function resourceMetadataUrlFromRequest(raw: unknown): string | undefined {
+  const value = (raw as Record<symbol, unknown> | undefined)?.[
+    MCP_RESOURCE_METADATA_URL
+  ];
+  return typeof value === 'string' ? value : undefined;
 }
 
 /** Read one header value; Node exposes repeated headers as an array. */

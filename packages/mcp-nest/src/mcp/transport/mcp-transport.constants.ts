@@ -39,6 +39,26 @@ export const mcpTransportFor = (server?: string): symbol =>
  */
 export const MCP_SERVER_NAME_METADATA_KEY = 'mcp:server-name';
 
+/**
+ * Request-scoped slot for this resource's RFC 9728 protected-resource-metadata
+ * URL, written by whichever authentication layer knows it (`McpAuthJwtGuard`
+ * does) and read by the transport when it builds a
+ * `WWW-Authenticate: … error="insufficient_scope"` challenge.
+ *
+ * Core cannot derive this URL: it does not know the deployment's canonical
+ * `serverUrl`, whether the metadata endpoint is served at all, or at which path.
+ * Guessing would send clients to a 404 — so the challenge simply omits
+ * `resource_metadata` when nothing published it here (and
+ * `StreamableHttpTransportOptions.stepUpAuthorization` takes an explicit URL for
+ * setups whose authentication is not `@rekog/mcp-nest-auth`).
+ *
+ * Symbol-keyed via the global registry so it cannot collide with a user's own
+ * request properties, and stays stable across duplicated `node_modules` copies.
+ */
+export const MCP_RESOURCE_METADATA_URL = Symbol.for(
+  '@rekog/mcp-nest:resource-metadata-url',
+);
+
 export type McpCapabilityType =
   | 'tool'
   | 'resource'

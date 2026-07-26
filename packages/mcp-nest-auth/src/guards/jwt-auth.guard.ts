@@ -11,6 +11,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Request, Response } from 'express';
 import { JwtPayload, JwtTokenService } from '../services/jwt-token.service';
 import type { IOAuthStore } from '../stores/oauth-store.interface';
+import { MCP_RESOURCE_METADATA_URL } from '@rekog/mcp-nest';
 import type { McpServerOptions } from '@rekog/mcp-nest';
 
 export interface AuthenticatedRequest extends Request {
@@ -28,6 +29,8 @@ interface ResolvedOAuthOptions {
   resource?: string;
   endpoints?: { wellKnownProtectedResourceMetadata?: string };
   disableEndpoints?: { wellKnownProtectedResourceMetadata?: boolean };
+  /** Advertised in the challenge's `scope` parameter. Read at request time — the resolved list is not a constant. */
+  protectedResourceMetadata?: { scopesSupported?: string[] };
 }
 
 @Injectable()
@@ -55,6 +58,9 @@ export class McpAuthJwtGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    // Set on every admitted request, before any early return: a later
+    // `403 insufficient_scope` challenge needs it and cannot derive it itself.
+    this.publishResourceMetadataUrl(request);
     const token = this.extractTokenFromHeader(request);
 
     // Check if unauthenticated access is allowed
@@ -183,26 +189,75 @@ export class McpAuthJwtGuard implements CanActivate {
    * `serverUrl` + protected-resource-metadata path — no extra option to set.
    * Best-effort: never throws, and is skipped if the options or the
    * protected-resource metadata endpoint aren't available.
+   *
+   * The challenge also carries `scope`, per the spec's
+   *
+   * > MCP servers SHOULD include a `scope` parameter in the `WWW-Authenticate`
+   * > header … to indicate the scopes required for accessing the resource
+   *
+   * taken from the resolved `protectedResourceMetadata.scopesSupported` — the same
+   * list the metadata document advertises, so a client that acts on the header
+   * alone requests exactly what a client that fetched the document would. Read
+   * per request rather than captured: the resolved list depends on configuration
+   * the module normalizes (e.g. `offline_access` is dropped when refresh tokens
+   * are disabled), and an empty list emits no `scope` at all rather than `scope=""`.
+   *
+   * A *scope-deficient* call is a different response — `403` with
+   * `error="insufficient_scope"` and the scopes that specific tool needs, written
+   * by the transport (`stepUpAuthorization`), which this guard feeds by publishing
+   * the same metadata URL on the request under {@link MCP_RESOURCE_METADATA_URL}.
    */
   private attachResourceMetadataChallenge(context: ExecutionContext): void {
     try {
       const opts = this.resolveOAuthOptions();
 
       if (!opts?.serverUrl) return;
-      if (opts.disableEndpoints?.wellKnownProtectedResourceMetadata) return;
 
-      const path =
-        opts.endpoints?.wellKnownProtectedResourceMetadata ??
-        '/.well-known/oauth-protected-resource';
-      const metadataUrl = `${opts.serverUrl.replace(/\/$/, '')}${path}`;
+      const scopes = opts.protectedResourceMetadata?.scopesSupported ?? [];
+      const params: string[] = [];
+
+      if (!opts.disableEndpoints?.wellKnownProtectedResourceMetadata) {
+        params.push(`resource_metadata="${this.resourceMetadataUrl(opts)}"`);
+      }
+      if (scopes.length > 0) {
+        params.push(`scope="${scopes.join(' ')}"`);
+      }
+      if (params.length === 0) return;
 
       const response = context.switchToHttp().getResponse<Response>();
-      response.setHeader(
-        'WWW-Authenticate',
-        `Bearer resource_metadata="${metadataUrl}"`,
-      );
+      response.setHeader('WWW-Authenticate', `Bearer ${params.join(', ')}`);
     } catch {
       // Never let discovery-header wiring break the 401 itself.
+    }
+  }
+
+  /** `serverUrl` + the protected-resource-metadata path. */
+  private resourceMetadataUrl(opts: ResolvedOAuthOptions): string {
+    const path =
+      opts.endpoints?.wellKnownProtectedResourceMetadata ??
+      '/.well-known/oauth-protected-resource';
+    return `${opts.serverUrl!.replace(/\/$/, '')}${path}`;
+  }
+
+  /**
+   * Publish this resource's protected-resource-metadata URL on the request, for
+   * whoever builds a challenge *after* the guard has admitted the caller — namely
+   * the transport's `403 insufficient_scope` step-up path, which knows the tool's
+   * required scopes but not this module's configuration.
+   *
+   * Best-effort and inert by itself: nothing reads the slot unless
+   * `stepUpAuthorization` is enabled on the transport.
+   */
+  private publishResourceMetadataUrl(request: AuthenticatedRequest): void {
+    try {
+      const opts = this.resolveOAuthOptions();
+      if (!opts?.serverUrl) return;
+      if (opts.disableEndpoints?.wellKnownProtectedResourceMetadata) return;
+      (request as unknown as Record<symbol, unknown>)[
+        MCP_RESOURCE_METADATA_URL
+      ] = this.resourceMetadataUrl(opts);
+    } catch {
+      // Never let discovery wiring break an otherwise successful request.
     }
   }
 

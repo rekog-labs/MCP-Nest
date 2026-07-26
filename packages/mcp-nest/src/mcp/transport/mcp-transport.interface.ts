@@ -2,6 +2,7 @@ import { HttpServer, Logger } from '@nestjs/common';
 import { McpServer } from "@modelcontextprotocol/server";
 import { McpServerOptions } from './mcp-server-options.interface';
 import { McpSessionSeed, McpTransportKind } from './mcp-context';
+import type { ToolScopeDeficiency } from '../services/tool-authorization.service';
 
 /**
  * The surface a transport receives from the {@link McpStrategy} when it starts.
@@ -34,6 +35,27 @@ export interface McpTransportContext {
    * connects it.
    */
   createBoundServer(session: McpSessionSeed, rawRequest?: unknown): McpServer;
+
+  /**
+   * Ask whether a `tools/call` would be denied *purely* for lack of OAuth scope,
+   * without dispatching it.
+   *
+   * Exists so a transport can answer such a call the way the MCP authorization
+   * spec asks — `403` + `WWW-Authenticate: … error="insufficient_scope"`, the
+   * trigger for client-side step-up authorization — which is only possible before
+   * the JSON-RPC pipeline (and, on the modern era, the SDK's own response writer)
+   * takes over the response. The strategy answers from the very same
+   * `ToolAuthorizationService` that enforces the denial inside the pipeline, so
+   * the pre-check can never disagree with the enforcement.
+   *
+   * `undefined` means "no scope-shaped denial here": authorized, an unknown tool,
+   * no resolved `req.user`, or a role/authentication failure. See
+   * `ToolAuthorizationService.findScopeDeficiency`.
+   */
+  toolCallScopeDeficiency(
+    toolName: string,
+    rawRequest?: unknown,
+  ): ToolScopeDeficiency | undefined;
 
   /** The Nest HTTP adapter. Present whenever an HTTP-based transport is used. */
   httpAdapter?: HttpServer;

@@ -590,7 +590,31 @@ Core-package half ✅ (`tests` 649 → 698 on its own; four new suites):
 
 - [ ] Consent screen (prerequisite for CIMD's "MUST clearly display the redirect URI hostname")
 - [ ] Client ID Metadata Documents, opt-in, SSRF-guarded
-- [ ] HTTP 403 + `WWW-Authenticate: error="insufficient_scope"` for per-tool scope failures
+- [x] **HTTP 403 + `WWW-Authenticate: error="insufficient_scope"` for per-tool scope failures**,
+      plus `scope` on the 401 challenge.
+      - `scope` on the 401 ships **unconditionally** (`McpAuthJwtGuard`), read from the resolved
+        `protectedResourceMetadata.scopesSupported` per request so it tracks whatever the module
+        normalizes that list to. An empty list emits no `scope` parameter at all.
+      - The 403 is **opt-in**: `new StreamableHttpTransport({ stepUpAuthorization: true })`.
+        The spec text is a SHOULD, and making it the default changes what every *existing* client
+        sees for a denial — `e2e/per-tool-authorization*.test.ts`, the backward-compatibility gate,
+        asserts the JSON-RPC-error form. Revisit as a default on the next major.
+      - Implemented as a **pre-dispatch** check in `StreamableHttpTransport.handlePost`: by the
+        time the tool-level decision is normally made the HTTP status is settled (on the modern era
+        `createMcpHandler` owns response writing outright). It reads the already-parsed body before
+        the era is chosen, so one check covers both legs, and asks the strategy
+        (`McpTransportContext.toolCallScopeDeficiency` → `ToolAuthorizationService.findScopeDeficiency`)
+        rather than re-deriving any scope maths.
+      - Scope shortfalls only. `@ToolRoles()` failures, unauthenticated callers (a 401 case),
+        unknown tools (which must keep their `-32602`) and JSON-RPC batches keep the in-pipeline
+        JSON-RPC error. A self-mounted route has no `req.user` at all, so nothing changes there.
+      - `resource_metadata` comes from `McpAuthJwtGuard`, which publishes the URL it derives from
+        `serverUrl` onto the request under `MCP_RESOURCE_METADATA_URL`; other authentication layers
+        pass `stepUpAuthorization: { resourceMetadataUrl }`. With neither, the challenge omits the
+        parameter rather than guessing a URL that would 404.
+      - Tests: `tests/mcp-step-up-authorization.e2e.spec.ts`, 38 over both eras — including the
+        SDK client surfacing `InsufficientScopeError` (proof step-up is reachable at all) and an
+        option-off regression block.
 
 ### Verified as already covered — no work needed
 
