@@ -4,9 +4,6 @@
 This is a NestJS package that lets *users* expose their existing NestJS providers as MCP tools, resources,
 and prompts, with DI, guards, pipes, interceptors, and filters applying natively.
 
-Currently on the **v2 line** (`2.0.0-alpha.x`), built on the MCP TypeScript SDK v2
-(`@modelcontextprotocol/{core,server,node}` — **`^2.0.0-beta.5` minimum**, peer deps).
-
 **Dual-era**: one endpoint serves both the 2025-era protocol (`initialize` handshake, sessions)
 and the new stateless revision `2026-07-28`. Each POST is classified with the SDK's own
 `classifyInboundRequest`; modern traffic goes to `createMcpHandler`, 2025 traffic to the
