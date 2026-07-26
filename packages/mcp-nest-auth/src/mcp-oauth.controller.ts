@@ -52,6 +52,7 @@ export function createMcpOAuthController(
   options?: {
     disableWellKnownProtectedResourceMetadata?: boolean;
     disableWellKnownAuthorizationServerMetadata?: boolean;
+    disableRegister?: boolean;
   },
   authModuleId?: string,
 ) {
@@ -62,6 +63,14 @@ export function createMcpOAuthController(
   ): MethodDecorator => {
     return enabled && path
       ? (Get as unknown as (p?: any) => MethodDecorator)(path)
+      : ((() => {}) as unknown as MethodDecorator);
+  };
+  const OptionalPost = (
+    path: string | string[] | undefined,
+    enabled: boolean,
+  ): MethodDecorator => {
+    return enabled && path
+      ? (Post as unknown as (p?: any) => MethodDecorator)(path)
       : ((() => {}) as unknown as MethodDecorator);
   };
   const OptionalHeader = (
@@ -223,9 +232,19 @@ export function createMcpOAuthController(
         /**
          * RECOMMENDED by RFC 9728.
          * A list of scopes that this resource server understands.
+         *
+         * Omitted entirely when nothing is configured (the default), rather than
+         * sent as `[]`: an empty list asserts "this resource understands no
+         * scopes", which is not what an unconfigured server means. Note the
+         * `2026-07-28` SHOULD NOT — do not put `offline_access` in here; it is
+         * an authorization-server scope, not a resource requirement.
          */
-        scopes_supported:
-          this.options.protectedResourceMetadata.scopesSupported,
+        ...(this.options.protectedResourceMetadata.scopesSupported.length > 0
+          ? {
+              scopes_supported:
+                this.options.protectedResourceMetadata.scopesSupported,
+            }
+          : {}),
 
         /**
          * RECOMMENDED by RFC 9728.
@@ -269,9 +288,21 @@ export function createMcpOAuthController(
         token_endpoint: normalizeEndpoint(
           `${this.serverUrl}/${endpoints.token}`,
         ),
-        registration_endpoint: normalizeEndpoint(
-          `${this.serverUrl}/${endpoints.register}`,
-        ),
+        /**
+         * RFC 7591 DCR. Still advertised by default — the `2026-07-28`
+         * deprecation keeps it a `MAY` and clients that cannot use Client ID
+         * Metadata Documents rely on it. Omitted only when the operator turned
+         * the route off with `disableEndpoints: { register: true }`, because
+         * advertising an endpoint that answers `404` is worse than advertising
+         * none.
+         */
+        ...(options?.disableRegister
+          ? {}
+          : {
+              registration_endpoint: normalizeEndpoint(
+                `${this.serverUrl}/${endpoints.register}`,
+              ),
+            }),
         response_types_supported:
           this.options.authorizationServerMetadata.responseTypesSupported,
         response_modes_supported:
@@ -296,7 +327,16 @@ export function createMcpOAuthController(
       };
     }
 
-    @Post(endpoints.register)
+    /**
+     * Dynamic Client Registration (RFC 7591). **Deprecated** in protocol
+     * revision `2026-07-28` (spec PR #2858) in favour of Client ID Metadata
+     * Documents, but still a `MAY` and fully supported here — the feature
+     * lifecycle policy puts the earliest possible removal at the first revision
+     * released on or after 2027-07-28. Turn the route off with
+     * `disableEndpoints: { register: true }` if your deployment only serves
+     * pre-registered clients.
+     */
+    @OptionalPost(endpoints.register, !options?.disableRegister)
     async registerClient(@Body() registrationDto: any) {
       return await this.clientService.registerClient(registrationDto);
     }
@@ -352,6 +392,37 @@ export function createMcpOAuthController(
           state,
         );
         return;
+      }
+
+      // PKCE is mandatory (OAuth 2.1 §4.1.1, RFC 7636), and only S256 counts:
+      // `plain` puts the verifier itself in the authorization request, so
+      // anything that can observe the request — browser history, a proxy log,
+      // the redirect chain — can replay an intercepted code. Both failures are
+      // post-validation, so per RFC 6749 §4.1.2.1 they go back on the
+      // now-trusted redirect URI instead of being 400s the client never sees.
+      if (this.options.requirePkce) {
+        if (!code_challenge) {
+          this.redirectAuthorizationError(
+            res,
+            redirect_uri,
+            'invalid_request',
+            'code_challenge is required (PKCE with code_challenge_method=S256)',
+            state,
+          );
+          return;
+        }
+        // RFC 7636 §4.3: an absent method means `plain`, so a challenge with no
+        // declared method is a downgrade attempt as much as an explicit one.
+        if ((code_challenge_method ?? 'plain') !== 'S256') {
+          this.redirectAuthorizationError(
+            res,
+            redirect_uri,
+            'invalid_request',
+            'Only code_challenge_method=S256 is supported',
+            state,
+          );
+          return;
+        }
       }
 
       // Narrow the grant before it is recorded anywhere, so the session, the
@@ -761,6 +832,25 @@ export function createMcpOAuthController(
         clientCredentials.client_id,
       );
       this.validateClientAuthentication(client, clientCredentials);
+
+      // The PKCE check must not be skippable. Verification used to run only
+      // `if (authCode.code_challenge)`, so a code minted without a challenge —
+      // which `/authorize` now refuses, but a custom store, a code issued before
+      // this version, or a future code path could still produce — was redeemed
+      // with no proof of possession at all. Under `requirePkce` an S256-bound
+      // challenge is a precondition for redemption, checked before the verifier
+      // is even looked at.
+      if (
+        this.options.requirePkce &&
+        (!authCode.code_challenge || authCode.code_challenge_method !== 'S256')
+      ) {
+        this.logger.error(
+          'handleAuthorizationCodeGrant - Authorization code is not bound to an S256 PKCE challenge',
+        );
+        throw new BadRequestException(
+          'Authorization code is not bound to an S256 PKCE challenge',
+        );
+      }
       if (authCode.code_challenge) {
         const isValid = this.validatePKCE(
           code_verifier,
@@ -896,6 +986,12 @@ export function createMcpOAuthController(
       return newTokens;
     }
 
+    /**
+     * `plain` is still implemented, but under the default `requirePkce: true` it
+     * is unreachable: `/authorize` refuses to mint a `plain`-bound code and
+     * `handleAuthorizationCodeGrant` refuses to redeem one. It exists for the
+     * `requirePkce: false` migration window only.
+     */
     validatePKCE(
       code_verifier: string,
       code_challenge: string,

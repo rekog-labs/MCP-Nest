@@ -26,9 +26,9 @@ The `McpAuthModule` provides a complete OAuth 2.1 compliant Identity Provider (I
 - **🔒 OAuth 2.1 Compliance**: Fully compliant with OAuth 2.1 and MCP Authorization specification
 - **🏪 Multiple Storage Options**: In-memory (testing), TypeORM (production), or custom storage backends
 - **🌐 Provider Support**: Built-in GitHub and Google OAuth providers with extensible provider system
-- **🔑 Dynamic Client Registration**: RFC 7591 compliant client registration
+- **🔑 Dynamic Client Registration**: RFC 7591 compliant client registration ([deprecated upstream](#dynamic-client-registration-deprecated-upstream-still-supported-here), still fully supported here)
 - **📊 Authorization Server Discovery**: RFC 8414 and RFC 9728 compliant metadata endpoints
-- **🛡️ Security**: PKCE, Resource Indicators (RFC 8707), and comprehensive token validation
+- **🛡️ Security**: mandatory [PKCE](#pkce-required-s256-only) with S256, Resource Indicators (RFC 8707), and comprehensive token validation
 - **⚡ NestJS Integration**: Seamless integration with NestJS dependency injection and guards
 
 ## Quick Start
@@ -201,14 +201,15 @@ Pass a field name to project a single property, e.g. `@McpUser('email') email?: 
 | `enableRefreshTokens` | `boolean` | `true` | Issue refresh tokens for offline access |
 | `apiPrefix` | `string` | `''` | Prefix for all OAuth endpoints |
 | `scopeValidation` | `'strict' \| 'passthrough'` | `'strict'` | See [Scope narrowing](#scope-narrowing) |
+| `requirePkce` | `boolean` | `true` | Require `code_challenge` with `code_challenge_method=S256`. See [PKCE](#pkce-required-s256-only) |
 | `cookieSecure` | `boolean` | `nodeEnv === 'production'` | Use secure cookies |
 | `cookieMaxAge` | `number` | `24 * 60 * 60 * 1000` | Cookie expiration (24 hours) |
 | `oauthSessionExpiresIn` | `number` | `10 * 60 * 1000` | OAuth session timeout (10 minutes) |
 | `authCodeExpiresIn` | `number` | `10 * 60 * 1000` | Authorization code timeout (10 minutes) |
 | `endpoints` | `object` | See below | Custom endpoint paths |
-| `disableEndpoints` | `{ wellKnownAuthorizationServerMetadata?: boolean; wellKnownProtectedResourceMetadata?: boolean }` | `{ wellKnownAuthorizationServerMetadata: false, wellKnownProtectedResourceMetadata: false }` | Disable specific discovery endpoints without changing their paths |
+| `disableEndpoints` | `{ wellKnownAuthorizationServerMetadata?: boolean; wellKnownProtectedResourceMetadata?: boolean; register?: boolean }` | all `false` | Disable specific endpoints without changing their paths. See [Disabling Endpoints](#disabling-endpoints) |
 | `storeConfiguration` | [`IOAuthStore`](../packages/mcp-nest-auth/src/stores/oauth-store.interface.ts) | In-memory | Storage backend configuration |
-| `protectedResourceMetadata` | `{ scopesSupported?: string[]; bearerMethodsSupported?: string[]; mcpVersionsSupported?: string[] }` | `{ scopesSupported: ['offline_access'], bearerMethodsSupported: ['header'], mcpVersionsSupported: ['2026-07-28', '2025-06-18'] }` | Values advertised at the protected-resource metadata endpoint. Shallow-merged with the defaults, so you can override one key. Set `mcpVersionsSupported` to the MCP protocol revisions your endpoint actually serves. |
+| `protectedResourceMetadata` | `{ scopesSupported?: string[]; bearerMethodsSupported?: string[]; mcpVersionsSupported?: string[] }` | `{ scopesSupported: [], bearerMethodsSupported: ['header'], mcpVersionsSupported: ['2026-07-28', '2025-06-18'] }` | Values advertised at the protected-resource metadata endpoint. Shallow-merged with the defaults, so you can override one key. Set `mcpVersionsSupported` to the MCP protocol revisions your endpoint actually serves. `scopesSupported` is omitted from the document when empty, and **should not** contain `offline_access` (see [Advertised scopes](#advertised-scopes)). |
 
 ### Token validation
 
@@ -246,6 +247,58 @@ not discoverable this way — list those in
 `scopeValidation: 'passthrough'` restores the previous unchecked behaviour as a
 migration window.
 
+### Advertised scopes
+
+There are two `scopesSupported` lists and they mean different things:
+
+- `authorizationServerMetadata.scopesSupported` (default `['offline_access']`) —
+  scopes this **authorization server** can grant. `offline_access` belongs here;
+  it is what a client asks for to get a refresh token.
+- `protectedResourceMetadata.scopesSupported` (default `[]`) — scopes this **MCP
+  resource** understands. Revision `2026-07-28` adds a **SHOULD NOT** against
+  listing `offline_access` here (or in a `WWW-Authenticate` challenge), because
+  refresh tokens are never a resource requirement. List the scopes your
+  `@ToolScopes()` tools require instead. When the list is empty the
+  `scopes_supported` key is omitted from the metadata document rather than sent
+  as `[]`, which would assert that the resource understands no scopes at all.
+
+With `enableRefreshTokens: false`, `offline_access` is stripped from **both**
+lists and `refresh_token` from `grant_types_supported`.
+
+### PKCE (required, S256 only)
+
+`/authorize` requires `code_challenge` with `code_challenge_method=S256`, and the
+metadata advertises `code_challenge_methods_supported: ['S256']`. OAuth 2.1
+§4.1.1 makes PKCE mandatory and permits `plain` only where S256 is unavailable,
+which is never the case for an MCP client — advertising `plain` alongside S256
+just invites a downgrade.
+
+A request that omits `code_challenge`, sends `code_challenge_method=plain`, or
+sends a challenge with no method (RFC 7636 §4.3 reads that as `plain`) is
+returned to the client on its validated redirect URI as
+`error=invalid_request`, with `state` and the RFC 9207 `iss` — it is a
+post-validation failure, so RFC 6749 §4.1.2.1 says it belongs on the redirect URI
+rather than in a `400` the client never sees. The token endpoint independently
+refuses to redeem any authorization code that is not bound to an S256 challenge,
+so a code minted by an older version or by a custom store cannot skip
+verification either.
+
+`requirePkce: false` is an escape hatch for a non-conforming client, and only
+that:
+
+```typescript
+McpAuthModule.forRoot({
+  // ... required options
+  requirePkce: false, // logs a warning at bootstrap
+});
+```
+
+It restores the pre-2.0.0 behaviour, where a missing challenge means no PKCE
+verification at all and an intercepted authorization code is enough to obtain a
+token. `plain` is still not advertised — add it explicitly via
+`authorizationServerMetadata.codeChallengeMethodsSupported` if a migrating client
+needs to discover it.
+
 ### Endpoint Configuration
 
 ```typescript
@@ -264,7 +317,7 @@ migration window.
 }
 ```
 
-### Disabling Discovery Endpoints
+### Disabling Endpoints
 
 You can keep endpoint paths configured while preventing route registration via `disableEndpoints`:
 
@@ -274,9 +327,70 @@ McpAuthModule.forRoot({
   disableEndpoints: {
     wellKnownAuthorizationServerMetadata: true, // disables GET /.well-known/oauth-authorization-server
     wellKnownProtectedResourceMetadata: false,  // keeps GET /.well-known/oauth-protected-resource
+    register: true,                             // disables POST /<apiPrefix>/register (DCR)
   },
 });
 ```
+
+`register: true` is for deployments that only ever talk to pre-registered
+clients and do not want an open registration endpoint. The route is not
+registered at all (so it answers `404`) and `registration_endpoint` is dropped
+from the authorization-server metadata — advertising an endpoint that answers
+`404` is worse than advertising none. DCR is **on** by default.
+
+### Dynamic Client Registration (deprecated upstream, still supported here)
+
+> **Deprecation notice.** MCP protocol revision **`2026-07-28`** deprecates
+> Dynamic Client Registration (RFC 7591) in favour of **Client ID Metadata
+> Documents** (CIMD) — spec [PR #2858](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2858).
+> The draft's wording is *"Authorization servers and MCP clients **MAY** support
+> the OAuth 2.0 Dynamic Client Registration Protocol (RFC7591). Note that Dynamic
+> Client Registration is deprecated and retained for backwards compatibility with
+> authorization servers that do not support Client ID Metadata Documents."*
+>
+> **Deprecated is not removed.** Under the spec's feature-lifecycle policy the
+> minimum deprecation window is 12 months, so the earliest revision that could
+> remove DCR is the first one released **on or after 2027-07-28**.
+>
+> `McpAuthModule` keeps DCR **fully supported**: `POST /<apiPrefix>/register`
+> stays, `registration_endpoint` stays in the authorization-server metadata,
+> no option is renamed, and registration does not emit a runtime warning. If you
+> want it off, that is an explicit choice via
+> `disableEndpoints: { register: true }`. CIMD support is tracked separately and
+> is not a prerequisite for anything here.
+
+Registration accepts the RFC 7591 fields plus the OIDC `application_type`:
+
+```jsonc
+{
+  "client_name": "My MCP Client",
+  "redirect_uris": ["http://127.0.0.1:33418/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none",
+  "application_type": "native"  // 'native' | 'web', optional
+}
+```
+
+`application_type` became a **client-side** MUST in `2026-07-28`, with the
+explicit carve-out that *"non-OIDC servers safely ignore the parameter"*. This
+authorization server is not an OIDC provider (no `id_token`, no `openid` scope,
+no userinfo endpoint), so it:
+
+- **stores** the value on the client record (available on `OAuthClient` and
+  persisted by the TypeORM store),
+- **rejects** anything other than `native` or `web` with a `400`, and
+- **derives no behaviour** from it. In particular the OIDC redirect-URI
+  constraints tied to `application_type` (localhost-only for `native`,
+  https-only for `web`) are deliberately *not* enforced — they would reject
+  legitimate MCP clients and are not required of a plain OAuth 2.1 server.
+
+Omitting it is not an error; a conforming pre-2026 client must not be locked out.
+
+> **TypeORM users:** `application_type` is a new nullable column on
+> `rekog_mcp_auth_clients`. With `synchronize: true` it is added automatically;
+> migration-managed deployments need an `ADD COLUMN application_type` (nullable
+> string). Existing rows keep `NULL`, which reads back as absent.
 
 ## Storage Backends
 
@@ -410,8 +524,8 @@ When `apiPrefix` is set to `'auth'`, the following endpoints are available:
 
 These are served under the configured `apiPrefix` (shown here with `apiPrefix: 'auth'`); the two `/.well-known/*` endpoints above remain at the root.
 
-- **POST** `/auth/register` - Dynamic client registration (RFC 7591)
-- **GET** `/auth/authorize` - Authorization endpoint
+- **POST** `/auth/register` - Dynamic client registration (RFC 7591) [can be disabled] — *deprecated by MCP revision `2026-07-28` in favour of Client ID Metadata Documents ([PR #2858](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2858)); earliest possible removal is the first revision released on or after 2027-07-28, and it remains fully supported here — see [Dynamic Client Registration](#dynamic-client-registration-deprecated-upstream-still-supported-here)*
+- **GET** `/auth/authorize` - Authorization endpoint (requires PKCE `S256`)
 - **GET** `/auth/callback` - OAuth callback endpoint
 - **POST** `/auth/token` - Token endpoint
 

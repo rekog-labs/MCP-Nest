@@ -139,8 +139,9 @@ describe('examples/built-in-authorization-server e2e (FAKE mode, pinned @modelco
     expect(meta.registration_endpoint).toBe(`${serverUrl}/auth/register`);
     expect(meta.response_types_supported).toEqual(['code']);
     expect(meta.grant_types_supported).toContain('authorization_code');
-    // PKCE advertised per the README.
-    expect(meta.code_challenge_methods_supported).toEqual(['plain', 'S256']);
+    // PKCE advertised per the README — S256 only, since `plain` is a downgrade
+    // this authorization server refuses outright (OAuth 2.1 §4.1.1).
+    expect(meta.code_challenge_methods_supported).toEqual(['S256']);
   });
 
   test('serves OAuth protected-resource metadata (RFC 9728) pointing at the AS + /mcp', async () => {

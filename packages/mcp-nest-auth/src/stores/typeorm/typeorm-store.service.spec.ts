@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, DeleteResult } from 'typeorm';
+import { Repository, DeleteResult, getMetadataArgsStorage } from 'typeorm';
 import { TypeOrmStore } from './typeorm-store.service';
 import {
   OAuthClientEntity,
@@ -192,6 +192,39 @@ describe('TypeOrmStore', () => {
         await expect(service.storeClient(mockClient)).rejects.toThrow(
           'Database error',
         );
+      });
+
+      it('should persist application_type', async () => {
+        // Before the column existed, `save()` silently dropped the field: the
+        // registration DTO carried it, the entity had no mapping for it, and the
+        // stored client came back without it.
+        const nativeClient: OAuthClient = {
+          ...mockClient,
+          application_type: 'native',
+        };
+        clientRepository.save.mockResolvedValue(
+          nativeClient as OAuthClientEntity,
+        );
+
+        const result = await service.storeClient(nativeClient);
+
+        expect(clientRepository.save).toHaveBeenCalledWith(
+          expect.objectContaining({ application_type: 'native' }),
+        );
+        expect(result.application_type).toBe('native');
+      });
+
+      it('declares application_type as a mapped column on the entity', () => {
+        // The save() assertion above runs against a mocked repository, so it
+        // cannot see the schema. This reads TypeORM's own decorator metadata,
+        // which is what actually decides whether the column is created and
+        // written — a missing @Column here is exactly the silent-drop bug.
+        const columns = getMetadataArgsStorage().columns.filter(
+          (column) => column.target === OAuthClientEntity,
+        );
+        expect(
+          columns.some((column) => column.propertyName === 'application_type'),
+        ).toBe(true);
       });
     });
 

@@ -1,4 +1,4 @@
-import { DynamicModule, Module } from '@nestjs/common';
+import { DynamicModule, Logger, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DiscoveryModule } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
@@ -36,6 +36,7 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
   nodeEnv: 'development',
   apiPrefix: '',
   scopeValidation: 'strict',
+  requirePkce: true,
   endpoints: {
     wellKnownAuthorizationServerMetadata:
       '/.well-known/oauth-authorization-server',
@@ -48,9 +49,20 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
   disableEndpoints: {
     wellKnownAuthorizationServerMetadata: false,
     wellKnownProtectedResourceMetadata: false,
+    register: false,
   },
   protectedResourceMetadata: {
-    scopesSupported: ['offline_access'],
+    /**
+     * Empty by default. Revision `2026-07-28` adds a SHOULD NOT against listing
+     * `offline_access` here (or in `WWW-Authenticate`): refresh tokens are a
+     * client/authorization-server concern, never something a *resource* needs,
+     * so advertising it as a resource scope tells clients to ask for a
+     * permission this resource does not define. It remains in
+     * `authorizationServerMetadata.scopesSupported`, where it genuinely is a
+     * grantable scope. List the scopes your `@ToolScopes()` tools require here
+     * (or there) if you want them discoverable.
+     */
+    scopesSupported: [],
     bearerMethodsSupported: ['header'],
     /**
      * Matches the default transport posture, which serves both protocol eras
@@ -69,7 +81,14 @@ export const DEFAULT_OPTIONS: OAuthModuleDefaults = {
       'none',
     ],
     scopesSupported: ['offline_access'],
-    codeChallengeMethodsSupported: ['plain', 'S256'],
+    /**
+     * S256 only. OAuth 2.1 §4.1.1 requires PKCE and permits `plain` solely
+     * where S256 is unavailable, which is never true of an MCP client;
+     * advertising `plain` alongside it just invites a downgrade. `requirePkce:
+     * false` does not put `plain` back — override this list explicitly if a
+     * migrating deployment needs it advertised.
+     */
+    codeChallengeMethodsSupported: ['S256'],
   },
 };
 
@@ -217,6 +236,7 @@ export class McpAuthModule {
         disableWellKnownProtectedResourceMetadata:
           resolvedOptions.disableEndpoints.wellKnownProtectedResourceMetadata ??
           false,
+        disableRegister: resolvedOptions.disableEndpoints.register ?? false,
       },
       authModuleId,
     );
@@ -287,6 +307,14 @@ export class McpAuthModule {
         resolvedOptions.authorizationServerMetadata.grantTypesSupported.filter(
           (g) => g !== 'refresh_token',
         );
+      // Both lists, not just the protected-resource one. `offline_access` is
+      // what a client asks for to obtain a refresh token; leaving it in the
+      // authorization-server list advertised (and, since Tier 2's scope
+      // narrowing, actually granted) a scope this server will never honour.
+      resolvedOptions.authorizationServerMetadata.scopesSupported =
+        resolvedOptions.authorizationServerMetadata.scopesSupported.filter(
+          (s) => s !== 'offline_access',
+        );
       resolvedOptions.protectedResourceMetadata.scopesSupported =
         resolvedOptions.protectedResourceMetadata.scopesSupported.filter(
           (s) => s !== 'offline_access',
@@ -347,6 +375,19 @@ export class McpAuthModule {
           `authorization server metadata whose 'issuer' differs from the URL it was ` +
           `fetched from. Either omit jwtIssuer (it defaults to serverUrl), or set ` +
           `serverUrl to the issuer you want to advertise.`,
+      );
+    }
+
+    // One-time bootstrap warning, not a per-request one: an operator can act on
+    // this by flipping the option back, and PKCE being off is a standing
+    // property of the deployment rather than of any single request.
+    if (!options.requirePkce) {
+      new Logger(McpAuthModule.name).warn(
+        'requirePkce: false is set — /authorize accepts a request with no ' +
+          'code_challenge, and such an authorization code can then be redeemed ' +
+          'with no proof of possession, so an intercepted code is enough to get ' +
+          'a token. OAuth 2.1 requires PKCE with S256; intended only as a ' +
+          'migration window for a non-conforming client.',
       );
     }
 

@@ -46,6 +46,18 @@ export interface OAuthEndpointConfiguration {
 export interface OAuthEndpointDisableOptions {
   wellKnownAuthorizationServerMetadata?: boolean;
   wellKnownProtectedResourceMetadata?: boolean;
+  /**
+   * Disable `POST /register` (RFC 7591 Dynamic Client Registration).
+   *
+   * DCR is *deprecated* as of protocol revision `2026-07-28` (spec PR #2858) in
+   * favour of Client ID Metadata Documents, but stays a `MAY` and is fully
+   * supported here — this flag exists for deployments that only ever talk to
+   * pre-registered clients (or to CIMD clients) and do not want an open
+   * registration endpoint. When set, `registration_endpoint` is also omitted
+   * from the authorization-server metadata, because advertising an endpoint
+   * that answers `404` is worse than advertising nothing.
+   */
+  register?: boolean;
 }
 
 /**
@@ -59,6 +71,18 @@ export interface OAuthEndpointDisableOptions {
  *   tool requires; use it only as a migration window.
  */
 export type ScopeValidationMode = 'strict' | 'passthrough';
+
+/**
+ * The OIDC Dynamic Client Registration `application_type`. MCP clients **MUST**
+ * send one as of revision `2026-07-28`, but the spec is explicit that
+ * "non-OIDC servers safely ignore the parameter" — so this server stores it for
+ * auditing and rejects values outside the RFC-defined pair, and derives nothing
+ * from it. In particular the OIDC redirect-URI constraints tied to
+ * `application_type` (localhost-only for `native`, https-only for `web`) are
+ * deliberately **not** enforced: they would reject legitimate MCP clients and
+ * are not required of a plain OAuth 2.1 authorization server.
+ */
+export type ClientApplicationType = 'native' | 'web';
 
 export interface OAuthUserModuleOptions {
   provider: OAuthProviderConfig;
@@ -115,6 +139,26 @@ export interface OAuthUserModuleOptions {
   /** See {@link ScopeValidationMode}. Defaults to `'strict'`. */
   scopeValidation?: ScopeValidationMode;
 
+  /**
+   * Require PKCE with `S256` on the authorization code flow. Defaults to `true`.
+   *
+   * OAuth 2.1 §4.1.1 (which the MCP authorization spec builds on) makes
+   * `code_challenge` mandatory and `plain` is only permitted where S256 is
+   * unavailable — which is never the case for an MCP client. With the default,
+   * `/authorize` rejects a request that omits `code_challenge` or asks for
+   * `plain`, and the token endpoint refuses to redeem any code that is not
+   * bound to an S256 challenge.
+   *
+   * Set to `false` **only** as a migration window for a non-conforming client:
+   * it restores the pre-2.0.0 behaviour where a missing challenge means no PKCE
+   * verification at all, which leaves the flow open to authorization-code
+   * interception. `plain` is not re-advertised in the authorization-server
+   * metadata even then (advertising it invites a downgrade from clients that
+   * would otherwise use S256); add it explicitly via
+   * `authorizationServerMetadata.codeChallengeMethodsSupported` if you need to.
+   */
+  requirePkce?: boolean;
+
   // Storage Configuration - single property for all storage options
   storeConfiguration?: StoreConfiguration;
   apiPrefix?: string;
@@ -138,6 +182,7 @@ export interface OAuthModuleDefaults {
   nodeEnv: string;
   apiPrefix: string;
   scopeValidation: ScopeValidationMode;
+  requirePkce: boolean;
   endpoints: OAuthEndpointConfiguration;
   disableEndpoints: OAuthEndpointDisableOptions;
   protectedResourceMetadata: {

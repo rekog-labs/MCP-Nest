@@ -289,7 +289,10 @@ describe.each(ERAS)('E2E: McpAuthModule OAuth Flow (%s era)', (era) => {
         registration_endpoint: expect.stringContaining('/auth/register'),
         response_types_supported: ['code'],
         grant_types_supported: ['authorization_code', 'refresh_token'],
-        code_challenge_methods_supported: ['plain', 'S256'],
+        // S256 only. `plain` was dropped from the advertised list: OAuth 2.1
+        // permits it solely where S256 is unavailable, and advertising it
+        // invites a downgrade from clients that would otherwise use S256.
+        code_challenge_methods_supported: ['S256'],
       });
     });
   });

@@ -38,8 +38,9 @@ contacting an IdP. Every offline-reachable feature works:
 
 - Discovery: `/.well-known/oauth-authorization-server`,
   `/.well-known/oauth-protected-resource`
-- Dynamic Client Registration (RFC 7591): `POST /auth/register`
-- PKCE advertised (`code_challenge_methods_supported: ["plain","S256"]`)
+- Dynamic Client Registration (RFC 7591): `POST /auth/register` (deprecated in
+  MCP revision `2026-07-28`, still fully supported here)
+- PKCE required and advertised (`code_challenge_methods_supported: ["S256"]`)
 - JWT validation of locally-signed tokens by the `/mcp` middleware
 - Guarded MCP calls with a locally-minted JWT
 

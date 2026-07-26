@@ -2,6 +2,7 @@ import type {
   OAuthSession,
   OAuthUserProfile,
 } from '../interfaces/oauth-common.interface';
+import type { ClientApplicationType } from '../providers/oauth-provider.interface';
 
 export const MCP_OAUTH_TOKEN = 'MCP_OAUTH_TOKEN';
 
@@ -18,6 +19,11 @@ export interface OAuthClient {
   grant_types: string[];
   response_types: string[];
   token_endpoint_auth_method: string;
+  /**
+   * Recorded verbatim from the registration request. Nothing in this
+   * authorization server reads it — see {@link ClientApplicationType}.
+   */
+  application_type?: ClientApplicationType;
   created_at: Date;
   updated_at: Date;
 }
@@ -48,6 +54,12 @@ export interface ClientRegistrationDto {
   grant_types?: string[];
   response_types?: string[];
   token_endpoint_auth_method?: string;
+  /**
+   * OIDC DCR `application_type`. MCP clients MUST send it as of revision
+   * `2026-07-28`; this non-OIDC server stores it and validates the value, but
+   * never acts on it. See {@link ClientApplicationType}.
+   */
+  application_type?: ClientApplicationType;
 }
 
 /**

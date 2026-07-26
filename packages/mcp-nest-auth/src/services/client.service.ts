@@ -50,6 +50,23 @@ export class ClientService {
       );
     }
 
+    // `application_type` became a client-side MUST in protocol revision
+    // `2026-07-28`, with the explicit carve-out that "non-OIDC servers safely
+    // ignore the parameter". This server is not an OIDC provider (no id_token,
+    // no `openid` scope, no userinfo), so it stores the value and refuses
+    // nonsense — mirroring how token_endpoint_auth_method is handled above —
+    // but derives no behaviour from it. Absence is NOT an error: requiring it
+    // would lock out every conforming pre-2026 client for no security gain.
+    const supportedApplicationTypes = ['native', 'web'];
+    if (
+      registrationDto.application_type !== undefined &&
+      !supportedApplicationTypes.includes(registrationDto.application_type)
+    ) {
+      throw new BadRequestException(
+        `Unsupported application_type. Supported values: ${supportedApplicationTypes.join(', ')}`,
+      );
+    }
+
     // Default values for new clients
     const defaultClientValues = {
       grant_types: ['authorization_code', 'refresh_token'],
