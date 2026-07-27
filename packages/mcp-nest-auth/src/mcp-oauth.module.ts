@@ -14,6 +14,7 @@ import type {
 import { ClientIdMetadataService } from './services/client-id-metadata.service';
 import { ClientService } from './services/client.service';
 import { ConsentService } from './services/consent.service';
+import { CookieParserCheckService } from './services/cookie-parser-check.service';
 import { JwtTokenService } from './services/jwt-token.service';
 import { OAuthStrategyService } from './services/oauth-strategy.service';
 import { ScopePolicyService } from './services/scope-policy.service';
@@ -252,6 +253,10 @@ export class McpAuthModule {
       JwtTokenService,
       ScopePolicyService,
       McpAuthJwtGuard,
+      // Refuses to finish booting if the host forgot `app.use(cookieParser())`,
+      // so the omission cannot reach production as a callback that 400s after
+      // the user has already logged in at the IdP.
+      CookieParserCheckService,
     ];
 
     // No additional providers needed for TypeORM store - provider is created dynamically

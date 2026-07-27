@@ -423,9 +423,11 @@ Authentication is **guards-only** — this isn't a step down from v1, which neve
 had a supported middleware alternative either: `McpModule.forRoot({ guards })`
 applied guards directly to the generated controllers, and `McpAuthModule` itself
 worked (and still works) by supplying a guard, e.g. `McpAuthJwtGuard`, into that
-same slot. Plain `app.use(cookieParser())`-style middleware for unrelated HTTP
-concerns still works as usual, but don't reach for middleware to set `req.user`
-— use a guard.
+same slot. Plain `app.use(...)`-style middleware for other HTTP concerns still
+works as usual, but don't reach for middleware to set `req.user` — use a guard.
+(One piece of middleware is not optional: `McpAuthModule`'s browser handshake
+needs `app.use(cookieParser())`; without it the application refuses to start.
+That is session plumbing, not authentication.)
 
 - **Authenticate** with a NestJS guard on the MCP controller
   (`@UseGuards(YourGuard)`) that sets `req.user` (and throws

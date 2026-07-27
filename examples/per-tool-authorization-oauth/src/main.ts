@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Controller, Module, UseGuards } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import {
   McpHttpControllerFor,
   McpStrategy,
@@ -83,6 +84,13 @@ class AppModule {}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Required by the REAL (GitHub) handshake: /auth/authorize sets the
+  // `oauth_session` + `oauth_state` cookies, and /auth/callback reads them back
+  // off `req.cookies`. Without cookie-parser `req.cookies` is undefined, and the
+  // module refuses to finish booting. Session plumbing, not authentication.
+  app.use(cookieParser());
+
   strategy.setHttpAdapter(app.getHttpAdapter());
   app.connectMicroservice({ strategy });
   await app.startAllMicroservices();

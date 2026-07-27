@@ -18,6 +18,7 @@ import {
   Tool,
 } from '@rekog/mcp-nest';
 import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
 import { McpAuthJwtGuard, McpAuthModule } from '@rekog/mcp-nest-auth';
 import { OAuthProviderConfig, OAuthUserProfile } from '@rekog/mcp-nest-auth';
 import type {
@@ -258,6 +259,11 @@ describe.each(ERAS)('E2E: McpAuthModule OAuth Flow (%s era)', (era) => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    // The authorization handshake keeps its in-flight state in cookies, so
+    // without this the flow cannot get past session creation. See the
+    // "missing cookie-parser" block at the bottom of this file for the
+    // deliberately unmounted counterpart.
+    app.use(cookieParser());
     strategy.setHttpAdapter(app.getHttpAdapter());
     app.connectMicroservice({ strategy });
 
@@ -679,5 +685,84 @@ describe.each(ERAS)('E2E: McpAuthModule OAuth Flow (%s era)', (era) => {
         })
         .expect(400);
     });
+  });
+});
+
+/**
+ * `cookie-parser` is the one piece of middleware `McpAuthModule` cannot install
+ * for itself, and forgetting it used to fail as late as an error can: discovery,
+ * registration and `/authorize` all succeeded, the user was bounced through a
+ * full IdP login, and only the callback answered — with a bare
+ * `400 Missing OAuth session` that named neither cause nor fix.
+ *
+ * A server that cannot authenticate anyone should not start, so the omission is
+ * now a bootstrap failure. These tests pin that it happens at `app.init()`,
+ * before a single request is served.
+ *
+ * Era-agnostic — this is the authorization server's HTTP plumbing, nothing to do
+ * with the MCP protocol revision — so it sits outside `describe.each(ERAS)`.
+ */
+describe('E2E: McpAuthModule cookie-parser bootstrap check', () => {
+  const buildModule = (extraOptions: Record<string, unknown> = {}) =>
+    Test.createTestingModule({
+      imports: [
+        McpAuthModule.forRoot({
+          provider: MockOAuthProvider,
+          clientId: 'test-client-id',
+          clientSecret: 'test-client-secret',
+          jwtSecret: 'test-jwt-secret-that-is-at-least-32-characters-long',
+          serverUrl: 'http://localhost:3000',
+          apiPrefix: 'auth',
+          cookieSecure: false,
+          storeConfiguration: { type: 'custom', store: new MockOAuthStore() },
+          ...extraOptions,
+        }),
+      ],
+    }).compile();
+
+  it('refuses to start when cookie-parser is not mounted', async () => {
+    const app = (await buildModule()).createNestApplication();
+    // Deliberately no `app.use(cookieParser())`.
+    await expect(app.init()).rejects.toThrow(/cookie-parser/);
+    await app.close();
+  });
+
+  it('names the fix in the bootstrap error', async () => {
+    const app = (await buildModule()).createNestApplication();
+
+    // The diagnosis a developer actually needs: the missing line, not just the
+    // missing concept.
+    await expect(app.init()).rejects.toThrow(/app\.use\(cookieParser\(\)\)/);
+    await app.close();
+  });
+
+  it('starts normally once cookie-parser is mounted', async () => {
+    const app = (await buildModule()).createNestApplication();
+    app.use(cookieParser());
+
+    await app.init();
+
+    // Reaching a served request at all is the assertion; the endpoint is
+    // incidental.
+    await request(app.getHttpServer())
+      .get('/.well-known/oauth-authorization-server')
+      .expect(200);
+    await app.close();
+  });
+
+  it('starts without cookie-parser when the check is opted out of', async () => {
+    // For hosts that populate `req.cookies` by other means — a wrapped or
+    // re-exported cookie-parser, @fastify/cookie — which the name-based probe
+    // cannot see. Refusing to boot those would be worse than the bug.
+    const app = (
+      await buildModule({ skipCookieParserCheck: true })
+    ).createNestApplication();
+
+    await app.init();
+
+    await request(app.getHttpServer())
+      .get('/.well-known/oauth-authorization-server')
+      .expect(200);
+    await app.close();
   });
 });
