@@ -70,7 +70,8 @@ class ErrorCodeTools {
 class NonObjectOutputSchemaTools {
   @Tool({
     name: 'array-output-tool',
-    description: 'Returns a top-level JSON array, per the spec\'s list_users example',
+    description:
+      "Returns a top-level JSON array, per the spec's list_users example",
     parameters: z.object({}),
     outputSchema: {
       type: 'array',
@@ -182,7 +183,9 @@ describe.each(ERAS)('spec error codes and schemas (%s era)', (era: Era) => {
           expect(tool!.outputSchema).toMatchObject({
             type: 'object',
             required: ['result'],
-            properties: { result: { type: 'array', items: { type: 'object' } } },
+            properties: {
+              result: { type: 'array', items: { type: 'object' } },
+            },
           });
         }
       } finally {

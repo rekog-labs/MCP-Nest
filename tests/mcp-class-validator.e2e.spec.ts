@@ -49,52 +49,55 @@ class ClassValidatorController {
   }
 }
 
-describe.each(ERAS)('E2E: McpStrategy with class-validator ValidationPipe (%s era)', (era) => {
-  let app: INestApplication;
-  let port: number;
+describe.each(ERAS)(
+  'E2E: McpStrategy with class-validator ValidationPipe (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let port: number;
 
-  beforeAll(async () => {
-    const ctx = await bootstrapMcpApp({
-      name: 'class-validator-server',
-      controllers: [ClassValidatorController],
+    beforeAll(async () => {
+      const ctx = await bootstrapMcpApp({
+        name: 'class-validator-server',
+        controllers: [ClassValidatorController],
+      });
+      app = ctx.app;
+      port = ctx.port;
     });
-    app = ctx.app;
-    port = ctx.port;
-  });
 
-  afterAll(async () => {
-    await app.close();
-  });
+    afterAll(async () => {
+      await app.close();
+    });
 
-  it('accepts valid input and transforms the payload into the DTO instance', async () => {
-    const client = await createEraClient(era, port);
-    const result = (await client.callTool({
-      name: 'create-user',
-      arguments: { name: 'Alice', age: 30 },
-    })) as { content: Array<{ text: string }> };
-    expect(result.content[0].text).toBe('Created Alice (30); instance=true');
-    await client.close();
-  });
+    it('accepts valid input and transforms the payload into the DTO instance', async () => {
+      const client = await createEraClient(era, port);
+      const result = (await client.callTool({
+        name: 'create-user',
+        arguments: { name: 'Alice', age: 30 },
+      })) as { content: Array<{ text: string }> };
+      expect(result.content[0].text).toBe('Created Alice (30); instance=true');
+      await client.close();
+    });
 
-  it('rejects input that violates a class-validator constraint Zod does not check (@Min)', async () => {
-    const client = await createEraClient(era, port);
-    const result = (await client.callTool({
-      name: 'create-user',
-      arguments: { name: 'Bob', age: 10 },
-    })) as { isError?: boolean; content: Array<{ text: string }> };
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Validation failed');
-    await client.close();
-  });
+    it('rejects input that violates a class-validator constraint Zod does not check (@Min)', async () => {
+      const client = await createEraClient(era, port);
+      const result = (await client.callTool({
+        name: 'create-user',
+        arguments: { name: 'Bob', age: 10 },
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Validation failed');
+      await client.close();
+    });
 
-  it('rejects input that violates @MinLength', async () => {
-    const client = await createEraClient(era, port);
-    const result = (await client.callTool({
-      name: 'create-user',
-      arguments: { name: 'A', age: 30 },
-    })) as { isError?: boolean; content: Array<{ text: string }> };
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('Validation failed');
-    await client.close();
-  });
-});
+    it('rejects input that violates @MinLength', async () => {
+      const client = await createEraClient(era, port);
+      const result = (await client.callTool({
+        name: 'create-user',
+        arguments: { name: 'A', age: 30 },
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Validation failed');
+      await client.close();
+    });
+  },
+);

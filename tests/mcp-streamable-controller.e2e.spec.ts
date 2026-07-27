@@ -69,65 +69,68 @@ class GreetingTool {
 @UseGuards(HeaderGuard)
 class MyMcpController extends StreamableHttpController {}
 
-describe.each(ERAS)('E2E: StreamableHttpController (bring-your-own-controller) (%s era)', (era) => {
-  let app: INestApplication;
-  let port: number;
+describe.each(ERAS)(
+  'E2E: StreamableHttpController (bring-your-own-controller) (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let port: number;
 
-  beforeAll(async () => {
-    const transport = new StreamableHttpTransport({
-      statefulMode: true,
-      // No `mount` option: auto-detection must skip self-mount because the
-      // MCP_HTTP_HANDLER provider below reads `transport.httpHandlers`.
-    });
-    const strategy = new McpStrategy({
-      name: 'byo-controller-server',
-      version: '0.0.1',
-      transports: [transport],
-    });
+    beforeAll(async () => {
+      const transport = new StreamableHttpTransport({
+        statefulMode: true,
+        // No `mount` option: auto-detection must skip self-mount because the
+        // MCP_HTTP_HANDLER provider below reads `transport.httpHandlers`.
+      });
+      const strategy = new McpStrategy({
+        name: 'byo-controller-server',
+        version: '0.0.1',
+        transports: [transport],
+      });
 
-    const moduleFixture = await Test.createTestingModule({
-      controllers: [MyMcpController, GreetingTool],
-      providers: [
-        HeaderGuard,
-        { provide: MCP_HTTP_HANDLER, useValue: transport.httpHandlers },
-      ],
-    }).compile();
+      const moduleFixture = await Test.createTestingModule({
+        controllers: [MyMcpController, GreetingTool],
+        providers: [
+          HeaderGuard,
+          { provide: MCP_HTTP_HANDLER, useValue: transport.httpHandlers },
+        ],
+      }).compile();
 
-    app = moduleFixture.createNestApplication();
-    strategy.setHttpAdapter(app.getHttpAdapter());
-    app.connectMicroservice({ strategy });
-    await app.startAllMicroservices();
-    await app.listen(0);
-    port = (app.getHttpServer().address() as { port: number }).port;
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it('registers inherited routes + injects the handler, and serves MCP when the guard allows', async () => {
-    const client = await createEraClient(era, port, {
-      requestInit: { headers: { 'x-allow': 'yes' } },
+      app = moduleFixture.createNestApplication();
+      strategy.setHttpAdapter(app.getHttpAdapter());
+      app.connectMicroservice({ strategy });
+      await app.startAllMicroservices();
+      await app.listen(0);
+      port = (app.getHttpServer().address() as { port: number }).port;
     });
 
-    // listTools reaching the RPC pipeline proves the inherited POST route is
-    // registered AND the injected handler delegated to the transport (an
-    // unresolved @Inject would have thrown before any MCP response).
-    const tools = await client.listTools();
-    expect(tools.tools.map((t) => t.name)).toContain('hello');
+    afterAll(async () => {
+      await app.close();
+    });
 
-    const result = (await client.callTool({
-      name: 'hello',
-      arguments: { name: 'Alice' },
-    })) as { content: Array<{ text: string }> };
-    expect(result.content[0].text).toBe('Hello, Alice!');
+    it('registers inherited routes + injects the handler, and serves MCP when the guard allows', async () => {
+      const client = await createEraClient(era, port, {
+        requestInit: { headers: { 'x-allow': 'yes' } },
+      });
 
-    await client.close();
-  });
+      // listTools reaching the RPC pipeline proves the inherited POST route is
+      // registered AND the injected handler delegated to the transport (an
+      // unresolved @Inject would have thrown before any MCP response).
+      const tools = await client.listTools();
+      expect(tools.tools.map((t) => t.name)).toContain('hello');
 
-  it('runs the class-level guard on the inherited route (denied → connect fails)', async () => {
-    // No `x-allow` header → guard denies the initialize POST → 401, so the
-    // client cannot connect.
-    await expect(createEraClient(era, port)).rejects.toThrow();
-  });
-});
+      const result = (await client.callTool({
+        name: 'hello',
+        arguments: { name: 'Alice' },
+      })) as { content: Array<{ text: string }> };
+      expect(result.content[0].text).toBe('Hello, Alice!');
+
+      await client.close();
+    });
+
+    it('runs the class-level guard on the inherited route (denied → connect fails)', async () => {
+      // No `x-allow` header → guard denies the initialize POST → 401, so the
+      // client cannot connect.
+      await expect(createEraClient(era, port)).rejects.toThrow();
+    });
+  },
+);

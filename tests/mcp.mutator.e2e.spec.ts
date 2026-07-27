@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { McpController, Tool } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
-import { McpServer } from "@modelcontextprotocol/server";
+import { McpServer } from '@modelcontextprotocol/server';
 
 @McpController()
 class Tools {

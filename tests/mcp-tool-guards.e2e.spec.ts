@@ -297,343 +297,347 @@ const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
 @UseGuards(IdentityGuard)
 class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
-describe.each(ERAS)('E2E: Tool Guards via native @UseGuards() (%s era)', (era) => {
-  describe.each([
-    {
-      transportName: 'Streamable HTTP (stateful)',
-      makeTransports: () => [mcpTransport],
-      createClient: (port: number, headers?: Record<string, string>) =>
-        createEraClient(era, 
-          port,
-          headers ? { requestInit: { headers } } : {},
-        ),
-    },
-  ])('$transportName transport', ({ makeTransports, createClient }) => {
-    let app: INestApplication;
-    let testPort: number;
+describe.each(ERAS)(
+  'E2E: Tool Guards via native @UseGuards() (%s era)',
+  (era) => {
+    describe.each([
+      {
+        transportName: 'Streamable HTTP (stateful)',
+        makeTransports: () => [mcpTransport],
+        createClient: (port: number, headers?: Record<string, string>) =>
+          createEraClient(
+            era,
+            port,
+            headers ? { requestInit: { headers } } : {},
+          ),
+      },
+    ])('$transportName transport', ({ makeTransports, createClient }) => {
+      let app: INestApplication;
+      let testPort: number;
 
-    beforeAll(async () => {
-      const bootstrapped = await bootstrapMcpApp({
-        name: 'test-tool-guards-server',
-        controllers: [GuardedTools, McpHttpController],
-        providers: [
-          AdminGuard,
-          AuthenticatedGuard,
-          AsyncGuard,
-          ReflectorGuard,
-          OwnershipGuard,
-          ThrowingGuard,
-          IdentityGuard,
-        ],
-        transports: makeTransports(),
-        // No `allowUnauthenticatedAccess`: identity comes from IdentityGuard on
-        // the MCP controller, and gating is done purely by native @UseGuards at
-        // call time, so the per-tool ToolAuthorizationService (which only acts
-        // on @PublicTool/@ToolScopes/@ToolRoles) stays out of the way.
+      beforeAll(async () => {
+        const bootstrapped = await bootstrapMcpApp({
+          name: 'test-tool-guards-server',
+          controllers: [GuardedTools, McpHttpController],
+          providers: [
+            AdminGuard,
+            AuthenticatedGuard,
+            AsyncGuard,
+            ReflectorGuard,
+            OwnershipGuard,
+            ThrowingGuard,
+            IdentityGuard,
+          ],
+          transports: makeTransports(),
+          // No `allowUnauthenticatedAccess`: identity comes from IdentityGuard on
+          // the MCP controller, and gating is done purely by native @UseGuards at
+          // call time, so the per-tool ToolAuthorizationService (which only acts
+          // on @PublicTool/@ToolScopes/@ToolRoles) stays out of the way.
+        });
+        app = bootstrapped.app;
+        testPort = bootstrapped.port;
       });
-      app = bootstrapped.app;
-      testPort = bootstrapped.port;
+
+      afterAll(async () => {
+        await app.close();
+      });
+
+      describe('Tool Listing', () => {
+        // NOTE: native @UseGuards run at CALL time, not list time, so guarded
+        // tools remain visible in listings regardless of auth. We assert the
+        // public tool is always listed; access control is verified at call time
+        // in the "Tool Execution" block below.
+        it('should list the public tool (and guarded tools) when unauthenticated', async () => {
+          const client = await createClient(testPort);
+
+          const tools = await client.listTools();
+          const toolNames = tools.tools.map((t) => t.name);
+
+          expect(toolNames).toContain('public-tool');
+          // Guarded tools are still visible — native guards gate at call time.
+          expect(toolNames).toContain('authenticated-tool');
+          expect(toolNames).toContain('admin-tool');
+
+          await client.close();
+        });
+
+        it('should list tools for an authenticated user', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+
+          const tools = await client.listTools();
+          const toolNames = tools.tools.map((t) => t.name);
+
+          expect(toolNames).toContain('public-tool');
+          expect(toolNames).toContain('authenticated-tool');
+          expect(toolNames).toContain('guarded-with-args');
+
+          await client.close();
+        });
+
+        it('should list all tools for admin user', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer admin-token',
+          });
+
+          const tools = await client.listTools();
+          const toolNames = tools.tools.map((t) => t.name);
+
+          // Native guards never filter listings, so every tool is visible.
+          expect(toolNames).toContain('public-tool');
+          expect(toolNames).toContain('authenticated-tool');
+          expect(toolNames).toContain('admin-tool');
+          expect(toolNames).toContain('multi-guard-tool');
+          expect(toolNames).toContain('async-guard-tool');
+          expect(toolNames).toContain('guarded-with-args');
+
+          await client.close();
+        });
+      });
+
+      describe('Tool Execution', () => {
+        it('should allow calling unguarded tools without auth', async () => {
+          const client = await createClient(testPort);
+
+          const result = await client.callTool({
+            name: 'public-tool',
+            arguments: {},
+          });
+
+          expect(
+            (result.content as { type: string; text: string }[])[0].text,
+          ).toBe('Public tool executed');
+
+          await client.close();
+        });
+
+        it('should deny execution of guarded tools without auth', async () => {
+          const client = await createClient(testPort);
+
+          const result: any = await client.callTool({
+            name: 'authenticated-tool',
+            arguments: {},
+          });
+          expect(result.isError).toBe(true);
+
+          await client.close();
+        });
+
+        it('should allow execution of guarded tools with proper auth', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+
+          const result = await client.callTool({
+            name: 'authenticated-tool',
+            arguments: {},
+          });
+
+          expect(
+            (result.content as { type: string; text: string }[])[0].text,
+          ).toBe('Authenticated tool executed');
+
+          await client.close();
+        });
+
+        it('should deny admin tools to regular users', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+
+          const result: any = await client.callTool({
+            name: 'admin-tool',
+            arguments: {},
+          });
+          expect(result.isError).toBe(true);
+
+          await client.close();
+        });
+
+        it('should allow admin tools to admin users', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer admin-token',
+          });
+
+          const result = await client.callTool({
+            name: 'admin-tool',
+            arguments: {},
+          });
+
+          expect(
+            (result.content as { type: string; text: string }[])[0].text,
+          ).toBe('Admin tool executed');
+
+          await client.close();
+        });
+
+        it('should require ALL guards to pass for multi-guard tools', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+
+          const result: any = await client.callTool({
+            name: 'multi-guard-tool',
+            arguments: {},
+          });
+          expect(result.isError).toBe(true);
+
+          await client.close();
+        });
+
+        it('should allow multi-guard tools when all guards pass', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer admin-token',
+          });
+
+          const result = await client.callTool({
+            name: 'multi-guard-tool',
+            arguments: {},
+          });
+
+          expect(
+            (result.content as { type: string; text: string }[])[0].text,
+          ).toBe('Multi-guard tool executed');
+
+          await client.close();
+        });
+
+        it('should support async guards', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer async-token',
+          });
+
+          const result = await client.callTool({
+            name: 'async-guard-tool',
+            arguments: {},
+          });
+
+          expect(
+            (result.content as { type: string; text: string }[])[0].text,
+          ).toBe('Async guard tool executed');
+
+          await client.close();
+        });
+
+        it('should deny async guard tools for non-async-allowed users', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+
+          const result: any = await client.callTool({
+            name: 'async-guard-tool',
+            arguments: {},
+          });
+          expect(result.isError).toBe(true);
+
+          await client.close();
+        });
+
+        it('should support Reflector-based guards reading method metadata', async () => {
+          const adminClient = await createClient(testPort, {
+            Authorization: 'Bearer admin-token',
+          });
+          const adminResult = await adminClient.callTool({
+            name: 'reflector-guard-tool',
+            arguments: {},
+          });
+          expect(
+            (adminResult.content as { type: string; text: string }[])[0].text,
+          ).toBe('Reflector guard tool executed');
+          await adminClient.close();
+
+          const userClient = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+          const userResult: any = await userClient.callTool({
+            name: 'reflector-guard-tool',
+            arguments: {},
+          });
+          expect(userResult.isError).toBe(true);
+          await userClient.close();
+        });
+
+        it('should deny execution when a guard throws (unavailable context method)', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer admin-token',
+          });
+
+          const result: any = await client.callTool({
+            name: 'bad-guard-tool',
+            arguments: {},
+          });
+          // The guard throws, so the call is denied rather than executing.
+          expect(result.isError).toBe(true);
+          expect(
+            (result.content as { type: string; text: string }[])[0].text,
+          ).not.toBe('Should never execute');
+
+          await client.close();
+        });
+
+        it('should pass arguments correctly to guarded tools', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+
+          const result = await client.callTool({
+            name: 'guarded-with-args',
+            arguments: { message: 'hello world' },
+          });
+
+          expect(
+            (result.content as { type: string; text: string }[])[0].text,
+          ).toBe('Echo: hello world');
+
+          await client.close();
+        });
+      });
+
+      describe('Guard access to tool arguments (RPC payload)', () => {
+        it('should list ownership-guarded tool', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+
+          const tools = await client.listTools();
+          const toolNames = tools.tools.map((t) => t.name);
+          expect(toolNames).toContain('ownership-tool');
+
+          await client.close();
+        });
+
+        it('should allow execution when user owns the entity', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+
+          const result = await client.callTool({
+            name: 'ownership-tool',
+            arguments: { ownerId: 'user-1', title: 'My Recipe' },
+          });
+
+          expect(
+            (result.content as { type: string; text: string }[])[0].text,
+          ).toBe('Updated: My Recipe (owner: user-1)');
+
+          await client.close();
+        });
+
+        it('should deny execution when user does not own the entity', async () => {
+          const client = await createClient(testPort, {
+            Authorization: 'Bearer user-token',
+          });
+
+          const result: any = await client.callTool({
+            name: 'ownership-tool',
+            arguments: { ownerId: 'someone-else', title: 'Not My Recipe' },
+          });
+          expect(result.isError).toBe(true);
+
+          await client.close();
+        });
+      });
     });
-
-    afterAll(async () => {
-      await app.close();
-    });
-
-    describe('Tool Listing', () => {
-      // NOTE: native @UseGuards run at CALL time, not list time, so guarded
-      // tools remain visible in listings regardless of auth. We assert the
-      // public tool is always listed; access control is verified at call time
-      // in the "Tool Execution" block below.
-      it('should list the public tool (and guarded tools) when unauthenticated', async () => {
-        const client = await createClient(testPort);
-
-        const tools = await client.listTools();
-        const toolNames = tools.tools.map((t) => t.name);
-
-        expect(toolNames).toContain('public-tool');
-        // Guarded tools are still visible — native guards gate at call time.
-        expect(toolNames).toContain('authenticated-tool');
-        expect(toolNames).toContain('admin-tool');
-
-        await client.close();
-      });
-
-      it('should list tools for an authenticated user', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-
-        const tools = await client.listTools();
-        const toolNames = tools.tools.map((t) => t.name);
-
-        expect(toolNames).toContain('public-tool');
-        expect(toolNames).toContain('authenticated-tool');
-        expect(toolNames).toContain('guarded-with-args');
-
-        await client.close();
-      });
-
-      it('should list all tools for admin user', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer admin-token',
-        });
-
-        const tools = await client.listTools();
-        const toolNames = tools.tools.map((t) => t.name);
-
-        // Native guards never filter listings, so every tool is visible.
-        expect(toolNames).toContain('public-tool');
-        expect(toolNames).toContain('authenticated-tool');
-        expect(toolNames).toContain('admin-tool');
-        expect(toolNames).toContain('multi-guard-tool');
-        expect(toolNames).toContain('async-guard-tool');
-        expect(toolNames).toContain('guarded-with-args');
-
-        await client.close();
-      });
-    });
-
-    describe('Tool Execution', () => {
-      it('should allow calling unguarded tools without auth', async () => {
-        const client = await createClient(testPort);
-
-        const result = await client.callTool({
-          name: 'public-tool',
-          arguments: {},
-        });
-
-        expect(
-          (result.content as { type: string; text: string }[])[0].text,
-        ).toBe('Public tool executed');
-
-        await client.close();
-      });
-
-      it('should deny execution of guarded tools without auth', async () => {
-        const client = await createClient(testPort);
-
-        const result: any = await client.callTool({
-          name: 'authenticated-tool',
-          arguments: {},
-        });
-        expect(result.isError).toBe(true);
-
-        await client.close();
-      });
-
-      it('should allow execution of guarded tools with proper auth', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-
-        const result = await client.callTool({
-          name: 'authenticated-tool',
-          arguments: {},
-        });
-
-        expect(
-          (result.content as { type: string; text: string }[])[0].text,
-        ).toBe('Authenticated tool executed');
-
-        await client.close();
-      });
-
-      it('should deny admin tools to regular users', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-
-        const result: any = await client.callTool({
-          name: 'admin-tool',
-          arguments: {},
-        });
-        expect(result.isError).toBe(true);
-
-        await client.close();
-      });
-
-      it('should allow admin tools to admin users', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer admin-token',
-        });
-
-        const result = await client.callTool({
-          name: 'admin-tool',
-          arguments: {},
-        });
-
-        expect(
-          (result.content as { type: string; text: string }[])[0].text,
-        ).toBe('Admin tool executed');
-
-        await client.close();
-      });
-
-      it('should require ALL guards to pass for multi-guard tools', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-
-        const result: any = await client.callTool({
-          name: 'multi-guard-tool',
-          arguments: {},
-        });
-        expect(result.isError).toBe(true);
-
-        await client.close();
-      });
-
-      it('should allow multi-guard tools when all guards pass', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer admin-token',
-        });
-
-        const result = await client.callTool({
-          name: 'multi-guard-tool',
-          arguments: {},
-        });
-
-        expect(
-          (result.content as { type: string; text: string }[])[0].text,
-        ).toBe('Multi-guard tool executed');
-
-        await client.close();
-      });
-
-      it('should support async guards', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer async-token',
-        });
-
-        const result = await client.callTool({
-          name: 'async-guard-tool',
-          arguments: {},
-        });
-
-        expect(
-          (result.content as { type: string; text: string }[])[0].text,
-        ).toBe('Async guard tool executed');
-
-        await client.close();
-      });
-
-      it('should deny async guard tools for non-async-allowed users', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-
-        const result: any = await client.callTool({
-          name: 'async-guard-tool',
-          arguments: {},
-        });
-        expect(result.isError).toBe(true);
-
-        await client.close();
-      });
-
-      it('should support Reflector-based guards reading method metadata', async () => {
-        const adminClient = await createClient(testPort, {
-          Authorization: 'Bearer admin-token',
-        });
-        const adminResult = await adminClient.callTool({
-          name: 'reflector-guard-tool',
-          arguments: {},
-        });
-        expect(
-          (adminResult.content as { type: string; text: string }[])[0].text,
-        ).toBe('Reflector guard tool executed');
-        await adminClient.close();
-
-        const userClient = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-        const userResult: any = await userClient.callTool({
-          name: 'reflector-guard-tool',
-          arguments: {},
-        });
-        expect(userResult.isError).toBe(true);
-        await userClient.close();
-      });
-
-      it('should deny execution when a guard throws (unavailable context method)', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer admin-token',
-        });
-
-        const result: any = await client.callTool({
-          name: 'bad-guard-tool',
-          arguments: {},
-        });
-        // The guard throws, so the call is denied rather than executing.
-        expect(result.isError).toBe(true);
-        expect(
-          (result.content as { type: string; text: string }[])[0].text,
-        ).not.toBe('Should never execute');
-
-        await client.close();
-      });
-
-      it('should pass arguments correctly to guarded tools', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-
-        const result = await client.callTool({
-          name: 'guarded-with-args',
-          arguments: { message: 'hello world' },
-        });
-
-        expect(
-          (result.content as { type: string; text: string }[])[0].text,
-        ).toBe('Echo: hello world');
-
-        await client.close();
-      });
-    });
-
-    describe('Guard access to tool arguments (RPC payload)', () => {
-      it('should list ownership-guarded tool', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-
-        const tools = await client.listTools();
-        const toolNames = tools.tools.map((t) => t.name);
-        expect(toolNames).toContain('ownership-tool');
-
-        await client.close();
-      });
-
-      it('should allow execution when user owns the entity', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-
-        const result = await client.callTool({
-          name: 'ownership-tool',
-          arguments: { ownerId: 'user-1', title: 'My Recipe' },
-        });
-
-        expect(
-          (result.content as { type: string; text: string }[])[0].text,
-        ).toBe('Updated: My Recipe (owner: user-1)');
-
-        await client.close();
-      });
-
-      it('should deny execution when user does not own the entity', async () => {
-        const client = await createClient(testPort, {
-          Authorization: 'Bearer user-token',
-        });
-
-        const result: any = await client.callTool({
-          name: 'ownership-tool',
-          arguments: { ownerId: 'someone-else', title: 'Not My Recipe' },
-        });
-        expect(result.isError).toBe(true);
-
-        await client.close();
-      });
-    });
-  });
-});
+  },
+);

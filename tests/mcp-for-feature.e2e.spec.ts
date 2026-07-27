@@ -177,175 +177,186 @@ async function bootstrapServer(config: {
   return { app, port };
 }
 
-describe.each(ERAS)('E2E: feature-module grouping (Streamable HTTP) (%s era)', (era) => {
-  let mainApp: INestApplication;
-  let analyticsApp: INestApplication;
-  let combinedApp: INestApplication;
-  let mainPort: number;
-  let analyticsPort: number;
-  let combinedPort: number;
+describe.each(ERAS)(
+  'E2E: feature-module grouping (Streamable HTTP) (%s era)',
+  (era) => {
+    let mainApp: INestApplication;
+    let analyticsApp: INestApplication;
+    let combinedApp: INestApplication;
+    let mainPort: number;
+    let analyticsPort: number;
+    let combinedPort: number;
 
-  jest.setTimeout(15000);
+    jest.setTimeout(15000);
 
-  beforeAll(async () => {
-    // Main server: user + order tools, plus a resource and a prompt, grouped
-    // into two feature modules imported into the app.
-    const main = await bootstrapServer({
-      name: 'main-server',
-      imports: [UserOrderFeatureModule, ResourcePromptFeatureModule],
-    });
-    mainApp = main.app;
-    mainPort = main.port;
+    beforeAll(async () => {
+      // Main server: user + order tools, plus a resource and a prompt, grouped
+      // into two feature modules imported into the app.
+      const main = await bootstrapServer({
+        name: 'main-server',
+        imports: [UserOrderFeatureModule, ResourcePromptFeatureModule],
+      });
+      mainApp = main.app;
+      mainPort = main.port;
 
-    // Analytics server: only the analytics feature module.
-    const analytics = await bootstrapServer({
-      name: 'analytics-server',
-      imports: [AnalyticsFeatureModule],
-    });
-    analyticsApp = analytics.app;
-    analyticsPort = analytics.port;
+      // Analytics server: only the analytics feature module.
+      const analytics = await bootstrapServer({
+        name: 'analytics-server',
+        imports: [AnalyticsFeatureModule],
+      });
+      analyticsApp = analytics.app;
+      analyticsPort = analytics.port;
 
-    // Combined server: the user/order feature module only.
-    const combined = await bootstrapServer({
-      name: 'combined-server',
-      imports: [UserOrderFeatureModule],
-    });
-    combinedApp = combined.app;
-    combinedPort = combined.port;
-  });
-
-  afterAll(async () => {
-    await mainApp.close();
-    await analyticsApp.close();
-    await combinedApp.close();
-  });
-
-  describe('Main Server - Should have user and order capabilities', () => {
-    it('should list user and order tools registered for the server', async () => {
-      const client = await createEraClient(era, mainPort);
-      try {
-        const tools = await client.listTools();
-
-        expect(tools.tools.find((t) => t.name === 'get-user')).toBeDefined();
-        expect(tools.tools.find((t) => t.name === 'list-users')).toBeDefined();
-        expect(tools.tools.find((t) => t.name === 'get-order')).toBeDefined();
-
-        // Should NOT have analytics tools (registered to a different server)
-        expect(
-          tools.tools.find((t) => t.name === 'get-analytics'),
-        ).toBeUndefined();
-      } finally {
-        await client.close();
-      }
+      // Combined server: the user/order feature module only.
+      const combined = await bootstrapServer({
+        name: 'combined-server',
+        imports: [UserOrderFeatureModule],
+      });
+      combinedApp = combined.app;
+      combinedPort = combined.port;
     });
 
-    it('should call tools registered for the server', async () => {
-      const client = await createEraClient(era, mainPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'get-user',
-          arguments: { id: '123' },
-        });
-
-        const user = JSON.parse(result.content[0].text);
-        expect(user.id).toBe('123');
-        expect(user.name).toBe('User 123');
-      } finally {
-        await client.close();
-      }
+    afterAll(async () => {
+      await mainApp.close();
+      await analyticsApp.close();
+      await combinedApp.close();
     });
 
-    it('should have resources registered for the server', async () => {
-      const client = await createEraClient(era, mainPort);
-      try {
-        const resources = await client.listResources();
-        expect(
-          resources.resources.find((r) => r.name === 'feature-config'),
-        ).toBeDefined();
-      } finally {
-        await client.close();
-      }
+    describe('Main Server - Should have user and order capabilities', () => {
+      it('should list user and order tools registered for the server', async () => {
+        const client = await createEraClient(era, mainPort);
+        try {
+          const tools = await client.listTools();
+
+          expect(tools.tools.find((t) => t.name === 'get-user')).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'list-users'),
+          ).toBeDefined();
+          expect(tools.tools.find((t) => t.name === 'get-order')).toBeDefined();
+
+          // Should NOT have analytics tools (registered to a different server)
+          expect(
+            tools.tools.find((t) => t.name === 'get-analytics'),
+          ).toBeUndefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should call tools registered for the server', async () => {
+        const client = await createEraClient(era, mainPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'get-user',
+            arguments: { id: '123' },
+          });
+
+          const user = JSON.parse(result.content[0].text);
+          expect(user.id).toBe('123');
+          expect(user.name).toBe('User 123');
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should have resources registered for the server', async () => {
+        const client = await createEraClient(era, mainPort);
+        try {
+          const resources = await client.listResources();
+          expect(
+            resources.resources.find((r) => r.name === 'feature-config'),
+          ).toBeDefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should have prompts registered for the server', async () => {
+        const client = await createEraClient(era, mainPort);
+        try {
+          const prompts = await client.listPrompts();
+          expect(
+            prompts.prompts.find((p) => p.name === 'feature-prompt'),
+          ).toBeDefined();
+        } finally {
+          await client.close();
+        }
+      });
     });
 
-    it('should have prompts registered for the server', async () => {
-      const client = await createEraClient(era, mainPort);
-      try {
-        const prompts = await client.listPrompts();
-        expect(
-          prompts.prompts.find((p) => p.name === 'feature-prompt'),
-        ).toBeDefined();
-      } finally {
-        await client.close();
-      }
+    describe('Analytics Server - Should have analytics tools only', () => {
+      it('should list only analytics tools', async () => {
+        const client = await createEraClient(era, analyticsPort);
+        try {
+          const tools = await client.listTools();
+
+          expect(
+            tools.tools.find((t) => t.name === 'get-analytics'),
+          ).toBeDefined();
+
+          // Should NOT have user/order tools
+          expect(
+            tools.tools.find((t) => t.name === 'get-user'),
+          ).toBeUndefined();
+          expect(
+            tools.tools.find((t) => t.name === 'list-users'),
+          ).toBeUndefined();
+          expect(
+            tools.tools.find((t) => t.name === 'get-order'),
+          ).toBeUndefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should call analytics tool', async () => {
+        const client = await createEraClient(era, analyticsPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'get-analytics',
+            arguments: {},
+          });
+
+          expect(result.content[0].text).toBe('Analytics data: 1000 visits');
+        } finally {
+          await client.close();
+        }
+      });
     });
-  });
 
-  describe('Analytics Server - Should have analytics tools only', () => {
-    it('should list only analytics tools', async () => {
-      const client = await createEraClient(era, analyticsPort);
-      try {
-        const tools = await client.listTools();
+    describe('Combined Feature Module - Multiple providers in single forFeature call', () => {
+      it('should list tools from multiple capability classes grouped in single forFeature', async () => {
+        const client = await createEraClient(era, combinedPort);
+        try {
+          const tools = await client.listTools();
 
-        expect(
-          tools.tools.find((t) => t.name === 'get-analytics'),
-        ).toBeDefined();
+          expect(tools.tools.find((t) => t.name === 'get-user')).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'list-users'),
+          ).toBeDefined();
+          expect(tools.tools.find((t) => t.name === 'get-order')).toBeDefined();
 
-        // Should NOT have user/order tools
-        expect(tools.tools.find((t) => t.name === 'get-user')).toBeUndefined();
-        expect(
-          tools.tools.find((t) => t.name === 'list-users'),
-        ).toBeUndefined();
-        expect(tools.tools.find((t) => t.name === 'get-order')).toBeUndefined();
-      } finally {
-        await client.close();
-      }
+          // Verify exact count
+          expect(tools.tools.length).toBe(3);
+        } finally {
+          await client.close();
+        }
+      });
     });
 
-    it('should call analytics tool', async () => {
-      const client = await createEraClient(era, analyticsPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'get-analytics',
-          arguments: {},
-        });
+    describe('Server isolation - capabilities go to correct server', () => {
+      it('should not register analytics tools on the main server', async () => {
+        const client = await createEraClient(era, mainPort);
+        try {
+          const tools = await client.listTools();
 
-        expect(result.content[0].text).toBe('Analytics data: 1000 visits');
-      } finally {
-        await client.close();
-      }
+          expect(
+            tools.tools.find((t) => t.name === 'get-analytics'),
+          ).toBeUndefined();
+        } finally {
+          await client.close();
+        }
+      });
     });
-  });
-
-  describe('Combined Feature Module - Multiple providers in single forFeature call', () => {
-    it('should list tools from multiple capability classes grouped in single forFeature', async () => {
-      const client = await createEraClient(era, combinedPort);
-      try {
-        const tools = await client.listTools();
-
-        expect(tools.tools.find((t) => t.name === 'get-user')).toBeDefined();
-        expect(tools.tools.find((t) => t.name === 'list-users')).toBeDefined();
-        expect(tools.tools.find((t) => t.name === 'get-order')).toBeDefined();
-
-        // Verify exact count
-        expect(tools.tools.length).toBe(3);
-      } finally {
-        await client.close();
-      }
-    });
-  });
-
-  describe('Server isolation - capabilities go to correct server', () => {
-    it('should not register analytics tools on the main server', async () => {
-      const client = await createEraClient(era, mainPort);
-      try {
-        const tools = await client.listTools();
-
-        expect(
-          tools.tools.find((t) => t.name === 'get-analytics'),
-        ).toBeUndefined();
-      } finally {
-        await client.close();
-      }
-    });
-  });
-});
+  },
+);

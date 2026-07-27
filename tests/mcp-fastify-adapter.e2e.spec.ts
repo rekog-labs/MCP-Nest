@@ -1,5 +1,13 @@
-import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/core";
-import { Progress, Client, CallToolRequest, ListToolsRequest } from "@modelcontextprotocol/client";
+import {
+  CallToolResultSchema,
+  ListToolsResultSchema,
+} from '@modelcontextprotocol/core';
+import {
+  Progress,
+  Client,
+  CallToolRequest,
+  ListToolsRequest,
+} from '@modelcontextprotocol/client';
 import { INestApplication, Injectable, Scope } from '@nestjs/common';
 import { Ctx, Payload } from '@nestjs/microservices';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -324,24 +332,20 @@ describe.each(ERAS)('E2E: Fastify HTTP Adapter Support (%s era)', (era) => {
 
       // Make two requests with different test IDs
       const [result1, result2] = await Promise.all([
-        client.request(
-          {
-            method: 'tools/call',
-            params: {
-              name: 'request-scope-test',
-              arguments: { testId: testId1 },
-            },
-          }
-        ),
-        client.request(
-          {
-            method: 'tools/call',
-            params: {
-              name: 'request-scope-test',
-              arguments: { testId: testId2 },
-            },
-          }
-        ),
+        client.request({
+          method: 'tools/call',
+          params: {
+            name: 'request-scope-test',
+            arguments: { testId: testId1 },
+          },
+        }),
+        client.request({
+          method: 'tools/call',
+          params: {
+            name: 'request-scope-test',
+            arguments: { testId: testId2 },
+          },
+        }),
       ]);
 
       expect(result1.content[0]).toHaveProperty('text');
@@ -385,24 +389,20 @@ describe.each(ERAS)('E2E: Fastify HTTP Adapter Support (%s era)', (era) => {
         const testArgs = { name: 'Compatibility Test' };
 
         const [expressResult, fastifyResult] = await Promise.all([
-          expressClient.request(
-            {
-              method: 'tools/call',
-              params: {
-                name: 'fastify-hello-world',
-                arguments: testArgs,
-              },
-            }
-          ),
-          fastifyClient.request(
-            {
-              method: 'tools/call',
-              params: {
-                name: 'fastify-hello-world',
-                arguments: testArgs,
-              },
-            }
-          ),
+          expressClient.request({
+            method: 'tools/call',
+            params: {
+              name: 'fastify-hello-world',
+              arguments: testArgs,
+            },
+          }),
+          fastifyClient.request({
+            method: 'tools/call',
+            params: {
+              name: 'fastify-hello-world',
+              arguments: testArgs,
+            },
+          }),
         ]);
 
         // Both should return the same type of response structure
@@ -431,18 +431,14 @@ describe.each(ERAS)('E2E: Fastify HTTP Adapter Support (%s era)', (era) => {
 
       try {
         const [expressTools, fastifyTools] = await Promise.all([
-          expressClient.request(
-            {
-              method: 'tools/list',
-              params: {},
-            }
-          ),
-          fastifyClient.request(
-            {
-              method: 'tools/list',
-              params: {},
-            }
-          ),
+          expressClient.request({
+            method: 'tools/list',
+            params: {},
+          }),
+          fastifyClient.request({
+            method: 'tools/list',
+            params: {},
+          }),
         ]);
 
         // Both should have the same tools available

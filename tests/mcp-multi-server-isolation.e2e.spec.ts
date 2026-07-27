@@ -89,105 +89,108 @@ function textOf(result: any): string {
   return (result.content as Array<{ type: string; text: string }>)[0].text;
 }
 
-describe.each(ERAS)('E2E: Multiple isolated MCP servers (domains) in one app (%s era)', (era) => {
-  let app: INestApplication;
-  let port: number;
+describe.each(ERAS)(
+  'E2E: Multiple isolated MCP servers (domains) in one app (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let port: number;
 
-  beforeAll(async () => {
-    const weatherStrategy = new McpStrategy({
-      name: 'weather',
-      version: '0.0.1',
-      server: 'weather',
-      transports: [
-        new StreamableHttpTransport({
-          endpoint: '/weather/mcp',
-          statefulMode: true,
-        }),
-      ],
-    });
-
-    const travelStrategy = new McpStrategy({
-      name: 'travel',
-      version: '0.0.1',
-      server: 'travel',
-      transports: [
-        new StreamableHttpTransport({
-          endpoint: '/travel/mcp',
-          statefulMode: true,
-        }),
-      ],
-    });
-
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [MultiServerModule],
-    }).compile();
-
-    // One HTTP adapter shared by both strategies; each mounts its own endpoint.
-    app = moduleFixture.createNestApplication();
-    weatherStrategy.setHttpAdapter(app.getHttpAdapter());
-    travelStrategy.setHttpAdapter(app.getHttpAdapter());
-    app.connectMicroservice({ strategy: weatherStrategy });
-    app.connectMicroservice({ strategy: travelStrategy });
-    await app.startAllMicroservices();
-    await app.listen(0);
-    port = (app.getHttpServer().address() as { port: number }).port;
-  });
-
-  afterAll(async () => {
-    await app?.close();
-  });
-
-  it('exposes only the weather domain tools on the weather endpoint', async () => {
-    const client = await createEraClient(era, port, {
-      endpoint: '/weather/mcp',
-    });
-    try {
-      const { tools } = await client.listTools();
-      const names = tools.map((t) => t.name).sort();
-      expect(names).toEqual(['server-status', 'weather-only']);
-      expect(names).not.toContain('travel-only');
-    } finally {
-      await client.close();
-    }
-  });
-
-  it('exposes only the travel domain tools on the travel endpoint', async () => {
-    const client = await createEraClient(era, port, {
-      endpoint: '/travel/mcp',
-    });
-    try {
-      const { tools } = await client.listTools();
-      const names = tools.map((t) => t.name).sort();
-      expect(names).toEqual(['server-status', 'travel-only']);
-      expect(names).not.toContain('weather-only');
-    } finally {
-      await client.close();
-    }
-  });
-
-  it('maps the shared tool NAME to the correct per-server handler', async () => {
-    const weatherClient = await createEraClient(era, port, {
-      endpoint: '/weather/mcp',
-    });
-    const travelClient = await createEraClient(era, port, {
-      endpoint: '/travel/mcp',
-    });
-    try {
-      const weatherResult = await weatherClient.callTool({
-        name: 'server-status',
-        arguments: {},
+    beforeAll(async () => {
+      const weatherStrategy = new McpStrategy({
+        name: 'weather',
+        version: '0.0.1',
+        server: 'weather',
+        transports: [
+          new StreamableHttpTransport({
+            endpoint: '/weather/mcp',
+            statefulMode: true,
+          }),
+        ],
       });
-      const travelResult = await travelClient.callTool({
-        name: 'server-status',
-        arguments: {},
+
+      const travelStrategy = new McpStrategy({
+        name: 'travel',
+        version: '0.0.1',
+        server: 'travel',
+        transports: [
+          new StreamableHttpTransport({
+            endpoint: '/travel/mcp',
+            statefulMode: true,
+          }),
+        ],
       });
-      // Each `server-status` runs its own server's handler, which delegates to
-      // the shared StatusService — proving both routing isolation and DI reuse.
-      expect(textOf(weatherResult)).toBe('ok from weather');
-      expect(textOf(travelResult)).toBe('ok from travel');
-    } finally {
-      await weatherClient.close();
-      await travelClient.close();
-    }
-  });
-});
+
+      const moduleFixture: TestingModule = await Test.createTestingModule({
+        imports: [MultiServerModule],
+      }).compile();
+
+      // One HTTP adapter shared by both strategies; each mounts its own endpoint.
+      app = moduleFixture.createNestApplication();
+      weatherStrategy.setHttpAdapter(app.getHttpAdapter());
+      travelStrategy.setHttpAdapter(app.getHttpAdapter());
+      app.connectMicroservice({ strategy: weatherStrategy });
+      app.connectMicroservice({ strategy: travelStrategy });
+      await app.startAllMicroservices();
+      await app.listen(0);
+      port = (app.getHttpServer().address() as { port: number }).port;
+    });
+
+    afterAll(async () => {
+      await app?.close();
+    });
+
+    it('exposes only the weather domain tools on the weather endpoint', async () => {
+      const client = await createEraClient(era, port, {
+        endpoint: '/weather/mcp',
+      });
+      try {
+        const { tools } = await client.listTools();
+        const names = tools.map((t) => t.name).sort();
+        expect(names).toEqual(['server-status', 'weather-only']);
+        expect(names).not.toContain('travel-only');
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('exposes only the travel domain tools on the travel endpoint', async () => {
+      const client = await createEraClient(era, port, {
+        endpoint: '/travel/mcp',
+      });
+      try {
+        const { tools } = await client.listTools();
+        const names = tools.map((t) => t.name).sort();
+        expect(names).toEqual(['server-status', 'travel-only']);
+        expect(names).not.toContain('weather-only');
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('maps the shared tool NAME to the correct per-server handler', async () => {
+      const weatherClient = await createEraClient(era, port, {
+        endpoint: '/weather/mcp',
+      });
+      const travelClient = await createEraClient(era, port, {
+        endpoint: '/travel/mcp',
+      });
+      try {
+        const weatherResult = await weatherClient.callTool({
+          name: 'server-status',
+          arguments: {},
+        });
+        const travelResult = await travelClient.callTool({
+          name: 'server-status',
+          arguments: {},
+        });
+        // Each `server-status` runs its own server's handler, which delegates to
+        // the shared StatusService — proving both routing isolation and DI reuse.
+        expect(textOf(weatherResult)).toBe('ok from weather');
+        expect(textOf(travelResult)).toBe('ok from travel');
+      } finally {
+        await weatherClient.close();
+        await travelClient.close();
+      }
+    });
+  },
+);

@@ -141,9 +141,7 @@ function pkcePair(): { verifier: string; challenge: string } {
 }
 
 function cookieHeader(response: request.Response): string {
-  const raw = response.headers['set-cookie'] as unknown as
-    | string[]
-    | undefined;
+  const raw = response.headers['set-cookie'] as unknown as string[] | undefined;
   return (raw ?? []).map((c) => c.split(';')[0]).join('; ');
 }
 
@@ -652,7 +650,9 @@ describe('E2E: OAuth consent screen', () => {
         );
         // Consent was never asked for in the options — CIMD implied it.
         expect(callbackResponse.status).toBe(200);
-        expect(callbackResponse.text).toContain('Authorization code will be sent to');
+        expect(callbackResponse.text).toContain(
+          'Authorization code will be sent to',
+        );
       } finally {
         await harness.app.close();
       }

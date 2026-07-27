@@ -19,11 +19,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import {
-  McpController,
-  McpHttpControllerFor,
-  Tool,
-} from '@rekog/mcp-nest';
+import { McpController, McpHttpControllerFor, Tool } from '@rekog/mcp-nest';
 import type { Context } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, StreamableHttpTransport } from './utils';
 
@@ -53,9 +49,7 @@ class WhoAmITool {
   whoami(@Payload() _args: unknown, @Ctx() context: Context) {
     const raw = (context as any).getRawRequest();
     return {
-      content: [
-        { type: 'text', text: JSON.stringify(raw?.user ?? null) },
-      ],
+      content: [{ type: 'text', text: JSON.stringify(raw?.user ?? null) }],
     };
   }
 }
@@ -91,9 +85,12 @@ function modernClient(token: string): Promise<Client> {
   );
   return client
     .connect(
-      new StreamableHTTPClientTransport(new URL(`http://localhost:${port}/mcp`), {
-        requestInit: { headers: { Authorization: token } },
-      }),
+      new StreamableHTTPClientTransport(
+        new URL(`http://localhost:${port}/mcp`),
+        {
+          requestInit: { headers: { Authorization: token } },
+        },
+      ),
     )
     .then(() => client);
 }
@@ -102,7 +99,10 @@ describe('modern era — NestJS guards and request context', () => {
   it('reaches the tool with req.user set by the guard', async () => {
     const client = await modernClient('Bearer good-token');
 
-    const result: any = await client.callTool({ name: 'whoami', arguments: {} });
+    const result: any = await client.callTool({
+      name: 'whoami',
+      arguments: {},
+    });
     const user = JSON.parse(result.content[0].text);
 
     expect(user).not.toBeNull();
@@ -119,12 +119,18 @@ describe('modern era — NestJS guards and request context', () => {
   it('applies the same guard to legacy clients on the same endpoint', async () => {
     const legacy = new Client({ name: 'legacy-auth-client', version: '1.0.0' });
     await legacy.connect(
-      new StreamableHTTPClientTransport(new URL(`http://localhost:${port}/mcp`), {
-        requestInit: { headers: { Authorization: 'Bearer good-token' } },
-      }),
+      new StreamableHTTPClientTransport(
+        new URL(`http://localhost:${port}/mcp`),
+        {
+          requestInit: { headers: { Authorization: 'Bearer good-token' } },
+        },
+      ),
     );
 
-    const result: any = await legacy.callTool({ name: 'whoami', arguments: {} });
+    const result: any = await legacy.callTool({
+      name: 'whoami',
+      arguments: {},
+    });
     expect(JSON.parse(result.content[0].text).id).toBe('user-7');
 
     await legacy.close();

@@ -197,16 +197,12 @@ function pkcePair(): { verifier: string; challenge: string } {
 
 /** Collapse a `set-cookie` header into something re-sendable as `Cookie`. */
 function cookieHeader(response: request.Response): string {
-  const raw = response.headers['set-cookie'] as unknown as
-    | string[]
-    | undefined;
+  const raw = response.headers['set-cookie'] as unknown as string[] | undefined;
   return (raw ?? []).map((c) => c.split(';')[0]).join('; ');
 }
 
 function cookieValue(response: request.Response, name: string): string {
-  const raw = response.headers['set-cookie'] as unknown as
-    | string[]
-    | undefined;
+  const raw = response.headers['set-cookie'] as unknown as string[] | undefined;
   const match = (raw ?? []).find((c) => c.startsWith(`${name}=`));
   return decodeURIComponent(match!.split(';')[0].slice(name.length + 1));
 }
@@ -735,9 +731,9 @@ describe('E2E: OAuth authorization security', () => {
         })
         .expect(302);
 
-      expect(
-        new URL(response.headers.location).searchParams.get('error'),
-      ).toBe('unsupported_response_type');
+      expect(new URL(response.headers.location).searchParams.get('error')).toBe(
+        'unsupported_response_type',
+      );
     });
 
     it('completes the handshake with a conforming S256 challenge', async () => {

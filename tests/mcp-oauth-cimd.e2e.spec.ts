@@ -227,16 +227,12 @@ function pkcePair(): { verifier: string; challenge: string } {
 }
 
 function cookieHeader(response: request.Response): string {
-  const raw = response.headers['set-cookie'] as unknown as
-    | string[]
-    | undefined;
+  const raw = response.headers['set-cookie'] as unknown as string[] | undefined;
   return (raw ?? []).map((c) => c.split(';')[0]).join('; ');
 }
 
 function cookieValue(response: request.Response, name: string): string {
-  const raw = response.headers['set-cookie'] as unknown as
-    | string[]
-    | undefined;
+  const raw = response.headers['set-cookie'] as unknown as string[] | undefined;
   const match = (raw ?? []).find((c) => c.startsWith(`${name}=`));
   return decodeURIComponent(match!.split(';')[0].slice(name.length + 1));
 }
@@ -333,7 +329,10 @@ describe('E2E: OAuth Client ID Metadata Documents', () => {
     });
 
     it('fetches the document exactly once and then serves it from cache', async () => {
-      const clientId = docs.serveDocument('/cached/client.json', validDocument());
+      const clientId = docs.serveDocument(
+        '/cached/client.json',
+        validDocument(),
+      );
 
       await authorize(harness.app, clientId).expect(302);
       expect(docs.hits('/cached/client.json')).toBe(1);
@@ -617,7 +616,9 @@ describe('E2E: OAuth Client ID Metadata Documents', () => {
       // Port 1 on loopback: nothing listens, so this is a connection error rather
       // than an HTTP one. Reachable only because the development hatch permits
       // loopback at all.
-      await authorize(harness.app, 'http://127.0.0.1:1/client.json').expect(400);
+      await authorize(harness.app, 'http://127.0.0.1:1/client.json').expect(
+        400,
+      );
     });
 
     it('caches neither an error response nor a malformed document', async () => {
@@ -760,7 +761,9 @@ describe('E2E: OAuth Client ID Metadata Documents', () => {
       // The consent screen names the client from its document, shows the
       // redirect-URI hostname (the MUST) and warns about loopback (the SHOULD).
       expect(consentPage.text).toContain('Example MCP Client');
-      expect(consentPage.text).toContain('<span class="value">127.0.0.1</span>');
+      expect(consentPage.text).toContain(
+        '<span class="value">127.0.0.1</span>',
+      );
       expect(consentPage.text).toContain('is a loopback address');
       // And it says the name came from a document anyone may reference.
       expect(consentPage.text).toContain(

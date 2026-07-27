@@ -1,4 +1,4 @@
-import { Progress, Client } from "@modelcontextprotocol/client";
+import { Progress, Client } from '@modelcontextprotocol/client';
 import { INestApplication, Injectable, Scope } from '@nestjs/common';
 import { Ctx, Payload, RpcException } from '@nestjs/microservices';
 import { z } from 'zod';
@@ -706,20 +706,20 @@ describe('E2E: MCP ToolServer', () => {
   describe.each(ERAS)(
     'Elicitation with non-elicitation clients (%s era)',
     (era) => {
-    it('falls back gracefully when client lacks elicitation capability', async () => {
-      const client = await createEraClient(era, statefulServerPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'hello-world-elicitation',
-          arguments: { name: 'TestUser' },
-        });
-        expect(result.content[0].text).toContain(
-          'Elicitation is not supported by the client',
-        );
-      } finally {
-        await client.close();
-      }
-    });
+      it('falls back gracefully when client lacks elicitation capability', async () => {
+        const client = await createEraClient(era, statefulServerPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'hello-world-elicitation',
+            arguments: { name: 'TestUser' },
+          });
+          expect(result.content[0].text).toContain(
+            'Elicitation is not supported by the client',
+          );
+        } finally {
+          await client.close();
+        }
+      });
     },
   );
 

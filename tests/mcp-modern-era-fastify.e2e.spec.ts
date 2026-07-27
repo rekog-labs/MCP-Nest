@@ -94,7 +94,10 @@ describe('modern era on Fastify', () => {
     const client = await modernClient();
 
     const tools = await client.listTools();
-    expect(tools.tools.map((t: any) => t.name).sort()).toEqual(['greet', 'work']);
+    expect(tools.tools.map((t: any) => t.name).sort()).toEqual([
+      'greet',
+      'work',
+    ]);
 
     const result: any = await client.callTool({
       name: 'greet',

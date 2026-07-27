@@ -88,7 +88,11 @@ class ModernCapabilities {
   config() {
     return {
       contents: [
-        { uri: 'mcp://config', mimeType: 'application/json', text: '{"ok":true}' },
+        {
+          uri: 'mcp://config',
+          mimeType: 'application/json',
+          text: '{"ok":true}',
+        },
       ],
     };
   }
@@ -102,7 +106,11 @@ class ModernCapabilities {
   user(@Payload() { id }: { id: string }) {
     return {
       contents: [
-        { uri: `mcp://users/${id}`, mimeType: 'application/json', text: `{"id":"${id}"}` },
+        {
+          uri: `mcp://users/${id}`,
+          mimeType: 'application/json',
+          text: `{"id":"${id}"}`,
+        },
       ],
     };
   }
@@ -115,7 +123,10 @@ class ModernCapabilities {
   intro(@Payload() { topic }: { topic: string }) {
     return {
       messages: [
-        { role: 'user', content: { type: 'text', text: `Tell me about ${topic}` } },
+        {
+          role: 'user',
+          content: { type: 'text', text: `Tell me about ${topic}` },
+        },
       ],
     };
   }
@@ -216,15 +227,17 @@ describe('modern era — capabilities', () => {
     const client = await createModernClient();
 
     const resources = await client.listResources();
-    expect(resources.resources.map((r: any) => r.uri)).toContain('mcp://config');
+    expect(resources.resources.map((r: any) => r.uri)).toContain(
+      'mcp://config',
+    );
 
     const read: any = await client.readResource({ uri: 'mcp://config' });
     expect(read.contents[0].text).toBe('{"ok":true}');
 
     const templates = await client.listResourceTemplates();
-    expect(templates.resourceTemplates.map((t: any) => t.uriTemplate)).toContain(
-      'mcp://users/{id}',
-    );
+    expect(
+      templates.resourceTemplates.map((t: any) => t.uriTemplate),
+    ).toContain('mcp://users/{id}');
 
     const templated: any = await client.readResource({ uri: 'mcp://users/42' });
     expect(templated.contents[0].text).toBe('{"id":"42"}');
@@ -243,7 +256,10 @@ describe('modern era — capabilities', () => {
 
   it('reports the request as sessionless and modern, with per-request client identity', async () => {
     const client = await createModernClient();
-    const result: any = await client.callTool({ name: 'whoami', arguments: {} });
+    const result: any = await client.callTool({
+      name: 'whoami',
+      arguments: {},
+    });
     const seen = JSON.parse(result.content[0].text);
 
     expect(seen.era).toBe('modern');
@@ -260,7 +276,12 @@ describe('modern era — capabilities', () => {
 describe('modern era — server/discover', () => {
   it('advertises the modern revision, capabilities and cache hints', async () => {
     const { status, json } = await rawPost(
-      { jsonrpc: '2.0', id: 1, method: 'server/discover', params: { _meta: envelope } },
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'server/discover',
+        params: { _meta: envelope },
+      },
       { 'MCP-Protocol-Version': MODERN, 'Mcp-Method': 'server/discover' },
     );
 
@@ -273,9 +294,9 @@ describe('modern era — server/discover', () => {
     expect(['public', 'private']).toContain(json.result.cacheScope);
     // Post spec-PR-#3002 identity lives in _meta, not the result body.
     expect(json.result.serverInfo).toBeUndefined();
-    expect(
-      json.result._meta['io.modelcontextprotocol/serverInfo'].name,
-    ).toBe('test-mcp-server');
+    expect(json.result._meta['io.modelcontextprotocol/serverInfo'].name).toBe(
+      'test-mcp-server',
+    );
   });
 });
 
@@ -323,7 +344,12 @@ describe('modern era — envelope validation', () => {
 
   it('rejects a header/body protocol version mismatch with -32020', async () => {
     const { status, json } = await rawPost(
-      { jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: envelope } },
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+        params: { _meta: envelope },
+      },
       { 'MCP-Protocol-Version': '2025-06-18', 'Mcp-Method': 'tools/list' },
     );
 
@@ -488,7 +514,9 @@ describe('dual-era serving', () => {
     // Default negotiation mode is 'legacy' — this is the 2025 handshake path.
     const legacy = new Client({ name: 'legacy-client', version: '1.0.0' });
     await legacy.connect(
-      new StreamableHTTPClientTransport(new URL(`http://localhost:${port}/mcp`)),
+      new StreamableHTTPClientTransport(
+        new URL(`http://localhost:${port}/mcp`),
+      ),
     );
 
     const modern = await createModernClient();
@@ -589,7 +617,9 @@ describe('modern era — subscriptions/listen', () => {
   it('acknowledges the subscription first, tagged with its id', async () => {
     const stream = await openListenStream({ toolsListChanged: true });
     expect(stream.res.status).toBe(200);
-    expect(stream.res.headers.get('content-type')).toContain('text/event-stream');
+    expect(stream.res.headers.get('content-type')).toContain(
+      'text/event-stream',
+    );
 
     const ack = await stream.next();
     // Spec: the ack MUST be the first message on the stream.
@@ -613,7 +643,9 @@ describe('modern era — subscriptions/listen', () => {
 
     const event = await stream.next();
     expect(event.method).toBe('notifications/tools/list_changed');
-    expect(event.params._meta['io.modelcontextprotocol/subscriptionId']).toBe(99);
+    expect(event.params._meta['io.modelcontextprotocol/subscriptionId']).toBe(
+      99,
+    );
 
     strategy.removeTool('late-arrival');
     await stream.close();

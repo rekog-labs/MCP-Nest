@@ -130,463 +130,476 @@ class OutputSchemaToolService implements OnModuleInit {
 // Tests
 // ============================================================================
 
-describe.each(ERAS)('E2E: Dynamic Tool Registration via McpStrategy (%s era)', (era) => {
-  describe('Basic Dynamic Tools', () => {
-    let app: INestApplication;
-    let serverPort: number;
+describe.each(ERAS)(
+  'E2E: Dynamic Tool Registration via McpStrategy (%s era)',
+  (era) => {
+    describe('Basic Dynamic Tools', () => {
+      let app: INestApplication;
+      let serverPort: number;
 
-    beforeAll(async () => {
-      const { app: a, port } = await bootstrapMcpApp({
-        name: 'basic-server',
-        controllers: [],
-        providers: [DynamicToolsService],
-      });
-      app = a;
-      serverPort = port;
-    });
-
-    afterAll(async () => {
-      await app.close();
-    });
-
-    it('should list dynamically registered tools', async () => {
-      const client = await createEraClient(era, serverPort);
-      try {
-        const tools = await client.listTools();
-
-        expect(
-          tools.tools.find((t) => t.name === 'search-knowledge'),
-        ).toBeDefined();
-        expect(
-          tools.tools.find((t) => t.name === 'get-collections'),
-        ).toBeDefined();
-
-        // Verify description includes dynamic content
-        const searchTool = tools.tools.find(
-          (t) => t.name === 'search-knowledge',
-        );
-        expect(searchTool?.description).toContain('documents, knowledge, faq');
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should execute dynamically registered tools', async () => {
-      const client = await createEraClient(era, serverPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'search-knowledge',
-          arguments: { query: 'test query', collection: 'documents' },
+      beforeAll(async () => {
+        const { app: a, port } = await bootstrapMcpApp({
+          name: 'basic-server',
+          controllers: [],
+          providers: [DynamicToolsService],
         });
+        app = a;
+        serverPort = port;
+      });
 
-        const parsed = JSON.parse(result.content[0].text);
-        expect(parsed.query).toBe('test query');
-        expect(parsed.collection).toBe('documents');
-        expect(parsed.results).toHaveLength(2);
-      } finally {
-        await client.close();
-      }
+      afterAll(async () => {
+        await app.close();
+      });
+
+      it('should list dynamically registered tools', async () => {
+        const client = await createEraClient(era, serverPort);
+        try {
+          const tools = await client.listTools();
+
+          expect(
+            tools.tools.find((t) => t.name === 'search-knowledge'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'get-collections'),
+          ).toBeDefined();
+
+          // Verify description includes dynamic content
+          const searchTool = tools.tools.find(
+            (t) => t.name === 'search-knowledge',
+          );
+          expect(searchTool?.description).toContain(
+            'documents, knowledge, faq',
+          );
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should execute dynamically registered tools', async () => {
+        const client = await createEraClient(era, serverPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'search-knowledge',
+            arguments: { query: 'test query', collection: 'documents' },
+          });
+
+          const parsed = JSON.parse(result.content[0].text);
+          expect(parsed.query).toBe('test query');
+          expect(parsed.collection).toBe('documents');
+          expect(parsed.results).toHaveLength(2);
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should execute dynamic tool without parameters', async () => {
+        const client = await createEraClient(era, serverPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'get-collections',
+            arguments: {},
+          });
+
+          const collections = JSON.parse(result.content[0].text);
+          expect(collections).toEqual(['documents', 'knowledge', 'faq']);
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should have correct input schema for dynamic tools', async () => {
+        const client = await createEraClient(era, serverPort);
+        try {
+          const tools = await client.listTools();
+          const searchTool = tools.tools.find(
+            (t) => t.name === 'search-knowledge',
+          );
+
+          expect(searchTool?.inputSchema).toBeDefined();
+          expect(searchTool?.inputSchema?.properties?.query).toBeDefined();
+          expect(searchTool?.inputSchema?.properties?.collection).toBeDefined();
+          expect(searchTool?.inputSchema?.properties?.limit).toBeDefined();
+        } finally {
+          await client.close();
+        }
+      });
     });
 
-    it('should execute dynamic tool without parameters', async () => {
-      const client = await createEraClient(era, serverPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'get-collections',
-          arguments: {},
+    describe('Mixed Mode (Decorator + Dynamic Tools)', () => {
+      let app: INestApplication;
+      let serverPort: number;
+
+      beforeAll(async () => {
+        const { app: a, port } = await bootstrapMcpApp({
+          name: 'mixed-server',
+          controllers: [StaticTools],
+          providers: [DynamicToolsService],
         });
-
-        const collections = JSON.parse(result.content[0].text);
-        expect(collections).toEqual(['documents', 'knowledge', 'faq']);
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should have correct input schema for dynamic tools', async () => {
-      const client = await createEraClient(era, serverPort);
-      try {
-        const tools = await client.listTools();
-        const searchTool = tools.tools.find(
-          (t) => t.name === 'search-knowledge',
-        );
-
-        expect(searchTool?.inputSchema).toBeDefined();
-        expect(searchTool?.inputSchema?.properties?.query).toBeDefined();
-        expect(searchTool?.inputSchema?.properties?.collection).toBeDefined();
-        expect(searchTool?.inputSchema?.properties?.limit).toBeDefined();
-      } finally {
-        await client.close();
-      }
-    });
-  });
-
-  describe('Mixed Mode (Decorator + Dynamic Tools)', () => {
-    let app: INestApplication;
-    let serverPort: number;
-
-    beforeAll(async () => {
-      const { app: a, port } = await bootstrapMcpApp({
-        name: 'mixed-server',
-        controllers: [StaticTools],
-        providers: [DynamicToolsService],
+        app = a;
+        serverPort = port;
       });
-      app = a;
-      serverPort = port;
+
+      afterAll(async () => {
+        await app.close();
+      });
+
+      it('should list both decorator and dynamic tools', async () => {
+        const client = await createEraClient(era, serverPort);
+        try {
+          const tools = await client.listTools();
+
+          // Dynamic tools
+          expect(
+            tools.tools.find((t) => t.name === 'search-knowledge'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'get-collections'),
+          ).toBeDefined();
+
+          // Decorator-based tool
+          expect(
+            tools.tools.find((t) => t.name === 'static-tool'),
+          ).toBeDefined();
+
+          expect(tools.tools.length).toBe(3);
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should execute decorator-based tool alongside dynamic tools', async () => {
+        const client = await createEraClient(era, serverPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'static-tool',
+            arguments: { input: 'hello' },
+          });
+
+          expect(result.content[0].text).toBe('Static result: hello');
+        } finally {
+          await client.close();
+        }
+      });
     });
 
-    afterAll(async () => {
-      await app.close();
-    });
+    describe('Output Schema Validation', () => {
+      let app: INestApplication;
+      let serverPort: number;
 
-    it('should list both decorator and dynamic tools', async () => {
-      const client = await createEraClient(era, serverPort);
-      try {
-        const tools = await client.listTools();
-
-        // Dynamic tools
-        expect(
-          tools.tools.find((t) => t.name === 'search-knowledge'),
-        ).toBeDefined();
-        expect(
-          tools.tools.find((t) => t.name === 'get-collections'),
-        ).toBeDefined();
-
-        // Decorator-based tool
-        expect(tools.tools.find((t) => t.name === 'static-tool')).toBeDefined();
-
-        expect(tools.tools.length).toBe(3);
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should execute decorator-based tool alongside dynamic tools', async () => {
-      const client = await createEraClient(era, serverPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'static-tool',
-          arguments: { input: 'hello' },
+      beforeAll(async () => {
+        const { app: a, port } = await bootstrapMcpApp({
+          name: 'output-schema-server',
+          controllers: [],
+          providers: [OutputSchemaToolService],
         });
-
-        expect(result.content[0].text).toBe('Static result: hello');
-      } finally {
-        await client.close();
-      }
-    });
-  });
-
-  describe('Output Schema Validation', () => {
-    let app: INestApplication;
-    let serverPort: number;
-
-    beforeAll(async () => {
-      const { app: a, port } = await bootstrapMcpApp({
-        name: 'output-schema-server',
-        controllers: [],
-        providers: [OutputSchemaToolService],
+        app = a;
+        serverPort = port;
       });
-      app = a;
-      serverPort = port;
+
+      afterAll(async () => {
+        await app.close();
+      });
+
+      it('should have outputSchema in tool listing', async () => {
+        const client = await createEraClient(era, serverPort);
+        try {
+          const tools = await client.listTools();
+          const tool = tools.tools.find(
+            (t) => t.name === 'structured-output-tool',
+          );
+
+          expect(tool?.outputSchema).toBeDefined();
+          expect(tool?.outputSchema?.properties?.id).toBeDefined();
+          expect(tool?.outputSchema?.properties?.name).toBeDefined();
+          expect(tool?.outputSchema?.properties?.active).toBeDefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should return structured content for tools with outputSchema', async () => {
+        const client = await createEraClient(era, serverPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'structured-output-tool',
+            arguments: { id: '123' },
+          });
+
+          // Should have structuredContent when outputSchema is defined
+          expect(result.structuredContent).toBeDefined();
+          expect(result.structuredContent.id).toBe('123');
+          expect(result.structuredContent.name).toBe('Item 123');
+          expect(result.structuredContent.active).toBe(true);
+        } finally {
+          await client.close();
+        }
+      });
     });
 
-    afterAll(async () => {
-      await app.close();
-    });
+    describe('Multi-Server Isolation', () => {
+      let app1: INestApplication;
+      let app2: INestApplication;
+      let port1: number;
+      let port2: number;
 
-    it('should have outputSchema in tool listing', async () => {
-      const client = await createEraClient(era, serverPort);
-      try {
-        const tools = await client.listTools();
-        const tool = tools.tools.find(
-          (t) => t.name === 'structured-output-tool',
-        );
-
-        expect(tool?.outputSchema).toBeDefined();
-        expect(tool?.outputSchema?.properties?.id).toBeDefined();
-        expect(tool?.outputSchema?.properties?.name).toBeDefined();
-        expect(tool?.outputSchema?.properties?.active).toBeDefined();
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should return structured content for tools with outputSchema', async () => {
-      const client = await createEraClient(era, serverPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'structured-output-tool',
-          arguments: { id: '123' },
+      beforeAll(async () => {
+        const server1 = await bootstrapMcpApp({
+          name: 'multi-server-1',
+          controllers: [],
         });
-
-        // Should have structuredContent when outputSchema is defined
-        expect(result.structuredContent).toBeDefined();
-        expect(result.structuredContent.id).toBe('123');
-        expect(result.structuredContent.name).toBe('Item 123');
-        expect(result.structuredContent.active).toBe(true);
-      } finally {
-        await client.close();
-      }
-    });
-  });
-
-  describe('Multi-Server Isolation', () => {
-    let app1: INestApplication;
-    let app2: INestApplication;
-    let port1: number;
-    let port2: number;
-
-    beforeAll(async () => {
-      const server1 = await bootstrapMcpApp({
-        name: 'multi-server-1',
-        controllers: [],
-      });
-      app1 = server1.app;
-      port1 = server1.port;
-      server1.strategy.registerTool({
-        name: 'server1-dynamic-tool',
-        description: 'Dynamic tool for server 1',
-        handler: async () => ({
-          content: [{ type: 'text', text: 'Server 1 dynamic' }],
-        }),
-      });
-
-      const server2 = await bootstrapMcpApp({
-        name: 'multi-server-2',
-        controllers: [],
-      });
-      app2 = server2.app;
-      port2 = server2.port;
-      server2.strategy.registerTool({
-        name: 'server2-dynamic-tool',
-        description: 'Dynamic tool for server 2',
-        handler: async () => ({
-          content: [{ type: 'text', text: 'Server 2 dynamic' }],
-        }),
-      });
-    });
-
-    afterAll(async () => {
-      await app1.close();
-      await app2.close();
-    });
-
-    it('should register dynamic tools to correct server (server 1)', async () => {
-      const client = await createEraClient(era, port1);
-      try {
-        const tools = await client.listTools();
-
-        expect(
-          tools.tools.find((t) => t.name === 'server1-dynamic-tool'),
-        ).toBeDefined();
-        expect(
-          tools.tools.find((t) => t.name === 'server2-dynamic-tool'),
-        ).toBeUndefined();
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should register dynamic tools to correct server (server 2)', async () => {
-      const client = await createEraClient(era, port2);
-      try {
-        const tools = await client.listTools();
-
-        expect(
-          tools.tools.find((t) => t.name === 'server2-dynamic-tool'),
-        ).toBeDefined();
-        expect(
-          tools.tools.find((t) => t.name === 'server1-dynamic-tool'),
-        ).toBeUndefined();
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should execute tools on their respective servers', async () => {
-      const client1 = await createEraClient(era, port1);
-      const client2 = await createEraClient(era, port2);
-
-      try {
-        const result1: any = await client1.callTool({
+        app1 = server1.app;
+        port1 = server1.port;
+        server1.strategy.registerTool({
           name: 'server1-dynamic-tool',
-          arguments: {},
+          description: 'Dynamic tool for server 1',
+          handler: async () => ({
+            content: [{ type: 'text', text: 'Server 1 dynamic' }],
+          }),
         });
-        expect(result1.content[0].text).toBe('Server 1 dynamic');
 
-        const result2: any = await client2.callTool({
+        const server2 = await bootstrapMcpApp({
+          name: 'multi-server-2',
+          controllers: [],
+        });
+        app2 = server2.app;
+        port2 = server2.port;
+        server2.strategy.registerTool({
           name: 'server2-dynamic-tool',
-          arguments: {},
+          description: 'Dynamic tool for server 2',
+          handler: async () => ({
+            content: [{ type: 'text', text: 'Server 2 dynamic' }],
+          }),
         });
-        expect(result2.content[0].text).toBe('Server 2 dynamic');
-      } finally {
-        await client1.close();
-        await client2.close();
-      }
-    });
-  });
-
-  describe('Deregistration', () => {
-    let app: INestApplication;
-    let serverPort: number;
-    let strategy: McpStrategy;
-
-    beforeAll(async () => {
-      const result = await bootstrapMcpApp({
-        name: 'dereg-server',
-        controllers: [],
-        providers: [DynamicToolsService],
-      });
-      app = result.app;
-      serverPort = result.port;
-      strategy = result.strategy;
-    });
-
-    afterAll(async () => {
-      await app.close();
-    });
-
-    it('should remove a tool from the listing', async () => {
-      strategy.registerTool({
-        name: 'temp-tool',
-        description: 'Temporary tool',
-        handler: async () => ({ content: [{ type: 'text', text: 'temp' }] }),
       });
 
-      const client = await createEraClient(era, serverPort);
-      try {
-        let tools = await client.listTools();
-        expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeDefined();
+      afterAll(async () => {
+        await app1.close();
+        await app2.close();
+      });
 
-        strategy.removeTool('temp-tool');
+      it('should register dynamic tools to correct server (server 1)', async () => {
+        const client = await createEraClient(era, port1);
+        try {
+          const tools = await client.listTools();
 
-        tools = await client.listTools();
-        expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeUndefined();
-      } finally {
-        await client.close();
-      }
+          expect(
+            tools.tools.find((t) => t.name === 'server1-dynamic-tool'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'server2-dynamic-tool'),
+          ).toBeUndefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should register dynamic tools to correct server (server 2)', async () => {
+        const client = await createEraClient(era, port2);
+        try {
+          const tools = await client.listTools();
+
+          expect(
+            tools.tools.find((t) => t.name === 'server2-dynamic-tool'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'server1-dynamic-tool'),
+          ).toBeUndefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should execute tools on their respective servers', async () => {
+        const client1 = await createEraClient(era, port1);
+        const client2 = await createEraClient(era, port2);
+
+        try {
+          const result1: any = await client1.callTool({
+            name: 'server1-dynamic-tool',
+            arguments: {},
+          });
+          expect(result1.content[0].text).toBe('Server 1 dynamic');
+
+          const result2: any = await client2.callTool({
+            name: 'server2-dynamic-tool',
+            arguments: {},
+          });
+          expect(result2.content[0].text).toBe('Server 2 dynamic');
+        } finally {
+          await client1.close();
+          await client2.close();
+        }
+      });
     });
 
-    it('should return an error when calling a removed tool', async () => {
-      const client = await createEraClient(era, serverPort);
-      try {
-        await expect(
-          client.callTool({ name: 'temp-tool', arguments: {} }),
-        ).rejects.toThrow();
-      } finally {
-        await client.close();
-      }
-    });
+    describe('Deregistration', () => {
+      let app: INestApplication;
+      let serverPort: number;
+      let strategy: McpStrategy;
 
-    it('should not affect other tools when one is removed', async () => {
-      strategy.registerTool({
-        name: 'tool-to-keep',
-        description: 'Should remain',
-        handler: async () => ({ content: [{ type: 'text', text: 'kept' }] }),
-      });
-      strategy.registerTool({
-        name: 'tool-to-remove',
-        description: 'Should be removed',
-        handler: async () => ({ content: [{ type: 'text', text: 'gone' }] }),
+      beforeAll(async () => {
+        const result = await bootstrapMcpApp({
+          name: 'dereg-server',
+          controllers: [],
+          providers: [DynamicToolsService],
+        });
+        app = result.app;
+        serverPort = result.port;
+        strategy = result.strategy;
       });
 
-      strategy.removeTool('tool-to-remove');
-
-      const client = await createEraClient(era, serverPort);
-      try {
-        const tools = await client.listTools();
-        expect(
-          tools.tools.find((t) => t.name === 'tool-to-keep'),
-        ).toBeDefined();
-        expect(
-          tools.tools.find((t) => t.name === 'tool-to-remove'),
-        ).toBeUndefined();
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should reflect a newly registered tool on a running server', async () => {
-      strategy.registerTool({
-        name: 'hot-registered-tool',
-        description: 'Registered after server started',
-        handler: async () => ({ content: [{ type: 'text', text: 'hot' }] }),
+      afterAll(async () => {
+        await app.close();
       });
 
-      const client = await createEraClient(era, serverPort);
-      try {
-        const tools = await client.listTools();
-        expect(
-          tools.tools.find((t) => t.name === 'hot-registered-tool'),
-        ).toBeDefined();
-      } finally {
-        await client.close();
-      }
-    });
+      it('should remove a tool from the listing', async () => {
+        strategy.registerTool({
+          name: 'temp-tool',
+          description: 'Temporary tool',
+          handler: async () => ({ content: [{ type: 'text', text: 'temp' }] }),
+        });
 
-    it('should re-register a tool after removal', async () => {
-      strategy.registerTool({
-        name: 'reregistered-tool',
-        description: 'Original',
-        handler: async () => ({
-          content: [{ type: 'text', text: 'original' }],
-        }),
-      });
-      strategy.removeTool('reregistered-tool');
-      strategy.registerTool({
-        name: 'reregistered-tool',
-        description: 'Replacement',
-        handler: async () => ({
-          content: [{ type: 'text', text: 'replacement' }],
-        }),
+        const client = await createEraClient(era, serverPort);
+        try {
+          let tools = await client.listTools();
+          expect(tools.tools.find((t) => t.name === 'temp-tool')).toBeDefined();
+
+          strategy.removeTool('temp-tool');
+
+          tools = await client.listTools();
+          expect(
+            tools.tools.find((t) => t.name === 'temp-tool'),
+          ).toBeUndefined();
+        } finally {
+          await client.close();
+        }
       });
 
-      const client = await createEraClient(era, serverPort);
-      try {
-        const tools = await client.listTools();
-        const matches = tools.tools.filter(
-          (t) => t.name === 'reregistered-tool',
-        );
-        expect(matches).toHaveLength(1);
-        expect(matches[0].description).toBe('Replacement');
+      it('should return an error when calling a removed tool', async () => {
+        const client = await createEraClient(era, serverPort);
+        try {
+          await expect(
+            client.callTool({ name: 'temp-tool', arguments: {} }),
+          ).rejects.toThrow();
+        } finally {
+          await client.close();
+        }
+      });
 
-        const result: any = await client.callTool({
+      it('should not affect other tools when one is removed', async () => {
+        strategy.registerTool({
+          name: 'tool-to-keep',
+          description: 'Should remain',
+          handler: async () => ({ content: [{ type: 'text', text: 'kept' }] }),
+        });
+        strategy.registerTool({
+          name: 'tool-to-remove',
+          description: 'Should be removed',
+          handler: async () => ({ content: [{ type: 'text', text: 'gone' }] }),
+        });
+
+        strategy.removeTool('tool-to-remove');
+
+        const client = await createEraClient(era, serverPort);
+        try {
+          const tools = await client.listTools();
+          expect(
+            tools.tools.find((t) => t.name === 'tool-to-keep'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'tool-to-remove'),
+          ).toBeUndefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should reflect a newly registered tool on a running server', async () => {
+        strategy.registerTool({
+          name: 'hot-registered-tool',
+          description: 'Registered after server started',
+          handler: async () => ({ content: [{ type: 'text', text: 'hot' }] }),
+        });
+
+        const client = await createEraClient(era, serverPort);
+        try {
+          const tools = await client.listTools();
+          expect(
+            tools.tools.find((t) => t.name === 'hot-registered-tool'),
+          ).toBeDefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should re-register a tool after removal', async () => {
+        strategy.registerTool({
           name: 'reregistered-tool',
-          arguments: {},
+          description: 'Original',
+          handler: async () => ({
+            content: [{ type: 'text', text: 'original' }],
+          }),
         });
-        expect(result.content[0].text).toBe('replacement');
-      } finally {
-        await client.close();
-      }
-    });
+        strategy.removeTool('reregistered-tool');
+        strategy.registerTool({
+          name: 'reregistered-tool',
+          description: 'Replacement',
+          handler: async () => ({
+            content: [{ type: 'text', text: 'replacement' }],
+          }),
+        });
 
-    it('should overwrite a tool when registered with the same name', async () => {
-      strategy.registerTool({
-        name: 'duplicate-tool',
-        description: 'First version',
-        handler: async () => ({ content: [{ type: 'text', text: 'first' }] }),
+        const client = await createEraClient(era, serverPort);
+        try {
+          const tools = await client.listTools();
+          const matches = tools.tools.filter(
+            (t) => t.name === 'reregistered-tool',
+          );
+          expect(matches).toHaveLength(1);
+          expect(matches[0].description).toBe('Replacement');
+
+          const result: any = await client.callTool({
+            name: 'reregistered-tool',
+            arguments: {},
+          });
+          expect(result.content[0].text).toBe('replacement');
+        } finally {
+          await client.close();
+        }
       });
-      strategy.registerTool({
-        name: 'duplicate-tool',
-        description: 'Second version',
-        handler: async () => ({ content: [{ type: 'text', text: 'second' }] }),
-      });
 
-      const client = await createEraClient(era, serverPort);
-      try {
-        const tools = await client.listTools();
-        const matches = tools.tools.filter((t) => t.name === 'duplicate-tool');
-        expect(matches).toHaveLength(1);
-        expect(matches[0].description).toBe('Second version');
-
-        const result: any = await client.callTool({
+      it('should overwrite a tool when registered with the same name', async () => {
+        strategy.registerTool({
           name: 'duplicate-tool',
-          arguments: {},
+          description: 'First version',
+          handler: async () => ({ content: [{ type: 'text', text: 'first' }] }),
         });
-        expect(result.content[0].text).toBe('second');
-      } finally {
-        await client.close();
-      }
+        strategy.registerTool({
+          name: 'duplicate-tool',
+          description: 'Second version',
+          handler: async () => ({
+            content: [{ type: 'text', text: 'second' }],
+          }),
+        });
+
+        const client = await createEraClient(era, serverPort);
+        try {
+          const tools = await client.listTools();
+          const matches = tools.tools.filter(
+            (t) => t.name === 'duplicate-tool',
+          );
+          expect(matches).toHaveLength(1);
+          expect(matches[0].description).toBe('Second version');
+
+          const result: any = await client.callTool({
+            name: 'duplicate-tool',
+            arguments: {},
+          });
+          expect(result.content[0].text).toBe('second');
+        } finally {
+          await client.close();
+        }
+      });
     });
-  });
-});
+  },
+);

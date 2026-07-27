@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
-import { ProtocolError } from "@modelcontextprotocol/server";
+import { ProtocolError } from '@modelcontextprotocol/server';
 import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 import { McpController, Resource, ResourceTemplate } from '@rekog/mcp-nest';
 

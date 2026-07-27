@@ -83,7 +83,11 @@ const legacyInitBody = {
   },
 };
 
-async function post(port: number, body: unknown, headers: Record<string, string> = {}) {
+async function post(
+  port: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+) {
   const res = await fetch(`http://localhost:${port}/mcp`, {
     method: 'POST',
     headers: {
