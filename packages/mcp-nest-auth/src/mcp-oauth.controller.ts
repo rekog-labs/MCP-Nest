@@ -726,9 +726,8 @@ export function createMcpOAuthController(
       const html = await this.consent.render({
         client,
         clientId: session.clientId!,
-        isMetadataDocumentClient: this.clientIdMetadata.isMetadataDocumentClientId(
-          session.clientId!,
-        ),
+        isMetadataDocumentClient:
+          this.clientIdMetadata.isMetadataDocumentClientId(session.clientId!),
         redirectUri: session.redirectUri!,
         // The MUST: "authorization servers ... MUST clearly display the redirect
         // URI hostname during authorization".

@@ -279,8 +279,10 @@ export class StreamableHttpTransport implements McpTransport {
   /** Set the first time {@link httpHandlers} is read — implies a BYO controller. */
   private handlersClaimed = false;
 
-  private readonly transports: Record<string, NodeStreamableHTTPServerTransport> =
-    {};
+  private readonly transports: Record<
+    string,
+    NodeStreamableHTTPServerTransport
+  > = {};
   private readonly servers: Record<string, McpServer> = {};
   private ctx?: McpTransportContext;
 

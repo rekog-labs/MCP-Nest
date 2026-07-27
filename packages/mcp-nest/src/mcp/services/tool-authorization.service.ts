@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server";
+import { ProtocolError, ProtocolErrorCode } from '@modelcontextprotocol/server';
 import { ToolMetadata, SecurityScheme } from '../decorators/tool.decorator';
 import { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 

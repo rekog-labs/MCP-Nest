@@ -1,4 +1,7 @@
-import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
+import {
+  serveStdio,
+  type StdioServerHandle,
+} from '@modelcontextprotocol/server/stdio';
 import { McpTransport, McpTransportContext } from '../mcp-transport.interface';
 
 export interface StdioTransportOptions {
@@ -36,7 +39,10 @@ export class StdioTransport implements McpTransport {
   private handle?: StdioServerHandle;
   private readonly legacy: 'serve' | 'reject';
   /** Prevent a stdio-only Node process from exiting during async Nest bootstrap. */
-  private readonly bootstrapKeepAlive = setInterval(() => undefined, 2 ** 31 - 1);
+  private readonly bootstrapKeepAlive = setInterval(
+    () => undefined,
+    2 ** 31 - 1,
+  );
 
   constructor(options: StdioTransportOptions = {}) {
     this.legacy = options.legacy ?? 'serve';
@@ -57,7 +63,8 @@ export class StdioTransport implements McpTransport {
         }),
       {
         legacy: this.legacy,
-        onerror: (error) => ctx.logger.error('MCP stdio transport error', error),
+        onerror: (error) =>
+          ctx.logger.error('MCP stdio transport error', error),
       },
     );
     clearInterval(this.bootstrapKeepAlive);

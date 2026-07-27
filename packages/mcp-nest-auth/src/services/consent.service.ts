@@ -185,7 +185,10 @@ function escapeHtml(value: string): string {
 export function renderDefaultConsentPage(ctx: ConsentRenderContext): string {
   const clientName = escapeHtml(ctx.client.client_name);
   const userLabel = escapeHtml(
-    ctx.user.displayName || ctx.user.username || ctx.user.email || 'your account',
+    ctx.user.displayName ||
+      ctx.user.username ||
+      ctx.user.email ||
+      'your account',
   );
 
   const scopeList = ctx.scopes.length

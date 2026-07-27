@@ -1,4 +1,9 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { lookup as dnsLookup } from 'node:dns';
 import * as http from 'node:http';
 import * as https from 'node:https';
@@ -449,10 +454,9 @@ export class ClientIdMetadataService {
                 family: pinned.family,
               };
               if ((opts as { all?: boolean } | undefined)?.all) {
-                (callback as unknown as (e: null, a: typeof answer[]) => void)(
-                  null,
-                  [answer],
-                );
+                (
+                  callback as unknown as (e: null, a: (typeof answer)[]) => void
+                )(null, [answer]);
                 return;
               }
               (callback as unknown as (e: null, a: string, f: number) => void)(
@@ -625,7 +629,10 @@ export class ClientIdMetadataService {
    */
   private cacheTtlFrom(headers: http.IncomingHttpHeaders): number {
     const cacheControl = String(headers['cache-control'] ?? '').toLowerCase();
-    if (/\bno-store\b/.test(cacheControl) || /\bno-cache\b/.test(cacheControl)) {
+    if (
+      /\bno-store\b/.test(cacheControl) ||
+      /\bno-cache\b/.test(cacheControl)
+    ) {
       return 0;
     }
 

@@ -131,9 +131,7 @@ function issuePathToString(
 ): string {
   if (!path || path.length === 0) return '';
   return path
-    .map((seg) =>
-      typeof seg === 'object' ? String(seg.key) : String(seg),
-    )
+    .map((seg) => (typeof seg === 'object' ? String(seg.key) : String(seg)))
     .join('.');
 }
 
@@ -182,10 +180,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-function resolveRawJsonSchema(schema: Record<string, unknown>): ResolvedToolSchema {
+function resolveRawJsonSchema(
+  schema: Record<string, unknown>,
+): ResolvedToolSchema {
   // Wrap the raw JSON Schema so we get Standard-Schema validation (AJV on Node),
   // but advertise the object itself verbatim as its JSON Schema.
-  const wrapped = fromJsonSchema(schema as JsonSchemaType) as StandardSchemaLike;
+  const wrapped = fromJsonSchema(
+    schema as JsonSchemaType,
+  ) as StandardSchemaLike;
   const std = resolveStandard(wrapped);
   return {
     toJsonSchema() {

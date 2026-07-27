@@ -26,7 +26,9 @@ describe('resolveToolSchema', () => {
     // reject an outputSchema declaring any dialect but 2020-12.
     it('advertises the 2020-12 dialect', () => {
       const emitted = resolveToolSchema(schema).toJsonSchema('input');
-      expect(emitted?.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
+      expect(emitted?.$schema).toBe(
+        'https://json-schema.org/draft/2020-12/schema',
+      );
     });
 
     it('returns undefined JSON Schema for a non-object Zod schema', () => {

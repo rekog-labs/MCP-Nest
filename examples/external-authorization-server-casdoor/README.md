@@ -25,11 +25,11 @@ pointed at your issuer instead.
                          ┌───────────────────────────────────────────┐
                          │ docker compose (single container)         │
   ┌────────────┐         │   ┌─────────────────────────────────────┐ │
-  │ MCP client │         │   │ Casdoor :8000                        │ │
-  │ (Inspector │         │   │  OAuth 2.1 AS + OIDC                 │ │
+  │ MCP client │         │   │ Casdoor :8000                       │ │
+  │ (Inspector │         │   │  OAuth 2.1 AS + OIDC                │ │
   │  / script) │         │   │  • login UI   • consent UI          │ │
-  └─────┬──────┘         │   │  • DCR (RFC 7591)  • JWKS (RS256)    │ │
-        │                │   │  SQLite (no extra DB container)      │ │
+  └─────┬──────┘         │   │  • DCR (RFC 7591)  • JWKS (RS256)   │ │
+        │                │   │  SQLite (no extra DB container)     │ │
         │                │   └─────────────────────────────────────┘ │
         │                └───────────────────────────────────────────┘
         │ 1. POST /mcp (no token) ──▶ resource server
@@ -43,7 +43,7 @@ pointed at your issuer instead.
         │
         │ 4. POST /mcp  Authorization: Bearer <token> ─────▶ ┌─────────────┐
         │ ◀── tool result                                    │ MCP-Nest    │
-        └────────────────────────────────────────────────── │ :3030 /mcp  │
+        └─────────────────────────────────────────────────── │ :3030 /mcp  │
                                                              │ (resource)  │
                                                              └─────────────┘
 ```

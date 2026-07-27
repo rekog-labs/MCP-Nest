@@ -1,7 +1,4 @@
-import type {
-  IOAuthStore,
-  OAuthClient,
-} from '../stores/oauth-store.interface';
+import type { IOAuthStore, OAuthClient } from '../stores/oauth-store.interface';
 import type {
   OAuthSession,
   OAuthUserProfile,

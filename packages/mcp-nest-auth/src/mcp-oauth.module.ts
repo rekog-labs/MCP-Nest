@@ -445,7 +445,9 @@ export class McpAuthModule {
     // differs from the identifier it built the well-known URL from. A server
     // configured with divergent values is therefore unusable by any conforming
     // client, so this fails at bootstrap rather than at handshake time.
-    if (canonicalIssuer(options.jwtIssuer) !== canonicalIssuer(options.serverUrl)) {
+    if (
+      canonicalIssuer(options.jwtIssuer) !== canonicalIssuer(options.serverUrl)
+    ) {
       throw new Error(
         `OAuthModuleOptions: jwtIssuer ('${options.jwtIssuer}') must be the same ` +
           `identifier as serverUrl ('${options.serverUrl}'). Clients MUST NOT use ` +
@@ -531,9 +533,15 @@ export class McpAuthModule {
 /**
  * Compare issuer identifiers the way a client would: a trailing slash is not a
  * difference, anything else is.
+ *
+ * Scans backwards rather than using `/\/+$/` — that regex restarts its run at
+ * every slash before failing the anchor, which is quadratic on a long run of
+ * slashes that does not end the string.
  */
 function canonicalIssuer(url: string): string {
-  return url.replace(/\/+$/, '');
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') end--;
+  return url.slice(0, end);
 }
 
 function prepareEndpoints(

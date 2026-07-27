@@ -278,9 +278,7 @@ export class McpContext
    * being served, so it lands on that request's response stream (which the SDK
    * upgrades from a JSON body to SSE on the first related message).
    */
-  private createRelatedReportProgress(): (
-    progress: Progress,
-  ) => Promise<void> {
+  private createRelatedReportProgress(): (progress: Progress) => Promise<void> {
     return async (progress: Progress) => {
       const progressToken = this.progressToken;
       if (progressToken === undefined) {

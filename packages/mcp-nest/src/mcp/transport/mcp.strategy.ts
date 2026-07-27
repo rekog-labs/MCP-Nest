@@ -230,7 +230,8 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
    * operator; refusing *silently* is what this actually fixes.
    */
   private warnIfToolListCacheHintIsPublic(): void {
-    if (this.options.cacheHints?.['tools/list']?.cacheScope !== 'public') return;
+    if (this.options.cacheHints?.['tools/list']?.cacheScope !== 'public')
+      return;
     if (!this.toolListVariesByCaller()) return;
     this.logger.warn(
       `cacheHints['tools/list'].cacheScope is 'public', but this server filters ` +
@@ -628,7 +629,13 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         request.params.arguments = validation.data as Record<string, unknown>;
       }
 
-      const ctx = this.buildContext(server, request, session, rawRequest, sdkCtx);
+      const ctx = this.buildContext(
+        server,
+        request,
+        session,
+        rawRequest,
+        sdkCtx,
+      );
       try {
         const result = await tool.invoke(request.params.arguments ?? {}, ctx);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
@@ -689,7 +696,13 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           );
         }
 
-        const ctx = this.buildContext(server, request, session, rawRequest, sdkCtx);
+        const ctx = this.buildContext(
+          server,
+          request,
+          session,
+          rawRequest,
+          sdkCtx,
+        );
         return (await invoke(params, ctx)) as ReadResourceResult;
       },
     );
@@ -729,7 +742,13 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           `Unknown prompt: ${request.params.name}`,
         );
       }
-      const ctx = this.buildContext(server, request, session, rawRequest, sdkCtx);
+      const ctx = this.buildContext(
+        server,
+        request,
+        session,
+        rawRequest,
+        sdkCtx,
+      );
       return (await prompt.invoke(
         request.params.arguments,
         ctx,

@@ -186,7 +186,10 @@ export class JwtTokenService {
       return null;
     }
 
-    if (expected?.audience && !audienceIncludes(payload.aud, expected.audience)) {
+    if (
+      expected?.audience &&
+      !audienceIncludes(payload.aud, expected.audience)
+    ) {
       this.logger.warn(
         `Token rejected: audience mismatch (expected '${expected.audience}', ` +
           `got '${String(payload.aud ?? '<none>')}'). A token issued for another ` +
