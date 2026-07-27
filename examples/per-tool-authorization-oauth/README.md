@@ -21,6 +21,18 @@ The wiring is identical in both modes; only how the caller gets a JWT differs.
   SERVER_URL=http://localhost:3013 PORT=3013 npm start
   ```
 
+  Two things the browser handshake needs beyond the env vars:
+
+  - `app.use(cookieParser())` in `src/main.ts`. `/auth/authorize` sets the
+    `oauth_session` / `oauth_state` cookies and `/auth/callback` reads them back
+    off `req.cookies`; `McpAuthModule` does not register the middleware itself,
+    so without it the callback returns
+    `{"message":"Missing OAuth session","error":"Bad Request","statusCode":400}`.
+  - The GitHub OAuth app's **Authorization callback URL** must be
+    `$SERVER_URL/auth/callback` (e.g. `http://localhost:3013/auth/callback`), and
+    its host must match `SERVER_URL` exactly — cookies set on `localhost` are not
+    sent back to `127.0.0.1`.
+
 - **FAKE mode (offline, no external network)** — set `MCP_FAKE_AUTH=1`. The module
   is wired with dummy provider credentials (GitHub is only contacted during
   `/auth/authorize`, which is never hit), and identity comes from locally minted

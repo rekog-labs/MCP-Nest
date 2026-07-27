@@ -31,8 +31,15 @@ The OAuth authorization server ships as a separate package. Install it alongside
 `@rekog/mcp-nest`:
 
 ```bash
-npm install @rekog/mcp-nest-auth
+npm install @rekog/mcp-nest-auth cookie-parser
+npm install --save-dev @types/cookie-parser
 ```
+
+`cookie-parser` is not optional for the browser handshake: `/auth/authorize`
+sets the `oauth_session` and `oauth_state` cookies and `/auth/callback` reads
+them back off `req.cookies`. `McpAuthModule` does not register the middleware
+itself, so without `app.use(cookieParser())` the callback fails with
+`400 Missing OAuth session`.
 
 ## The wiring
 
@@ -44,6 +51,7 @@ with `cd examples/per-tool-authorization-oauth && npm install && npm start`:
 ```typescript
 import { Controller, Module, UseGuards } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import {
   McpHttpControllerFor,
   McpStrategy,
@@ -108,6 +116,12 @@ class AppModule {}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // OAuth session plumbing (NOT authentication): /auth/callback reads the
+  // cookies /auth/authorize set. Omit this and the callback 400s with
+  // "Missing OAuth session".
+  app.use(cookieParser());
+
   strategy.setHttpAdapter(app.getHttpAdapter());
   app.connectMicroservice({ strategy });
   await app.startAllMicroservices();
