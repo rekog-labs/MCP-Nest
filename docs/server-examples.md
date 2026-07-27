@@ -13,6 +13,13 @@ This guide walks through different ways to set up MCP servers using mcp-nest wit
 - [Custom Endpoints](#custom-endpoints)
 - [Global Prefix Integration](#global-prefix-integration)
 - [Server Metadata](#server-metadata)
+- [Protocol Revisions](#protocol-revisions)
+
+> **All of these serve two protocol eras at once.** Every `StreamableHttpTransport`
+> and `StdioTransport` below answers both the 2025-era protocol (`initialize` +
+> sessions) and the stateless `2026-07-28` revision, out of the box. The
+> `statefulMode`/`enableJsonResponse`/`sessionIdGenerator` options shape the
+> 2025-era leg only. See [Protocol Revisions](#protocol-revisions).
 
 ## Stateful MCP Server
 
@@ -64,9 +71,12 @@ void bootstrap();
 
 **Endpoints exposed:**
 
-- `POST /mcp` - Main MCP operations
-- `GET /mcp` - SSE stream for real-time updates
-- `DELETE /mcp` - Session termination
+- `POST /mcp` - Main MCP operations (both protocol eras)
+- `GET /mcp` - SSE stream for real-time updates (2025-era sessions only)
+- `DELETE /mcp` - Session termination (2025-era sessions only)
+
+`GET`/`DELETE` are session operations, and `2026-07-28` has no sessions — a
+modern client never uses them, so `statefulMode` costs it nothing.
 
 **Run:**
 
@@ -89,6 +99,9 @@ Simpler setup without session management, good for REST-like usage. This is the
 **default** mode — a bare `new StreamableHttpTransport()` is stateless and
 returns a JSON reply to a plain POST (no SSE stream to manage):
 
+> This is about the *2025-era* leg. On `2026-07-28` there are no sessions at all,
+> so a modern client is served identically here and on the stateful server above.
+
 ```typescript
 const mcp = new McpStrategy({
   name: 'example-mcp-server',
@@ -109,6 +122,7 @@ class AppModule {}
 **Endpoints exposed:**
 
 - `POST /mcp` - All MCP operations
+- `GET`/`DELETE /mcp` - `405` with a JSON-RPC error body
 
 **Run:**
 
@@ -119,7 +133,7 @@ PORT=3010 npx ts-node-dev --respawn src/main-stateless.ts
 
 ## STDIO Server
 
-For command-line tools and desktop applications. STDIO is session-aware (it supports progress and logging), but stdout carries the protocol, so disable logging (`logging: false` on the strategy + `{ logger: false }` on the app):
+For command-line tools and desktop applications. STDIO holds a long-lived connection (it supports progress and logging), but stdout carries the protocol, so disable logging (`logging: false` on the strategy + `{ logger: false }` on the app):
 
 ```typescript
 import { Module } from '@nestjs/common';
@@ -160,6 +174,11 @@ they are Nest microservice message handlers; registering them as `providers`
 
 Start the entry point directly with Node/`ts-node`. Do not use a watcher or a
 launcher that writes to stdout: stdout is exclusively the MCP protocol stream.
+
+The era is negotiated from the **opening exchange**: a `server/discover` probe
+selects `2026-07-28`, an `initialize` selects the 2025-era protocol, and one
+server instance is pinned for the connection's lifetime. Pass
+`new StdioTransport({ legacy: 'reject' })` to accept modern openings only.
 
 **Run:**
 
@@ -444,7 +463,7 @@ If you want the MCP routes under a prefix, set it explicitly on the transport co
 
 ## Server Metadata
 
-Beyond the required `name` and `version`, the `McpStrategy` constructor accepts optional metadata that is advertised to clients on `initialize`:
+Beyond the required `name` and `version`, the `McpStrategy` constructor accepts optional metadata that is advertised to clients on `initialize` (2025 era) and on `server/discover` (`2026-07-28`, where the identity arrives under `_meta["io.modelcontextprotocol/serverInfo"]`):
 
 | Option | Type | Description |
 | --- | --- | --- |
@@ -454,7 +473,7 @@ Beyond the required `name` and `version`, the `McpStrategy` constructor accepts 
 | `description` | `string` | Short description of what the server does. |
 | `websiteUrl` | `string` | URL of the website associated with the server. |
 | `icons` | `Icon[]` | Icons representing the server (MCP SDK `Icon`: `{ src, mimeType?, sizes?, theme? }`). |
-| `instructions` | `string` | Server instructions sent to clients on `initialize`. |
+| `instructions` | `string` | Server instructions sent to clients on discovery. |
 | `capabilities` | `ServerCapabilities` | Extra MCP capabilities, merged with the auto-derived ones. |
 | `server` | `string` | Logical server name for multi-server isolation — binds only `@McpController({ server })` classes. Omit for the default server. |
 
@@ -474,6 +493,55 @@ const mcp = new McpStrategy({
   transports: [new StreamableHttpTransport()],
 });
 ```
+
+## Protocol Revisions
+
+Both transports are **dual-era** by default: one endpoint answers the 2025-era
+protocol and the stateless `2026-07-28` revision, concurrently. Nothing about
+your `@Tool`/`@Resource`/`@Prompt` code changes between them.
+
+### Streamable HTTP options
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `protocol` | `'dual' \| 'modern-only' \| 'legacy-only'` | `'dual'` | Which eras this endpoint serves. `modern-only` answers 2025-era traffic with the unsupported-protocol-version error; `legacy-only` is the pre-`2026-07-28` behaviour. |
+| `responseMode` | `'auto' \| 'sse' \| 'json'` | `'auto'` | **Modern era** response shaping — the counterpart of `enableJsonResponse`. `'auto'` sends a JSON body, upgrading to SSE only if the handler emits progress/logs first. |
+| `statefulMode` | `boolean` | `false` | **Legacy era only** — session management via `mcp-session-id`, `GET`/`DELETE /mcp`. |
+| `enableJsonResponse` | `boolean` | `!statefulMode` | **Legacy era only** — JSON reply instead of an SSE stream. |
+| `sessionIdGenerator` | `() => string` | `randomUUID` | **Legacy era only** — `2026-07-28` has no sessions. |
+
+```typescript
+const mcp = new McpStrategy({
+  name: 'example-mcp-server',
+  version: '0.0.1',
+  transports: [
+    new StreamableHttpTransport({
+      statefulMode: true,     // 2025-era clients get sessions …
+      responseMode: 'auto',   // … 2026-era clients get per-request streams
+    }),
+  ],
+});
+```
+
+### STDIO options
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `legacy` | `'serve' \| 'reject'` | `'serve'` | Whether a 2025-era opening (`initialize`) is served or answered with the unsupported-protocol-version error. |
+
+```typescript
+new StdioTransport();                     // dual-era
+new StdioTransport({ legacy: 'reject' }); // modern openings only
+```
+
+Legacy clients cannot fall forward to a newer revision, so on `modern-only` /
+`legacy: 'reject'` that error is the only diagnostic an old client will surface.
+Prefer the defaults unless you have a reason not to.
+
+The modern era requires MCP SDK `2.0.0-beta.5` or newer. See
+[Protocol Revisions & Dual-Era Serving](protocol-revisions.md) for the era-aware
+`Context` accessors, the `logLevel` opt-in for modern-era logging, testing
+recipes, and the one genuine breaking edge (`elicitInput`/sampling).
 
 ## Logging Configuration
 
@@ -544,6 +612,7 @@ logging: false, // Reduce noise in test output
 
 ## Related
 
+- [Protocol Revisions & Dual-Era Serving](protocol-revisions.md) - Serving the 2025-era protocol and `2026-07-28` from one endpoint
 - [Custom Request Handling](custom-controllers.md) - The two-layer pipeline: middleware, interceptors, exception filters, `McpExceptionFilter`
 - [Tools](tools.md) - Define executable functions
 - [Resources](resources.md) - Provide data sources

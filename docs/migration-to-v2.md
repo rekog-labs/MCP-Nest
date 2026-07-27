@@ -169,13 +169,22 @@ See [Resources](resources.md), [Resource Templates](resource-templates.md), and
 `McpContext` implements the same surface as the old `Context` and adds accessors:
 
 ```typescript
-ctx.reportProgress({ progress, total });   // session-aware transports only
+ctx.reportProgress({ progress, total });   // see the note below
 ctx.log.info('message', data);             // server-side logging
 ctx.mcpServer;                             // the MCP SDK server
 ctx.mcpRequest;                            // the parsed JSON-RPC request
-ctx.getSession();                          // { transport, stateless, sessionId }
+ctx.getSession();                          // { transport, stateless, era, sessionId }
 ctx.getRawRequest();                       // the Express/Fastify request (undefined for stdio)
+ctx.getProtocolVersion();                  // modern era only — undefined on legacy
+ctx.getClientCapabilities();               // modern era only — undefined on legacy
+ctx.getClientInfo();                       // modern era only — undefined on legacy
 ```
+
+`reportProgress`/`log` reach the client on session-aware legacy transports
+(`statefulMode` HTTP, stdio) **and** on every `2026-07-28` request, where they
+flow on that request's own response stream. They are no-ops only on the legacy
+per-request stateless mode. The last four accessors are new — see
+[Protocol Revisions](protocol-revisions.md).
 
 ## 3b. Validation & NestJS enhancers
 
@@ -259,9 +268,9 @@ new StdioTransport();
 - The HTTP transport mounts its routes on the Nest HTTP adapter — there is no
   longer an `apiPrefix`/global-prefix mechanism for MCP; set the `endpoint`
   directly (a deeper path like `/api/service/mcp` works the same way).
-- STDIO is session-aware now, so it supports progress and logging. Disable
-  logging on stdio servers (`logging: false` + `{ logger: false }`) since stdout
-  carries the protocol.
+- STDIO holds a long-lived connection on both eras, so it supports progress and
+  logging. Disable logging on stdio servers (`logging: false` + `{ logger: false }`)
+  since stdout carries the protocol.
 - Create stdio servers with `NestFactory.createMicroservice(..., { strategy })`.
   MCP capability classes need `@McpController()` and belong in a module's
   `controllers` array; v1-style `providers` are not discovered, so `tools/list`
@@ -290,10 +299,46 @@ stateless server.
   `GET /mcp` (SSE stream) and `DELETE /mcp` (teardown). Use it when you need
   server-initiated streaming/notifications tied to a long-lived session.
 
+> **`statefulMode` and `enableJsonResponse` are 2025-era settings.** They shape
+> the *legacy* leg only. MCP protocol revision `2026-07-28` removed sessions
+> outright, so "stateless" there is the protocol, not a mode you pick — see the
+> next section.
+
+### Protocol revisions: one endpoint, two eras
+
+MCP-Nest serves both the 2025-era protocol (`initialize` handshake + sessions)
+and the stateless `2026-07-28` revision **concurrently on the same endpoint**.
+This is on by default and needs no configuration; your `@Tool`/`@Resource`/
+`@ResourceTemplate`/`@Prompt` code is identical on both.
+
+```typescript
+new StreamableHttpTransport();                            // dual-era (default)
+new StreamableHttpTransport({ protocol: 'modern-only' }); // 2026-07-28 only
+new StreamableHttpTransport({ protocol: 'legacy-only' }); // pre-2026 behaviour
+new StdioTransport({ legacy: 'reject' });                 // stdio, modern openings only
+```
+
+Two consequences worth internalising before reading the rest of this guide:
+
+- **"Stateless" now means two different things.** `statefulMode: false` is the
+  legacy per-request mode, where the server genuinely cannot push anything back.
+  A `2026-07-28` request is *also* sessionless, but `ctx.reportProgress()` and
+  `ctx.log.*` still work there — they ride the request's own response stream.
+- **Sessions, `sessionIdGenerator`, `enableJsonResponse`, and `GET`/`DELETE /mcp`
+  are legacy-only.** The modern-era counterpart of `enableJsonResponse` is
+  `responseMode: 'auto' | 'sse' | 'json'`.
+
+The full picture — the new `Context` accessors, the `logLevel` opt-in for
+modern-era logging, and the one genuine breaking edge (`elicitInput`/sampling) —
+is in **[Protocol Revisions & Dual-Era Serving](protocol-revisions.md)**.
+
 ### Other transport & strategy options
 
-- `sessionIdGenerator` — customize how stateful session IDs are generated:
+- `sessionIdGenerator` — customize how legacy session IDs are generated:
   `new StreamableHttpTransport({ sessionIdGenerator: () => randomUUID() })`.
+- `protocol` / `responseMode` (HTTP) and `legacy` (stdio) — which protocol eras
+  the transport serves and how modern-era responses are shaped. See
+  [Protocol Revisions](protocol-revisions.md).
 - `serverMutator` — wrap/extend the underlying MCP SDK server, e.g. for
   tracing/instrumentation (Sentry's `wrapMcpServerWithSentry`). See
   [Server Mutation](server-mutation.md).
@@ -412,6 +457,11 @@ concerns still works as usual, but don't reach for middleware to set `req.user`
 - **Request scoping:** `@Inject(REQUEST)` in a request-scoped tool resolves to the
   RPC request context, not the raw HTTP request. Read headers/user via
   `ctx.getRawRequest()`.
+- **Push-style server→client requests are legacy-only.**
+  `ctx.mcpServer.server.elicitInput(...)` / `.createMessage(...)` (sampling) throw
+  on a `2026-07-28` request — that revision replaced the push model with Multi
+  Round-Trip Requests. They keep working for 2025-era clients on a dual-era
+  server. See [Protocol Revisions](protocol-revisions.md#what-breaks).
 - **NestJS versioning is unaffected:** if your app uses `app.enableVersioning()`,
   the MCP endpoint stays unversioned (`VERSION_NEUTRAL`) — no extra config
   needed to keep `/mcp` reachable alongside versioned REST routes.
@@ -446,6 +496,8 @@ This guide covers the migration; each topic has a deeper standalone guide:
 
 - [How It Connects](how-it-connects.md) — the pieces (transport, strategy,
   `@McpController`, `McpHttpControllerFor`) and how they wire together.
+- [Protocol Revisions & Dual-Era Serving](protocol-revisions.md) — serving the
+  2025-era protocol and `2026-07-28` from one endpoint.
 - [Tools](tools.md), [Resources](resources.md),
   [Resource Templates](resource-templates.md), [Prompts](prompts.md) — full
   capability guides.

@@ -1,7 +1,16 @@
 /**
  * e2e for `examples/per-tool-authorization-oauth` — verifies the behaviors
  * documented in docs/per-tool-authorization-oauth.md against a real, spawned
- * example server, driven by a pinned old MCP client.
+ * example server, driven by the pinned old (1.10.0) MCP client.
+ *
+ * LEGACY-ONLY, deliberately. Every other e2e file runs its assertions on both
+ * protocol eras (see `ERAS` in harness.ts), but the OAuth files do not: the
+ * two client packages ship different client-side OAuth implementations, so
+ * porting these would be a rewrite against a different auth API rather than a
+ * parameterisation. The MCP era and the OAuth handshake are independent —
+ * per-tool authorization on the modern era is already covered by
+ * per-tool-authorization{,-jwt}.test.ts, which drive the same guards with a
+ * bearer header on both eras. Revisit if the auth surface converges.
  *
  * Run:  bun test per-tool-authorization-oauth.test.ts        (from the e2e/ directory)
  *
@@ -10,11 +19,21 @@
  * docs/per-tool-authorization-oauth.md shows. Rather than drive a live GitHub
  * handshake (which needs a real IdP), we run the example's built-in OFFLINE
  * FAKE mode: `MCP_FAKE_AUTH=1` makes it validate identity from locally-minted
- * HS256 JWTs signed with the module's `jwtSecret`. The guard's token check is
- * signature-only (`jwt.verify(token, jwtSecret, { algorithms: ['HS256'] })` in
- * packages/mcp-nest-auth/src/services/jwt-token.service.ts) — no aud/issuer
- * check — so a token minted here with the exact `mintFakeToken` payload shape
- * (src/fake-auth.ts) authenticates just like one printed on server boot.
+ * HS256 JWTs signed with the module's `jwtSecret`. A token minted here with the
+ * exact `mintFakeToken` payload shape (src/fake-auth.ts) authenticates just like
+ * one printed on server boot.
+ *
+ * The guard's token check is NOT signature-only: `JwtTokenService.validateToken`
+ * verifies the `iss` on every token and, for a bearer credential, the `aud`
+ * against the module's configured `resource` (RFC 8707 §2 makes that a MUST) plus
+ * `type: 'access'`. So the minted claims have to match what the example
+ * configures — which it derives from `PORT` as `http://localhost:<port>` — and
+ * the tokens therefore cannot be built until the port is known. That is why they
+ * are minted inside `beforeAll` rather than at module scope.
+ *
+ * Note the audience uses `localhost`, not the `127.0.0.1` that `server.url`
+ * carries: the audience must match the issuer's *configured* resource string
+ * verbatim, and the example configures `localhost`.
  *
  * We run in FREEMIUM mode (`ALLOW_UNAUTHENTICATED_ACCESS=true`) so the anonymous
  * path is exercisable: a tokenless caller connects and reaches `@PublicTool()`
@@ -31,7 +50,7 @@
  * roles ['super-admin', 'admin', 'user'] (NO 'premium'), so it can call
  * super-admin-greet but is still denied premium-greet.
  *
- * Green on `main` = an old (1.10.0) client fully interoperates with the OAuth
+ * Green = an old (1.10.0) client fully interoperates with the OAuth
  * per-tool authorization server. If a server change breaks that, one of these
  * assertions fails and names exactly what regressed.
  */
@@ -46,9 +65,11 @@ const BOOT_MS = 120_000;
 // Must match the JWT_SECRET we pass in the server's env below (>= 32 chars).
 const JWT_SECRET = 'e2e-per-tool-authorization-oauth-test-secret-32chars-min';
 
-// Only used to populate the token's resource/aud claims faithfully; the guard
-// doesn't validate them, so the exact value is immaterial to authentication.
-const RESOURCE = 'http://localhost/mcp';
+// The example derives both from PORT (src/main.ts): SERVER_URL is the `iss` the
+// module is configured with, RESOURCE the `aud` a bearer token must name. Both
+// are validated, so both are computed from the real port in `beforeAll`.
+const serverUrlFor = (port: number) => `http://localhost:${port}`;
+const resourceFor = (port: number) => `${serverUrlFor(port)}/mcp`;
 
 function base64url(input: string | Buffer): string {
   return Buffer.from(input)
@@ -70,15 +91,16 @@ interface FakeUser {
  * Mint an HS256 JWT in the exact shape examples/.../src/fake-auth.ts mintFakeToken
  * produces (jwt.sign(payload, JWT_SECRET, { algorithm: 'HS256', expiresIn: '24h' })).
  */
-function mintFakeToken(user: FakeUser): string {
+function mintFakeToken(user: FakeUser, port: number): string {
   const header = { alg: 'HS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     sub: user.sub,
     type: 'access' as const,
     scope: user.scope,
-    resource: RESOURCE,
-    aud: RESOURCE,
+    resource: resourceFor(port),
+    iss: serverUrlFor(port),
+    aud: resourceFor(port),
     user_data: {
       username: user.username,
       displayName: user.displayName,
@@ -93,37 +115,36 @@ function mintFakeToken(user: FakeUser): string {
 }
 
 // Same profiles as examples/per-tool-authorization-oauth/src/fake-auth.ts FAKE_USERS.
-const BASIC_USER = mintFakeToken({
-  sub: 'basic-user',
-  username: 'basic',
-  displayName: 'Basic User',
-  scope: 'read',
-  roles: ['user'],
-});
-
-const ADMIN_USER = mintFakeToken({
-  sub: 'admin-user',
-  username: 'admin',
-  displayName: 'Admin User',
-  scope: 'admin write read',
-  roles: ['admin', 'user'],
-});
-
-const PREMIUM_USER = mintFakeToken({
-  sub: 'premium-user',
-  username: 'premium',
-  displayName: 'Premium User',
-  scope: 'read write',
-  roles: ['premium', 'user'],
-});
-
-const SUPERADMIN_USER = mintFakeToken({
-  sub: 'superadmin-user',
-  username: 'superadmin',
-  displayName: 'Super Admin User',
-  scope: 'admin write delete read',
-  roles: ['super-admin', 'admin', 'user'],
-});
+const FAKE_USERS: Record<string, FakeUser> = {
+  BASIC_USER: {
+    sub: 'basic-user',
+    username: 'basic',
+    displayName: 'Basic User',
+    scope: 'read',
+    roles: ['user'],
+  },
+  ADMIN_USER: {
+    sub: 'admin-user',
+    username: 'admin',
+    displayName: 'Admin User',
+    scope: 'admin write read',
+    roles: ['admin', 'user'],
+  },
+  PREMIUM_USER: {
+    sub: 'premium-user',
+    username: 'premium',
+    displayName: 'Premium User',
+    scope: 'read write',
+    roles: ['premium', 'user'],
+  },
+  SUPERADMIN_USER: {
+    sub: 'superadmin-user',
+    username: 'superadmin',
+    displayName: 'Super Admin User',
+    scope: 'admin write delete read',
+    roles: ['super-admin', 'admin', 'user'],
+  },
+};
 
 function bearer(token: string) {
   return { requestInit: { headers: { Authorization: `Bearer ${token}` } } };
@@ -147,6 +168,13 @@ let superadminClient: Client;
 
 beforeAll(async () => {
   const port = await getFreePort();
+  // Minted here, not at module scope: the `iss`/`aud` claims the guard validates
+  // are derived from the port the example is about to bind.
+  const BASIC_USER = mintFakeToken(FAKE_USERS.BASIC_USER, port);
+  const ADMIN_USER = mintFakeToken(FAKE_USERS.ADMIN_USER, port);
+  const PREMIUM_USER = mintFakeToken(FAKE_USERS.PREMIUM_USER, port);
+  const SUPERADMIN_USER = mintFakeToken(FAKE_USERS.SUPERADMIN_USER, port);
+
   server = await startExample('per-tool-authorization-oauth', port, {
     readyTimeoutMs: BOOT_MS,
     env: {

@@ -22,9 +22,9 @@
     "build": "tsc -p tsconfig.build.json --sourceMap --inlineSources"
   },
   "peerDependencies": {
-    "@modelcontextprotocol/core": "^2.0.0-beta.4",
-    "@modelcontextprotocol/node": "^2.0.0-beta.4",
-    "@modelcontextprotocol/server": "^2.0.0-beta.4",
+    "@modelcontextprotocol/core": "^2.0.0-beta.5",
+    "@modelcontextprotocol/node": "^2.0.0-beta.5",
+    "@modelcontextprotocol/server": "^2.0.0-beta.5",
     "@nestjs/common": ">=9.0.0",
     "@nestjs/core": ">=9.0.0",
     "@nestjs/microservices": ">=9.0.0",

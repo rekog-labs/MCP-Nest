@@ -91,11 +91,26 @@ function reconcileInstall(dir: string, name: string): void {
   }
 
   // Fresh install so a mode switch can't leave a stale @rekog/mcp-nest behind.
+  //
+  // The lockfile MUST go too. It records a registry resolution for
+  // @rekog/mcp-nest from whenever the example was last installed in PUBLISHED
+  // mode, and npm honours that entry over the `file:` spec in package.json —
+  // so `examples:local` would flip package.json while the install silently kept
+  // serving the published tarball, and this whole suite would test a package
+  // that isn't the one being built. Lockfiles here are gitignored, so dropping
+  // them costs nothing.
+  //
+  // `--install-links=false` forces the symlink that `state` above detects.
+  // npm 9 defaults `install-links=true`, which COPIES a `file:` dep into
+  // node_modules; that copy is indistinguishable from a published install by
+  // the lstat check, so every run would look like a mismatch and reinstall.
   rmSync(join(dir, 'node_modules'), { recursive: true, force: true });
-  const install = spawnSync('npm', ['install', '--no-audit', '--no-fund'], {
-    cwd: dir,
-    stdio: 'inherit',
-  });
+  rmSync(join(dir, 'package-lock.json'), { force: true });
+  const install = spawnSync(
+    'npm',
+    ['install', '--no-audit', '--no-fund', '--install-links=false'],
+    { cwd: dir, stdio: 'inherit' },
+  );
   if (install.status !== 0) {
     throw new Error(`npm install failed for example "${name}"`);
   }
@@ -222,4 +237,152 @@ export async function createLegacyClient(
     }
   }
   throw new Error(`could not connect legacy client to ${url}: ${String(lastErr)}`);
+}
+
+// ---------------------------------------------------------------------------
+// Dual-era driving
+// ---------------------------------------------------------------------------
+
+/**
+ * The protocol eras an example server is expected to serve.
+ *
+ * `legacy` — the pinned `@modelcontextprotocol/sdk@1.10.0` client: `initialize`
+ * handshake, sessions, the 2025 wire.
+ * `modern`  — `@modelcontextprotocol/client` pinned to revision 2026-07-28: no
+ * handshake, no sessions, per-request `_meta` envelope.
+ *
+ * These are two DIFFERENT npm packages, deliberately. The old one stays frozen
+ * at the floor of our supported peer range no matter where the modern one goes.
+ */
+export const ERAS = ['legacy', 'modern'] as const;
+export type Era = (typeof ERAS)[number];
+
+/** The protocol revision the modern client pins. Not exported by the SDK. */
+export const MODERN_PROTOCOL_VERSION = '2026-07-28';
+
+/**
+ * The slice of MCP both client packages can serve, behind one shape.
+ *
+ * The two clients differ in API, not just protocol — `callTool` takes
+ * `(params, resultSchema, options)` on 1.10.0 and `(params, options)` on the v2
+ * client, and the v2 client has no raw `request()` at all. Normalising here is
+ * what lets a single test body run against both eras unchanged; without it,
+ * every dual-era test would be a pile of `if (era === ...)`.
+ */
+export interface EraClient {
+  era: Era;
+  listTools(): Promise<{ tools: any[] }>;
+  callTool(
+    params: { name: string; arguments?: Record<string, unknown> },
+    opts?: { onprogress?: (p: any) => void },
+  ): Promise<any>;
+  /**
+   * `tools/call` as it appears on the wire, bypassing the old client's strict
+   * result parsing (which strips unknown keys like `structuredContent`).
+   */
+  callToolWire(params: {
+    name: string;
+    arguments?: Record<string, unknown>;
+  }): Promise<any>;
+  listResources(): Promise<{ resources: any[] }>;
+  listResourceTemplates(): Promise<{ resourceTemplates: any[] }>;
+  readResource(params: { uri: string }): Promise<any>;
+  listPrompts(): Promise<{ prompts: any[] }>;
+  getPrompt(params: {
+    name: string;
+    arguments?: Record<string, unknown>;
+  }): Promise<any>;
+  getServerVersion(): { name?: string; title?: string; version?: string } | undefined;
+  getInstructions(): string | undefined;
+  close(): Promise<void>;
+  /** Escape hatch to the underlying client for era-specific assertions. */
+  raw: any;
+}
+
+/** Permissive schema: read the raw wire result without 1.10.0's strict parsing. */
+const PASSTHROUGH = { parse: (v: unknown) => v } as any;
+
+function wrapLegacy(client: Client): EraClient {
+  return {
+    era: 'legacy',
+    raw: client,
+    listTools: () => client.listTools() as any,
+    callTool: (params, opts) =>
+      client.callTool(params, undefined, opts as any) as any,
+    callToolWire: (params) =>
+      client.request({ method: 'tools/call', params } as any, PASSTHROUGH) as any,
+    listResources: () => client.listResources() as any,
+    listResourceTemplates: () => client.listResourceTemplates() as any,
+    readResource: (params) => client.readResource(params) as any,
+    listPrompts: () => client.listPrompts() as any,
+    getPrompt: (params) => client.getPrompt(params) as any,
+    getServerVersion: () => client.getServerVersion() as any,
+    getInstructions: () => client.getInstructions(),
+    close: () => client.close(),
+  };
+}
+
+function wrapModern(client: any): EraClient {
+  return {
+    era: 'modern',
+    raw: client,
+    listTools: () => client.listTools(),
+    callTool: (params, opts) => client.callTool(params, opts),
+    // The v2 client already returns the unparsed result, `structuredContent`
+    // included, so the raw-wire escape hatch is just `callTool`.
+    callToolWire: (params) => client.callTool(params),
+    listResources: () => client.listResources(),
+    listResourceTemplates: () => client.listResourceTemplates(),
+    readResource: (params) => client.readResource(params),
+    listPrompts: () => client.listPrompts(),
+    getPrompt: (params) => client.getPrompt(params),
+    getServerVersion: () => client.getServerVersion(),
+    getInstructions: () => client.getInstructions(),
+    close: () => client.close(),
+  };
+}
+
+/**
+ * Connect a modern (2026-07-28) client, retrying briefly like the legacy one.
+ *
+ * Pinned rather than `mode: 'auto'` on purpose: `auto` probes and silently
+ * falls back to `initialize`, so a server that lost its modern leg would still
+ * go green here. Pinning makes that a hard failure, which is the entire point
+ * of running this tier.
+ */
+export async function createModernClient(
+  url: string,
+  opts: { requestInit?: RequestInit } = {},
+): Promise<EraClient> {
+  const { Client: ModernClient, StreamableHTTPClientTransport: ModernTransport } =
+    await import('@modelcontextprotocol/client');
+
+  let lastErr: unknown;
+  for (let i = 0; i < 25; i++) {
+    const client = new ModernClient(
+      { name: 'modern-e2e-client', version: '2.0.0' },
+      { versionNegotiation: { mode: { pin: MODERN_PROTOCOL_VERSION } } },
+    );
+    try {
+      await client.connect(
+        new ModernTransport(new URL(url), { requestInit: opts.requestInit }),
+      );
+      return wrapModern(client);
+    } catch (err) {
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  throw new Error(`could not connect modern client to ${url}: ${String(lastErr)}`);
+}
+
+/** Connect whichever client the era calls for, behind the common shape. */
+export async function createEraClient(
+  era: Era,
+  url: string,
+  opts: { requestInit?: RequestInit } = {},
+): Promise<EraClient> {
+  return era === 'legacy'
+    ? wrapLegacy(await createLegacyClient(url, opts))
+    : createModernClient(url, opts);
 }

@@ -2,6 +2,7 @@ import type {
   OAuthSession,
   OAuthUserProfile,
 } from '../interfaces/oauth-common.interface';
+import type { ClientApplicationType } from '../providers/oauth-provider.interface';
 
 export const MCP_OAUTH_TOKEN = 'MCP_OAUTH_TOKEN';
 
@@ -18,6 +19,11 @@ export interface OAuthClient {
   grant_types: string[];
   response_types: string[];
   token_endpoint_auth_method: string;
+  /**
+   * Recorded verbatim from the registration request. Nothing in this
+   * authorization server reads it — see {@link ClientApplicationType}.
+   */
+  application_type?: ClientApplicationType;
   created_at: Date;
   updated_at: Date;
 }
@@ -35,6 +41,15 @@ export interface AuthorizationCode {
   used_at?: Date;
   // Link to stored user profile (if available)
   user_profile_id?: string;
+  /**
+   * For a Client ID Metadata Document client only: the document as it was
+   * resolved at `/authorize`. The token endpoint validates client authentication
+   * against this snapshot instead of re-fetching, so the redemption is bound to
+   * the metadata the user consented to — a document whose
+   * `token_endpoint_auth_method` or `jwks_uri` changes after the code was issued
+   * cannot alter how that code is redeemed.
+   */
+  client_metadata?: OAuthClient;
 }
 
 export interface ClientRegistrationDto {
@@ -48,6 +63,12 @@ export interface ClientRegistrationDto {
   grant_types?: string[];
   response_types?: string[];
   token_endpoint_auth_method?: string;
+  /**
+   * OIDC DCR `application_type`. MCP clients MUST send it as of revision
+   * `2026-07-28`; this non-OIDC server stores it and validates the value, but
+   * never acts on it. See {@link ClientApplicationType}.
+   */
+  application_type?: ClientApplicationType;
 }
 
 /**

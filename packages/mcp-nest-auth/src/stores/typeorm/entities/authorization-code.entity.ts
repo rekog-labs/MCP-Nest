@@ -1,5 +1,6 @@
 import { Entity, Column, PrimaryColumn, CreateDateColumn } from 'typeorm';
 import { OAUTH_TABLE_PREFIX } from '../constants';
+import type { OAuthClient } from '../../oauth-store.interface';
 
 @Entity(`${OAUTH_TABLE_PREFIX}authorization_codes`)
 export class AuthorizationCodeEntity {
@@ -35,6 +36,11 @@ export class AuthorizationCodeEntity {
 
   @Column({ nullable: true })
   user_profile_id?: string;
+
+  // The Client ID Metadata Document this code is pinned to, for a CIMD client.
+  // See `AuthorizationCode.client_metadata`.
+  @Column('simple-json', { nullable: true })
+  client_metadata?: OAuthClient;
 
   @CreateDateColumn()
   created_at: Date;

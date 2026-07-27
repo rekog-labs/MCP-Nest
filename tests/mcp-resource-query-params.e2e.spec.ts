@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
 import { McpController, ResourceTemplate } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 @McpController()
 export class QueryParamResource {
@@ -90,190 +90,193 @@ export class QueryParamResource {
   }
 }
 
-describe('E2E: MCP Resource Template Query Parameters (RFC 6570)', () => {
-  let app: INestApplication;
-  let testPort: number;
+describe.each(ERAS)(
+  'E2E: MCP Resource Template Query Parameters (RFC 6570) (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let testPort: number;
 
-  beforeAll(async () => {
-    const bootstrap = await bootstrapMcpApp({
-      name: 'query-param-server',
-      version: '1.0.0',
-      controllers: [QueryParamResource],
-    });
-    app = bootstrap.app;
-    testPort = bootstrap.port;
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  describe('Single query parameter {?param}', () => {
-    it('should list resource templates with query parameter syntax', async () => {
-      const client = await createStreamableClient(testPort);
-      try {
-        const resourceTemplates = await client.listResourceTemplates();
-
-        const pizzaCarousel = resourceTemplates.resourceTemplates.find(
-          (r) => r.name === 'pizza-carousel',
-        );
-        expect(pizzaCarousel).toBeDefined();
-        expect(pizzaCarousel?.uriTemplate).toBe(
-          'ui://widget/pizza-carousel{?pizzaTopping}',
-        );
-      } finally {
-        await client.close();
-      }
+    beforeAll(async () => {
+      const bootstrap = await bootstrapMcpApp({
+        name: 'query-param-server',
+        version: '1.0.0',
+        controllers: [QueryParamResource],
+      });
+      app = bootstrap.app;
+      testPort = bootstrap.port;
     });
 
-    it('should read resource with query parameter', async () => {
-      const client = await createStreamableClient(testPort);
-      try {
-        const resource = await client.readResource({
-          uri: 'ui://widget/pizza-carousel?pizzaTopping=pepperoni',
-        });
-
-        expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse(
-          (resource.contents[0] as any).text as string,
-        );
-        expect(content.widget).toBe('carousel');
-        expect(content.filter).toBe('pepperoni');
-      } finally {
-        await client.close();
-      }
+    afterAll(async () => {
+      await app.close();
     });
 
-    it('should read resource without query parameter', async () => {
-      const client = await createStreamableClient(testPort);
-      try {
-        const resource = await client.readResource({
-          uri: 'ui://widget/pizza-carousel',
-        });
+    describe('Single query parameter {?param}', () => {
+      it('should list resource templates with query parameter syntax', async () => {
+        const client = await createEraClient(era, testPort);
+        try {
+          const resourceTemplates = await client.listResourceTemplates();
 
-        expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse(
-          (resource.contents[0] as any).text as string,
-        );
-        expect(content.widget).toBe('carousel');
-        expect(content.filter).toBe('all');
-      } finally {
-        await client.close();
-      }
-    });
-  });
+          const pizzaCarousel = resourceTemplates.resourceTemplates.find(
+            (r) => r.name === 'pizza-carousel',
+          );
+          expect(pizzaCarousel).toBeDefined();
+          expect(pizzaCarousel?.uriTemplate).toBe(
+            'ui://widget/pizza-carousel{?pizzaTopping}',
+          );
+        } finally {
+          await client.close();
+        }
+      });
 
-  describe('Multiple query parameters {?param1,param2}', () => {
-    it('should list resource templates with multiple query parameters', async () => {
-      const client = await createStreamableClient(testPort);
-      try {
-        const resourceTemplates = await client.listResourceTemplates();
+      it('should read resource with query parameter', async () => {
+        const client = await createEraClient(era, testPort);
+        try {
+          const resource = await client.readResource({
+            uri: 'ui://widget/pizza-carousel?pizzaTopping=pepperoni',
+          });
 
-        const pizzaList = resourceTemplates.resourceTemplates.find(
-          (r) => r.name === 'pizza-list-multi',
-        );
-        expect(pizzaList).toBeDefined();
-        expect(pizzaList?.uriTemplate).toBe(
-          'ui://widget/pizza-list{?topping,size}',
-        );
-      } finally {
-        await client.close();
-      }
-    });
+          expect(resource.contents).toHaveLength(1);
+          const content = JSON.parse(
+            (resource.contents[0] as any).text as string,
+          );
+          expect(content.widget).toBe('carousel');
+          expect(content.filter).toBe('pepperoni');
+        } finally {
+          await client.close();
+        }
+      });
 
-    it('should read resource with multiple query parameters', async () => {
-      const client = await createStreamableClient(testPort);
-      try {
-        const resource = await client.readResource({
-          uri: 'ui://widget/pizza-list?topping=mushroom&size=large',
-        });
+      it('should read resource without query parameter', async () => {
+        const client = await createEraClient(era, testPort);
+        try {
+          const resource = await client.readResource({
+            uri: 'ui://widget/pizza-carousel',
+          });
 
-        expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse(
-          (resource.contents[0] as any).text as string,
-        );
-        expect(content.widget).toBe('list');
-        expect(content.filter.topping).toBe('mushroom');
-        expect(content.filter.size).toBe('large');
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should read resource with partial query parameters', async () => {
-      const client = await createStreamableClient(testPort);
-      try {
-        const resource = await client.readResource({
-          uri: 'ui://widget/pizza-list?topping=pepperoni',
-        });
-
-        expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse(
-          (resource.contents[0] as any).text as string,
-        );
-        expect(content.widget).toBe('list');
-        expect(content.filter.topping).toBe('pepperoni');
-        expect(content.filter.size).toBe('any');
-      } finally {
-        await client.close();
-      }
-    });
-  });
-
-  describe('Mixed path and query parameters', () => {
-    it('should list resource templates with mixed parameters', async () => {
-      const client = await createStreamableClient(testPort);
-      try {
-        const resourceTemplates = await client.listResourceTemplates();
-
-        const pizzaMixed = resourceTemplates.resourceTemplates.find(
-          (r) => r.name === 'pizza-mixed',
-        );
-        expect(pizzaMixed).toBeDefined();
-        expect(pizzaMixed?.uriTemplate).toBe(
-          'ui://widget/pizza/{category}{?topping}',
-        );
-      } finally {
-        await client.close();
-      }
+          expect(resource.contents).toHaveLength(1);
+          const content = JSON.parse(
+            (resource.contents[0] as any).text as string,
+          );
+          expect(content.widget).toBe('carousel');
+          expect(content.filter).toBe('all');
+        } finally {
+          await client.close();
+        }
+      });
     });
 
-    it('should read resource with path and query parameters', async () => {
-      const client = await createStreamableClient(testPort);
-      try {
-        const resource = await client.readResource({
-          uri: 'ui://widget/pizza/vegetarian?topping=olives',
-        });
+    describe('Multiple query parameters {?param1,param2}', () => {
+      it('should list resource templates with multiple query parameters', async () => {
+        const client = await createEraClient(era, testPort);
+        try {
+          const resourceTemplates = await client.listResourceTemplates();
 
-        expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse(
-          (resource.contents[0] as any).text as string,
-        );
-        expect(content.widget).toBe('mixed');
-        expect(content.category).toBe('vegetarian');
-        expect(content.filter).toBe('olives');
-      } finally {
-        await client.close();
-      }
+          const pizzaList = resourceTemplates.resourceTemplates.find(
+            (r) => r.name === 'pizza-list-multi',
+          );
+          expect(pizzaList).toBeDefined();
+          expect(pizzaList?.uriTemplate).toBe(
+            'ui://widget/pizza-list{?topping,size}',
+          );
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should read resource with multiple query parameters', async () => {
+        const client = await createEraClient(era, testPort);
+        try {
+          const resource = await client.readResource({
+            uri: 'ui://widget/pizza-list?topping=mushroom&size=large',
+          });
+
+          expect(resource.contents).toHaveLength(1);
+          const content = JSON.parse(
+            (resource.contents[0] as any).text as string,
+          );
+          expect(content.widget).toBe('list');
+          expect(content.filter.topping).toBe('mushroom');
+          expect(content.filter.size).toBe('large');
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should read resource with partial query parameters', async () => {
+        const client = await createEraClient(era, testPort);
+        try {
+          const resource = await client.readResource({
+            uri: 'ui://widget/pizza-list?topping=pepperoni',
+          });
+
+          expect(resource.contents).toHaveLength(1);
+          const content = JSON.parse(
+            (resource.contents[0] as any).text as string,
+          );
+          expect(content.widget).toBe('list');
+          expect(content.filter.topping).toBe('pepperoni');
+          expect(content.filter.size).toBe('any');
+        } finally {
+          await client.close();
+        }
+      });
     });
 
-    it('should read resource with path parameter only', async () => {
-      const client = await createStreamableClient(testPort);
-      try {
-        const resource = await client.readResource({
-          uri: 'ui://widget/pizza/meat-lovers',
-        });
+    describe('Mixed path and query parameters', () => {
+      it('should list resource templates with mixed parameters', async () => {
+        const client = await createEraClient(era, testPort);
+        try {
+          const resourceTemplates = await client.listResourceTemplates();
 
-        expect(resource.contents).toHaveLength(1);
-        const content = JSON.parse(
-          (resource.contents[0] as any).text as string,
-        );
-        expect(content.widget).toBe('mixed');
-        expect(content.category).toBe('meat-lovers');
-        expect(content.filter).toBe('all');
-      } finally {
-        await client.close();
-      }
+          const pizzaMixed = resourceTemplates.resourceTemplates.find(
+            (r) => r.name === 'pizza-mixed',
+          );
+          expect(pizzaMixed).toBeDefined();
+          expect(pizzaMixed?.uriTemplate).toBe(
+            'ui://widget/pizza/{category}{?topping}',
+          );
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should read resource with path and query parameters', async () => {
+        const client = await createEraClient(era, testPort);
+        try {
+          const resource = await client.readResource({
+            uri: 'ui://widget/pizza/vegetarian?topping=olives',
+          });
+
+          expect(resource.contents).toHaveLength(1);
+          const content = JSON.parse(
+            (resource.contents[0] as any).text as string,
+          );
+          expect(content.widget).toBe('mixed');
+          expect(content.category).toBe('vegetarian');
+          expect(content.filter).toBe('olives');
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should read resource with path parameter only', async () => {
+        const client = await createEraClient(era, testPort);
+        try {
+          const resource = await client.readResource({
+            uri: 'ui://widget/pizza/meat-lovers',
+          });
+
+          expect(resource.contents).toHaveLength(1);
+          const content = JSON.parse(
+            (resource.contents[0] as any).text as string,
+          );
+          expect(content.widget).toBe('mixed');
+          expect(content.category).toBe('meat-lovers');
+          expect(content.filter).toBe('all');
+        } finally {
+          await client.close();
+        }
+      });
     });
-  });
-});
+  },
+);

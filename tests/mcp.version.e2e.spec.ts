@@ -9,9 +9,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { McpController, Tool } from '@rekog/mcp-nest';
 import {
-  createStreamableClient,
   McpStrategy,
   StreamableHttpTransport,
+  createEraClient,
+  ERAS,
 } from './utils';
 
 @McpController()
@@ -42,7 +43,7 @@ class TestController {
   }
 }
 
-describe('E2E: MCP Version', () => {
+describe.each(ERAS)('E2E: MCP Version (%s era)', (era) => {
   let app: INestApplication;
   let testPort: number;
 
@@ -79,7 +80,7 @@ describe('E2E: MCP Version', () => {
   });
 
   it('should access the MCP endpoint without version prefix', async () => {
-    const client = await createStreamableClient(testPort);
+    const client = await createEraClient(era, testPort);
     const tools = await client.listTools();
 
     expect(tools.tools.length).toBe(1);
@@ -87,7 +88,7 @@ describe('E2E: MCP Version', () => {
   });
 
   it('should report the configured server name and version', async () => {
-    const client = await createStreamableClient(testPort);
+    const client = await createEraClient(era, testPort);
     const serverInfo = client.getServerVersion();
     expect(serverInfo?.name).toBe('test-mcp-server');
     expect(serverInfo?.version).toBe('0.0.1');

@@ -21,7 +21,7 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { createStreamableClient } from './utils';
+import { createEraClient, ERAS } from './utils';
 
 @Injectable()
 class UpperCaseNamePipe implements PipeTransform {
@@ -89,7 +89,7 @@ class PipelineController {
   }
 }
 
-describe('E2E: McpStrategy RPC pipeline', () => {
+describe.each(ERAS)('E2E: McpStrategy RPC pipeline (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -117,7 +117,7 @@ describe('E2E: McpStrategy RPC pipeline', () => {
   });
 
   it('runs pipes on the payload', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const res = (await client.callTool({
       name: 'pipe-tool',
       arguments: { name: 'alice' },
@@ -127,7 +127,7 @@ describe('E2E: McpStrategy RPC pipeline', () => {
   });
 
   it('runs interceptors around the handler', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const res = (await client.callTool({
       name: 'interceptor-tool',
       arguments: {},
@@ -137,7 +137,7 @@ describe('E2E: McpStrategy RPC pipeline', () => {
   });
 
   it('applies exception filters', async () => {
-    const client = await createStreamableClient(port);
+    const client = await createEraClient(era, port);
     const res = (await client.callTool({
       name: 'filter-tool',
       arguments: {},

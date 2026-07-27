@@ -2,12 +2,13 @@
   "name": "mcp-nest-examples-e2e",
   "version": "0.0.0",
   "private": true,
-  "description": "End-to-end tests that boot each example server as a real subprocess and drive it with a pinned, intentionally-OLD MCP client (@modelcontextprotocol/sdk@1.10.0 — the floor of @rekog/mcp-nest's supported peer range). This catches server/SDK changes that would break clients already in the wild. Not part of the npm workspace on purpose, so its client SDK stays pinned regardless of what the workspace/examples upgrade to.",
+  "description": "End-to-end tests that boot each example server as a real subprocess and drive it with TWO clients: a pinned, intentionally-OLD one (@modelcontextprotocol/sdk@1.10.0 — the floor of @rekog/mcp-nest's supported peer range) and a modern one (@modelcontextprotocol/client, protocol revision 2026-07-28). The old client catches server/SDK changes that would break clients already in the wild; the modern client guards the 2026-era leg. They are separate packages, so the old one stays pinned no matter what the modern one moves to. Not part of the npm workspace on purpose.",
   "scripts": {
     "test": "bun test",
     "test:tools": "bun test tools"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "^2.0.0-beta.5",
     "@modelcontextprotocol/sdk": "1.10.0",
     "zod": "^3.23.8"
   },

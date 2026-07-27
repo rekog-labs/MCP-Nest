@@ -1,42 +1,48 @@
 /**
  * e2e for `examples/resources` — verifies the behaviors documented in
- * docs/resources.md against a real, spawned example server, driven by a
- * pinned old MCP client.
+ * docs/resources.md against a real, spawned example server, driven by both a pinned old (1.10.0) and a modern (2026-07-28) client.
  *
  * Run:  bun test resources.test.ts        (from the e2e/ directory)
  *
- * Green on `main` = an old (1.10.0) client fully interoperates with the current
- * server. If the v1->v2 SDK migration (or any future server change) breaks that,
- * one of these assertions fails and names exactly what regressed.
+ * Green = a dual-era server serves both: old clients in the wild keep working,
+ * and the 2026 leg does too. A break names exactly which era regressed.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { z } from 'zod';
 
-import { createLegacyClient, getFreePort, startExample, type RunningExample } from './harness';
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import {
+  createEraClient,
+  ERAS,
+  getFreePort,
+  startExample,
+  type Era,
+  type EraClient,
+  type RunningExample,
+} from './harness';
 
 const BOOT_MS = 90_000;
 
 let server: RunningExample;
-let client: Client;
+const clients: Partial<Record<Era, EraClient>> = {};
 
-/** Permissive schema: read the raw wire result without the old client's strict parsing. */
-const WireResult = z.object({}).passthrough();
 
 beforeAll(async () => {
   const port = await getFreePort();
   server = await startExample('resources', port, { readyTimeoutMs: BOOT_MS });
-  client = await createLegacyClient(server.url);
+  // One server, both eras: also the dual-era concurrency proof.
+  for (const era of ERAS) {
+    clients[era] = await createEraClient(era, server.url);
+  }
 }, BOOT_MS);
 
 afterAll(async () => {
-  await client?.close?.();
+  for (const era of ERAS) await clients[era]?.close();
   await server?.stop();
 });
 
-describe('examples/resources e2e (pinned @modelcontextprotocol/sdk@1.10.0 client)', () => {
+describe.each(ERAS)('examples/resources e2e (%s era)', (era) => {
+  const client = () => clients[era]!;
   test('resources/list advertises every documented resource', async () => {
-    const { resources } = await client.listResources();
+    const { resources } = await client().listResources();
     const byUri = Object.fromEntries(resources.map((r) => [r.uri, r]));
 
     expect(Object.keys(byUri).sort()).toEqual(
@@ -71,7 +77,7 @@ describe('examples/resources e2e (pinned @modelcontextprotocol/sdk@1.10.0 client
   });
 
   test('reading the languages resource returns the exact JSON documented', async () => {
-    const res = await client.readResource({ uri: 'mcp://languages/informal-greetings' });
+    const res = await client().readResource({ uri: 'mcp://languages/informal-greetings' });
     expect(res.contents).toHaveLength(1);
     const content = res.contents[0] as { uri: string; mimeType: string; text: string };
     expect(content.uri).toBe('mcp://languages/informal-greetings');
@@ -90,7 +96,7 @@ describe('examples/resources e2e (pinned @modelcontextprotocol/sdk@1.10.0 client
   });
 
   test('reading the config resource returns JSON content', async () => {
-    const res = await client.readResource({ uri: 'mcp://config/app' });
+    const res = await client().readResource({ uri: 'mcp://config/app' });
     expect(res.contents).toHaveLength(1);
     const content = res.contents[0] as { uri: string; mimeType: string; text: string };
     expect(content.uri).toBe('mcp://config/app');
@@ -99,7 +105,7 @@ describe('examples/resources e2e (pinned @modelcontextprotocol/sdk@1.10.0 client
   });
 
   test('reading the help resource returns plain text content', async () => {
-    const res = await client.readResource({ uri: 'mcp://help/usage' });
+    const res = await client().readResource({ uri: 'mcp://help/usage' });
     expect(res.contents).toHaveLength(1);
     const content = res.contents[0] as { uri: string; mimeType: string; text: string };
     expect(content.uri).toBe('mcp://help/usage');
@@ -108,7 +114,7 @@ describe('examples/resources e2e (pinned @modelcontextprotocol/sdk@1.10.0 client
   });
 
   test('reading the readme resource returns markdown content', async () => {
-    const res = await client.readResource({ uri: 'mcp://docs/readme' });
+    const res = await client().readResource({ uri: 'mcp://docs/readme' });
     expect(res.contents).toHaveLength(1);
     const content = res.contents[0] as { uri: string; mimeType: string; text: string };
     expect(content.uri).toBe('mcp://docs/readme');
@@ -117,14 +123,11 @@ describe('examples/resources e2e (pinned @modelcontextprotocol/sdk@1.10.0 client
   });
 
   test('resource templates/list is empty (no templated resources in this example)', async () => {
-    const res: any = await client.request(
-      { method: 'resources/templates/list', params: {} },
-      WireResult,
-    );
+    const res: any = await client().listResourceTemplates();
     expect(res.resourceTemplates ?? []).toEqual([]);
   });
 
   test('reading an unknown resource URI surfaces a protocol error', async () => {
-    await expect(client.readResource({ uri: 'mcp://does-not-exist' })).rejects.toThrow();
+    await expect(client().readResource({ uri: 'mcp://does-not-exist' })).rejects.toThrow();
   });
 });

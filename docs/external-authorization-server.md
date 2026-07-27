@@ -13,6 +13,28 @@ The point to internalize:
 > The MCP server contains **no** login, consent, or token-issuing code. It only
 > validates tokens.
 
+> **DCR is deprecated upstream (but not going away yet).** MCP protocol revision
+> **`2026-07-28`** deprecates Dynamic Client Registration (RFC 7591) in favour of
+> **Client ID Metadata Documents** (CIMD) — spec
+> [PR #2858](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2858).
+> The draft keeps it a `MAY`: *"Authorization servers and MCP clients **MAY**
+> support the OAuth 2.0 Dynamic Client Registration Protocol (RFC7591). Note that
+> Dynamic Client Registration is deprecated and retained for backwards
+> compatibility with authorization servers that do not support Client ID Metadata
+> Documents."* Under the feature-lifecycle policy's 12-month minimum window, the
+> earliest revision that could remove it is the first one released **on or after
+> 2027-07-28**.
+>
+> Nothing in this guide changes: DCR is still the interoperable path today, and
+> Casdoor's DCR endpoint is what makes the zero-preconfiguration flow below work.
+> **CIMD is the forward path** — instead of registering, the client presents an
+> HTTPS URL as its `client_id` and the authorization server fetches the client's
+> metadata document from it. Whether you can adopt it depends entirely on your
+> external authorization server: it is the side that has to support CIMD, and the
+> MCP resource server (this guide) is unaffected either way. If you run the
+> [built-in authorization server](./built-in-authorization-server.md) instead, DCR
+> there stays fully supported.
+
 There is a runnable project for this guide:
 [`examples/external-authorization-server-casdoor/`](../examples/external-authorization-server-casdoor/).
 It boots Casdoor with a declarative seed (org, app, users, DCR enabled), starts
@@ -114,6 +136,12 @@ zero-preconfiguration OAuth flow:
    it against Casdoor's JWKS and the tool runs.
 
 None of steps 3–4 touch the MCP server — that is the whole point.
+
+Step 4 is the deprecated hop. On an authorization server that supports **Client
+ID Metadata Documents**, the client skips registration entirely and passes an
+HTTPS URL as its `client_id`, which the authorization server dereferences to read
+the client's metadata. Steps 1, 2 and 5 — the only ones the MCP server
+participates in — are identical either way.
 
 ## Try it
 

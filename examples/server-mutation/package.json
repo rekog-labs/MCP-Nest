@@ -6,7 +6,7 @@
     "start": "ts-node-dev --respawn src/main.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.0.0-beta.4",
+    "@modelcontextprotocol/server": "^2.0.0-beta.5",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/microservices": "^11.0.0",

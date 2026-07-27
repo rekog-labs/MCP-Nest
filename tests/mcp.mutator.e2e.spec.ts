@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { McpController, Tool } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
-import { McpServer } from "@modelcontextprotocol/server";
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
+import { McpServer } from '@modelcontextprotocol/server';
 
 @McpController()
 class Tools {
@@ -27,7 +27,7 @@ const telemetryMutator = (server: McpServer) => {
   return server;
 };
 
-describe('MCP with mutated telemetry server', () => {
+describe.each(ERAS)('MCP with mutated telemetry server (%s era)', (era) => {
   let app: INestApplication;
   let port: number;
 
@@ -54,7 +54,7 @@ describe('MCP with mutated telemetry server', () => {
   });
 
   it('should connect to mutated server', async () => {
-    const client = await createStreamableClient(port, {
+    const client = await createEraClient(era, port, {
       endpoint: `/mcp`,
     });
 

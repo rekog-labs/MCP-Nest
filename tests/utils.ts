@@ -1,5 +1,8 @@
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
 import { INestApplication, ModuleMetadata } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
@@ -25,6 +28,10 @@ export interface BootstrapMcpConfig {
   name?: string;
   version?: string;
   allowUnauthenticatedAccess?: boolean;
+  /** Extra MCP server capabilities merged with the auto-derived ones. */
+  capabilities?: Record<string, unknown>;
+  /** SEP-2549 per-operation cache hints for modern-era cacheable results. */
+  cacheHints?: Record<string, { ttlMs?: number; cacheScope?: string }>;
   serverMutator?: (server: any) => any;
   /**
    * Hook to configure the app after the microservice is connected but BEFORE
@@ -48,6 +55,8 @@ export async function bootstrapMcpApp(
     name: config.name ?? 'test-mcp-server',
     version: config.version ?? '0.0.1',
     allowUnauthenticatedAccess: config.allowUnauthenticatedAccess,
+    ...('capabilities' in config ? { capabilities: config.capabilities } : {}),
+    ...(config.cacheHints ? { cacheHints: config.cacheHints as any } : {}),
     serverMutator: config.serverMutator,
     transports: config.transports ?? [
       new StreamableHttpTransport({ statefulMode: true }),
@@ -76,6 +85,25 @@ export async function bootstrapMcpApp(
 }
 
 /**
+ * The two protocol revisions one endpoint serves. Feature suites run under
+ * `describe.each(ERAS)` so every behavior is asserted on both.
+ *
+ * The two eras take genuinely different server-side paths — modern traffic is
+ * routed to `createMcpHandler`, legacy traffic to the pre-existing wiring — so
+ * a feature can work on one and break on the other. Unlike `e2e/`, both clients
+ * here are the SAME package; only `versionNegotiation` differs.
+ */
+export const ERAS = ['legacy', 'modern'] as const;
+export type Era = (typeof ERAS)[number];
+
+/**
+ * Written out literally on purpose. The SDK's `LATEST_PROTOCOL_VERSION` is
+ * `2025-11-25` (the newest *legacy* revision); the modern revision string is
+ * not exported.
+ */
+export const MODERN_PROTOCOL_VERSION = '2026-07-28';
+
+/**
  * Creates and connects a new MCP (Model Context Protocol) client using Streamable HTTP for testing
  *
  * @param port - The port number to connect to on localhost
@@ -97,13 +125,25 @@ export async function createStreamableClient(
   options: {
     endpoint?: string;
     requestInit?: RequestInit;
+    /** Defaults to `legacy`, which is also the SDK client's own default. */
+    era?: Era;
   } = {},
 ): Promise<Client> {
   const endpoint = options.endpoint || '/mcp';
+  const era = options.era ?? 'legacy';
   const client = new Client(
     { name: 'example-client', version: '1.0.0' },
     {
       capabilities: {},
+      // Pinned, not `mode: 'auto'`: `auto` probes and silently falls back to
+      // `initialize`, so a server that lost its modern leg would still pass.
+      ...(era === 'modern'
+        ? {
+            versionNegotiation: {
+              mode: { pin: MODERN_PROTOCOL_VERSION },
+            } as const,
+          }
+        : {}),
     },
   );
   const url = new URL(`http://localhost:${port}${endpoint}`);
@@ -112,6 +152,26 @@ export async function createStreamableClient(
   });
   await client.connect(transport);
   return client;
+}
+
+/**
+ * A client pinned to the modern revision (`2026-07-28`) — no probe, no legacy
+ * fallback, so a missing modern leg fails loudly instead of passing.
+ */
+export async function createModernClient(
+  port: number,
+  options: { endpoint?: string; requestInit?: RequestInit } = {},
+): Promise<Client> {
+  return createStreamableClient(port, { ...options, era: 'modern' });
+}
+
+/** Era-parameterised client, for `describe.each(ERAS)` suites. */
+export async function createEraClient(
+  era: Era,
+  port: number,
+  options: { endpoint?: string; requestInit?: RequestInit } = {},
+): Promise<Client> {
+  return createStreamableClient(port, { ...options, era });
 }
 
 /**

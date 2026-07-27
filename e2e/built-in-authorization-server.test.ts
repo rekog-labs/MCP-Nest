@@ -2,7 +2,16 @@
  * e2e for `examples/built-in-authorization-server` — verifies the OFFLINE/FAKE
  * auth path documented in the example's README ("FAKE mode, MCP_FAKE_AUTH=1")
  * and docs/built-in-authorization-server.md, against a real, spawned example
- * server, driven by a pinned old MCP client.
+ * server, driven by the pinned old (1.10.0) MCP client.
+ *
+ * LEGACY-ONLY, deliberately. Every other e2e file runs its assertions on both
+ * protocol eras (see `ERAS` in harness.ts), but the OAuth files do not: the
+ * two client packages ship different client-side OAuth implementations, so
+ * porting these would be a rewrite against a different auth API rather than a
+ * parameterisation. The MCP era and the OAuth handshake are independent —
+ * per-tool authorization on the modern era is already covered by
+ * per-tool-authorization{,-jwt}.test.ts, which drive the same guards with a
+ * bearer header on both eras. Revisit if the auth surface converges.
  *
  * Run:  bun test built-in-authorization-server.test.ts     (from the e2e/ directory)
  *
@@ -13,10 +22,13 @@
  * (`MCP_FAKE_AUTH=1`) dummy GitHub creds let the module construct without ever
  * contacting an IdP, and the offline shortcut to a usable token is a JWT signed
  * locally with the SAME `jwtSecret` the server uses: `JwtTokenService.validateToken`
- * only HS256-verifies the signature (no aud/iss/interactive-flow check), so a
- * client-minted token is accepted by the `/mcp` guard exactly like a token the
- * AS would have issued via the browser leg — which is genuinely not runnable
- * offline. This mirrors `scripts/mint-jwt.ts`.
+ * HS256-verifies the signature and then checks `iss`, `aud` and `type` (RFC 8707
+ * §2 makes the audience check a MUST) — but it cannot tell a locally-minted token
+ * from one the AS issued, so a token carrying the right claims is accepted by the
+ * `/mcp` guard exactly like a token the AS would have issued via the browser leg,
+ * which is genuinely not runnable offline. That is why the payload below sets
+ * `iss`/`aud` from the example's own `serverUrl`, and it mirrors
+ * `scripts/mint-jwt.ts`.
  *
  * The pinned client (1.10.0) authenticates purely via the HTTP `Authorization`
  * header on the transport (`requestInit.headers`), never a browser OAuth flow.
@@ -127,8 +139,9 @@ describe('examples/built-in-authorization-server e2e (FAKE mode, pinned @modelco
     expect(meta.registration_endpoint).toBe(`${serverUrl}/auth/register`);
     expect(meta.response_types_supported).toEqual(['code']);
     expect(meta.grant_types_supported).toContain('authorization_code');
-    // PKCE advertised per the README.
-    expect(meta.code_challenge_methods_supported).toEqual(['plain', 'S256']);
+    // PKCE advertised per the README — S256 only, since `plain` is a downgrade
+    // this authorization server refuses outright (OAuth 2.1 §4.1.1).
+    expect(meta.code_challenge_methods_supported).toEqual(['S256']);
   });
 
   test('serves OAuth protected-resource metadata (RFC 9728) pointing at the AS + /mcp', async () => {
@@ -140,6 +153,9 @@ describe('examples/built-in-authorization-server e2e (FAKE mode, pinned @modelco
     expect(meta.resource).toBe(`${serverUrl}/mcp`);
     expect(meta.bearer_methods_supported).toEqual(['header']);
     expect(meta.mcp_versions_supported).toContain('2025-06-18');
+    // The default advertises both eras, matching the default `protocol: 'dual'`
+    // transport posture.
+    expect(meta.mcp_versions_supported).toContain('2026-07-28');
   });
 
   test('Dynamic Client Registration (RFC 7591) returns a registered client', async () => {

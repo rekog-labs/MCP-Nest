@@ -9,7 +9,7 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { createStreamableClient } from './utils';
+import { createEraClient, ERAS } from './utils';
 
 /**
  * Multi-server + bring-your-own-controller.
@@ -94,67 +94,70 @@ class TravelModule {}
 @Module({ imports: [WeatherModule, TravelModule] })
 class AppModule {}
 
-describe('E2E: StreamableHttpController (multi-server)', () => {
-  let app: INestApplication;
-  let port: number;
+describe.each(ERAS)(
+  'E2E: StreamableHttpController (multi-server) (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let port: number;
 
-  beforeAll(async () => {
-    const moduleFixture = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
+    beforeAll(async () => {
+      const moduleFixture = await Test.createTestingModule({
+        imports: [AppModule],
+      }).compile();
 
-    app = moduleFixture.createNestApplication();
-    const httpAdapter = app.getHttpAdapter();
-    weatherStrategy.setHttpAdapter(httpAdapter);
-    travelStrategy.setHttpAdapter(httpAdapter);
-    app.connectMicroservice({ strategy: weatherStrategy });
-    app.connectMicroservice({ strategy: travelStrategy });
-    await app.startAllMicroservices();
-    await app.listen(0);
-    port = (app.getHttpServer().address() as { port: number }).port;
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it('routes /weather/mcp to the weather server only', async () => {
-    const client = await createStreamableClient(port, {
-      endpoint: '/weather/mcp',
+      app = moduleFixture.createNestApplication();
+      const httpAdapter = app.getHttpAdapter();
+      weatherStrategy.setHttpAdapter(httpAdapter);
+      travelStrategy.setHttpAdapter(httpAdapter);
+      app.connectMicroservice({ strategy: weatherStrategy });
+      app.connectMicroservice({ strategy: travelStrategy });
+      await app.startAllMicroservices();
+      await app.listen(0);
+      port = (app.getHttpServer().address() as { port: number }).port;
     });
-    const names = (await client.listTools()).tools.map((t) => t.name);
-    expect(names).toEqual(['get-weather']);
-    await client.close();
-  });
 
-  it('routes /travel/mcp to the travel server only', async () => {
-    const client = await createStreamableClient(port, {
-      endpoint: '/travel/mcp',
+    afterAll(async () => {
+      await app.close();
     });
-    const names = (await client.listTools()).tools.map((t) => t.name);
-    expect(names).toEqual(['recommend-destination']);
-    await client.close();
-  });
 
-  it('calls the right tool on each endpoint', async () => {
-    const weather = await createStreamableClient(port, {
-      endpoint: '/weather/mcp',
+    it('routes /weather/mcp to the weather server only', async () => {
+      const client = await createEraClient(era, port, {
+        endpoint: '/weather/mcp',
+      });
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      expect(names).toEqual(['get-weather']);
+      await client.close();
     });
-    const w = (await weather.callTool({
-      name: 'get-weather',
-      arguments: {},
-    })) as { content: Array<{ text: string }> };
-    expect(w.content[0].text).toBe('sunny');
-    await weather.close();
 
-    const travel = await createStreamableClient(port, {
-      endpoint: '/travel/mcp',
+    it('routes /travel/mcp to the travel server only', async () => {
+      const client = await createEraClient(era, port, {
+        endpoint: '/travel/mcp',
+      });
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      expect(names).toEqual(['recommend-destination']);
+      await client.close();
     });
-    const t = (await travel.callTool({
-      name: 'recommend-destination',
-      arguments: {},
-    })) as { content: Array<{ text: string }> };
-    expect(t.content[0].text).toBe('Lisbon');
-    await travel.close();
-  });
-});
+
+    it('calls the right tool on each endpoint', async () => {
+      const weather = await createEraClient(era, port, {
+        endpoint: '/weather/mcp',
+      });
+      const w = (await weather.callTool({
+        name: 'get-weather',
+        arguments: {},
+      })) as { content: Array<{ text: string }> };
+      expect(w.content[0].text).toBe('sunny');
+      await weather.close();
+
+      const travel = await createEraClient(era, port, {
+        endpoint: '/travel/mcp',
+      });
+      const t = (await travel.callTool({
+        name: 'recommend-destination',
+        arguments: {},
+      })) as { content: Array<{ text: string }> };
+      expect(t.content[0].text).toBe('Lisbon');
+      await travel.close();
+    });
+  },
+);

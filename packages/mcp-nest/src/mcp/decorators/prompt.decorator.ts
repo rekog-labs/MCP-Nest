@@ -2,7 +2,10 @@ import { applyDecorators, SetMetadata } from '@nestjs/common';
 import { MCP_PROMPT_METADATA_KEY } from './constants';
 import { ZodObject, ZodType } from 'zod';
 import { mcpMessagePattern } from './mcp-message-pattern';
-import type { GetPromptResult, PromptMessage } from "@modelcontextprotocol/server";
+import type {
+  GetPromptResult,
+  PromptMessage,
+} from '@modelcontextprotocol/server';
 
 export type { GetPromptResult, PromptMessage };
 

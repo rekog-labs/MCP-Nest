@@ -44,11 +44,12 @@ Tool methods are RPC handlers, so their parameters are bound with `@nestjs/micro
 1. **`@Payload() args`**: The validated input parameters as defined by the `parameters` Zod schema in the `@Tool` decorator. The first parameter defaults to the payload, so a handler that only needs its arguments can keep a single (optionally `@Payload()`-decorated) param.
 
 2. **`@Ctx() ctx: McpContext`**: The MCP execution context providing access to:
-   - `reportProgress()` - Method to report progress updates to the client (session-aware transports only)
+   - `reportProgress()` - Method to report progress updates to the client (see [Tool with Progress Reporting](#tool-with-progress-reporting))
    - `mcpServer` - Access to the underlying MCP server instance for advanced operations like elicitation
    - `mcpRequest` - The parsed JSON-RPC request
    - `log` - server-side logging
-   - `getSession()` - `{ transport, stateless, sessionId }`
+   - `getSession()` - `{ transport, stateless, era, sessionId }`. `era` is `'legacy'` (the 2025-era protocol) or `'modern'` (`2026-07-28`); `sessionId` is only ever set on `legacy`.
+   - `getProtocolVersion()` / `getClientCapabilities()` / `getClientInfo()` - the calling client's per-request identity on the modern era; `undefined` on `legacy`, where they were negotiated once at `initialize` time. See [Protocol Revisions](protocol-revisions.md).
    - `getRawRequest()` - The original HTTP request object (Express/Fastify), providing access to headers, query parameters, authentication data, and other HTTP-specific information. This returns `undefined` when using STDIO transport.
 
 3. **`@McpRawRequest() req`**: Injects the raw transport request directly — the MCP analog of NestJS's `@Req()`. This is sugar for `ctx.getRawRequest()`; reach for it when the request is all you need from the context, so you don't have to take `@Ctx()` just to call `getRawRequest()`. Like `getRawRequest()`, it is `undefined` under STDIO. The decorator does not type the value — annotate the parameter with your framework's request type (e.g. `@McpRawRequest() req?: Request`). This is the **HTTP transport** request (headers, cookies, `req.user`) — not to be confused with `ctx.mcpRequest`, which is the MCP **protocol** message; see [Reading the JSON-RPC request](#reading-the-json-rpc-request-ctxmcprequest).
@@ -94,18 +95,27 @@ async logDemo(@Payload() { input }: { input: string }, @Ctx() ctx: McpContext) {
 }
 ```
 
-For the client to actually receive these messages, the strategy must **declare the logging capability** — otherwise the server never advertises it and the `notifications/message` frames are dropped:
+The strategy **declares the `logging` capability by default**, so no extra configuration is needed. (You can still pass `capabilities: { logging: { … } }` to add fields to it; the spec requires servers that emit log notifications to advertise it.) `warn` is sent at MCP level `warning`.
 
-```typescript
-new McpStrategy({
-  name: 'my-server',
-  version: '1.0.0',
-  transports: [new StreamableHttpTransport({ statefulMode: true })],
-  capabilities: { logging: {} }, // required for ctx.log.* to reach the client
-});
-```
+Where the messages go depends on the protocol era of the request:
 
-Logging is also session-aware. On session-aware transports (stateful streamable HTTP and STDIO) the messages are pushed to the client — over the standing `GET` SSE stream, not the per-call `POST` response. On **stateless** streamable HTTP (the default `new StreamableHttpTransport()`), the server can't push to the client, so each `ctx.log.*` call is a no-op that emits a local NestJS warning instead — the same limitation applies to `ctx.reportProgress()`. (`warn` is sent at MCP level `warning`.)
+| Delivery path | `ctx.log.*` | `ctx.reportProgress()` |
+| --- | --- | --- |
+| **Legacy, session-aware** (`statefulMode: true` HTTP, STDIO) | pushed over the standing `GET` SSE stream, not the per-call `POST` response | same |
+| **Legacy, stateless** (`new StreamableHttpTransport()`) | no-op + a local NestJS warning — there is nowhere to push | same |
+| **Modern** (`2026-07-28`, always sessionless) | sent on **this request's own response stream**, which upgrades from a JSON body to SSE | same |
+
+That last row is the part that catches people out: on `2026-07-28` there is no session, yet progress and logging both work. The old "stateless ⇒ can't talk back" rule applies to the legacy per-request mode only.
+
+> **Modern-era logging is opt-in per request.** `logging/setLevel` is gone in
+> `2026-07-28`; the client asks for logs on a given call by putting
+> `io.modelcontextprotocol/logLevel` in that request's `_meta`. The spec says the
+> server *MUST NOT* emit `notifications/message` for a request that omitted it,
+> and the SDK enforces that. So a `ctx.log.info(...)` producing no client-visible
+> output on a modern call is **correct behaviour, not a dropped message** — the
+> caller simply didn't ask. `reportProgress` has no such gate; it only needs the
+> caller to have sent a `progressToken`. See
+> [Protocol Revisions](protocol-revisions.md#the-loglevel-opt-in-read-this-before-filing-a-bug).
 
 ### Tool Decorator Properties
 
@@ -169,6 +179,8 @@ async processData(@Payload() { data }: { data: string }, @Ctx() ctx: McpContext)
 }
 ```
 
+Progress only reaches the client when the caller sent a `progressToken` on the request. Beyond that, delivery follows the table in [Server-side logging](#server-side-logging-ctxlog): it works on session-aware legacy transports and on **every** `2026-07-28` request, and is a no-op only in the legacy per-request stateless mode.
+
 ## Tool with Output Schema
 
 Tools can define structured output schemas for type safety:
@@ -199,6 +211,15 @@ async sayHelloStructured(@Payload() { name, language }: { name: string; language
 ## Interactive Tool with Elicitation
 
 Tools can request additional input from users:
+
+> **Legacy era only.** `elicitInput` (and sampling via `createMessage`) is a
+> push-style server→client request, a model that `2026-07-28` removed. On a
+> modern-era request the call throws before any wire traffic, with an error
+> steering you to Multi Round-Trip Requests (`inputRequired({ … })`). On a
+> dual-era server the same tool still works for 2025-era clients. Gate it on
+> `ctx.getSession().era === 'legacy'`, or serve that endpoint with
+> `protocol: 'legacy-only'`. See
+> [Protocol Revisions](protocol-revisions.md#what-breaks).
 
 ```typescript
 @Tool({

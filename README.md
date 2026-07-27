@@ -17,10 +17,11 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 
 ## Features
 
-- 🧩 **[NestJS Microservice Strategy](docs/migration-to-strategy.md)**: MCP runs as a `CustomTransportStrategy`, so tools/resources/prompts are real `@MessagePattern` handlers — **guards, pipes, interceptors, and exception filters apply to them natively**
+- 🧩 **[NestJS Microservice Strategy](docs/migration-to-v2.md)**: MCP runs as a `CustomTransportStrategy`, so tools/resources/prompts are real `@MessagePattern` handlers — **guards, pipes, interceptors, and exception filters apply to them natively**
 - 🚀 **[Multi-Transport Support](docs/server-examples.md#multiple-transport-types)**: Streamable HTTP and STDIO — selected via the `transports` array
+- 🕰️ **[Dual-Era Protocol Support](docs/protocol-revisions.md)**: One endpoint serves both the 2025-era protocol (`initialize` + sessions) and the stateless `2026-07-28` revision, concurrently — with **no change to your tool code**
 - 🔧 **[Tools](docs/tools.md)**: Expose NestJS methods as MCP tools with automatic discovery and Zod validation
-  - 🛠️ **[Elicitation](docs/tools.md#interactive-tool-calls)**: Interactive tool calls with user input elicitation
+  - 🛠️ **[Elicitation](docs/tools.md#interactive-tool-with-elicitation)**: Interactive tool calls with user input elicitation
   - 🌐 **[HTTP Request Access](docs/tools.md#understanding-tool-method-parameters)**: Full access to request context within MCP handlers
   - 🔐 **[Per-Tool Authorization](docs/per-tool-authorization.md)**: Implement fine-grained authorization for tools
 - 📁 **[Resources](docs/resources.md)**: Serve content and data through MCP resource system
@@ -28,7 +29,7 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 - 💬 **[Prompts](docs/prompts.md)**: Define reusable prompt templates for AI interactions
 - 🔐 **[Guard-based Authentication](docs/server-examples.md#server-with-authentication)**: Guard-based security with OAuth support
 - 🏠 **[Built-in Authorization Server](docs/built-in-authorization-server.md)** — Using the built-in Authorization Server for easy setups. **(Beta)**
-- 🌐 **[External Authorization Server](docs/external-authorization-server/README.md)** — Securing your MCP server with an external authorization server (Keycloak, Auth0, etc).
+- 🌐 **[External Authorization Server](docs/external-authorization-server.md)** — Securing your MCP server with an external authorization server (Keycloak, Auth0, etc).
 - 💉 **[Dependency Injection](docs/dependency-injection.md)**: Leverage NestJS DI system throughout MCP components
 - 🔍 **[Server mutation and instrumentation](docs/server-mutation.md)** — Mutate the underlying mcp server for custom logic or instrumentation purposes.
 
@@ -42,8 +43,17 @@ Find out how to do that with `@rekog/MCP-Nest` in this repository [MCP-Nest-Samp
 ## Installation
 
 ```bash
-npm install @rekog/mcp-nest @modelcontextprotocol/server @modelcontextprotocol/core @modelcontextprotocol/node zod@^4
+npm install @rekog/mcp-nest \
+  @modelcontextprotocol/server@^2.0.0-beta.5 \
+  @modelcontextprotocol/core@^2.0.0-beta.5 \
+  @modelcontextprotocol/node@^2.0.0-beta.5 \
+  zod@^4
 ```
+
+The MCP SDK packages are peer dependencies. **`2.0.0-beta.5` is the minimum** —
+it is the first release matching the final `2026-07-28` wire, which MCP-Nest
+serves alongside the 2025-era protocol (see
+[Protocol Revisions](docs/protocol-revisions.md)).
 
 ### Optional dependencies
 
@@ -135,6 +145,15 @@ void bootstrap();
 > **Order matters:** call `startAllMicroservices()` before `listen()` so the MCP
 > HTTP routes are mounted before the server starts accepting connections.
 
+That `/mcp` endpoint is **dual-era**: it answers both the 2025-era protocol
+(`initialize` handshake + sessions) and the stateless `2026-07-28` revision,
+concurrently, from the same `@Tool` methods. `ctx.reportProgress(...)` above
+reaches a `2026-07-28` client as-is — every modern request can stream progress
+back even though it is sessionless. A 2025-era client needs a session-aware
+transport for it (`new StreamableHttpTransport({ statefulMode: true })` or
+`StdioTransport`); on the legacy stateless default it is a no-op. See
+[Protocol Revisions](docs/protocol-revisions.md).
+
 For an STDIO-only server, skip the HTTP adapter and use
 `NestFactory.createMicroservice(AppModule, { strategy: mcp })` with
 `transports: [new StdioTransport()]` and disable logging (stdout is reserved for
@@ -142,7 +161,8 @@ the protocol).
 
 ## Documentation
 
-- **[Migration to the Strategy API](docs/migration-to-strategy.md)** - Moving from `McpModule.forRoot(options)` to `McpStrategy` + `@McpController`
+- **[Migration to the Strategy API](docs/migration-to-v2.md)** - Moving from `McpModule.forRoot(options)` to `McpStrategy` + `@McpController`
+- **[Protocol Revisions & Dual-Era Serving](docs/protocol-revisions.md)** - Serving the 2025-era protocol and `2026-07-28` from one endpoint
 - **[Tools Guide](docs/tools.md)** - Define and expose NestJS methods as MCP tools
 - **[Discovery and Registration of Tools](docs/tool-discovery-and-registration.md)** - Automatic discovery and manual registration of tools
 - **[Dynamic Capabilities Guide](docs/dynamic-capabilities.md)** - Register tools, resources, and prompts programmatically at runtime
@@ -150,7 +170,7 @@ the protocol).
 - **[Resource Templates Guide](docs/resource-templates.md)** - Create parameterized resources
 - **[Prompts Guide](docs/prompts.md)** - Build reusable prompt templates
 - **[Built-in Authorization Server](docs/built-in-authorization-server.md)** - Secure your MCP server with built-in OAuth
-- **[External Authorization Server](docs/external-authorization-server/README.md)** - Securing your MCP server with an external authorization server (Keycloak, Auth0, etc)
+- **[External Authorization Server](docs/external-authorization-server.md)** - Securing your MCP server with an external authorization server (Keycloak, Auth0, etc)
 - **[Server examples](docs/server-examples.md)** - MCP servers examples (Streamable HTTP, HTTP, and STDIO) and with Fastify support
 
 ## Examples

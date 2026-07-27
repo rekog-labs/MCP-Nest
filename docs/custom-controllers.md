@@ -16,7 +16,7 @@ project.
 POST /mcp ──► [HTTP layer]  McpHttpController                 ← middleware, HTTP interceptor, HTTP filter
                   │            (one HTTP request)
                   ▼
-              transport (sessions, SSE, raw body)
+              transport (era routing, sessions, SSE, raw body)
                   ▼
               [RPC layer]  @McpController  DemoTools.greet()   ← RPC interceptor, RPC filter
                            (one tool call)
@@ -27,7 +27,9 @@ POST /mcp ──► [HTTP layer]  McpHttpController                 ← middlewa
   it (`@UseInterceptors`, `@UseFilters`, module-level middleware) runs on **every
   transport request**: the `initialize` POST, the `tools/list` POST, the
   long-lived `GET` SSE stream, and **each** `tools/call`. This layer sees the raw
-  HTTP request/response, before MCP is decoded.
+  HTTP request/response, before MCP is decoded — and before the transport decides
+  which protocol era serves it, so it is era-agnostic by construction. A guard
+  here gates old and new clients alike.
 
 - **RPC layer** — the `@McpController` capability class. Its `@Tool`/`@Resource`/
   `@Prompt` methods are NestJS microservice (`@MessagePattern`) handlers, so the
@@ -38,6 +40,27 @@ POST /mcp ──► [HTTP layer]  McpHttpController                 ← middlewa
 A single MCP session is many HTTP requests but only a handful of tool calls, so
 one `greet` call produces **one** RPC-interceptor line but several HTTP-layer
 lines. Attach a piece at the layer that matches what you want to act on.
+
+### The three verbs, and which era uses them
+
+`McpHttpControllerFor(transport)` binds `@Post()`, `@Get()`, and `@Delete()`,
+each delegating to `transport.handlePost/handleGet/handleDelete`. They are not
+used equally:
+
+| Verb | 2025-era protocol | `2026-07-28` |
+| --- | --- | --- |
+| `POST` | every request; the `initialize` handshake opens the session | every request — this is the *only* verb it uses |
+| `GET` | the standing SSE stream (`statefulMode`), else `405` | never used; `405` |
+| `DELETE` | session teardown (`statefulMode`), else `405` | never used; `405` |
+
+`GET` and `DELETE` are body-less session operations, and `2026-07-28` removed
+sessions, so they are **legacy-only by construction**. Keep binding all three —
+a dual-era endpoint still needs them for old clients — but don't hang modern-era
+logic off them. The `405` responses carry a well-formed JSON-RPC error body, not
+an empty one, because a conforming client that receives an unrecognized body
+concludes the server is legacy and falls back to `initialize`. If you override a
+verb handler yourself, preserve that. See
+[Protocol Revisions](protocol-revisions.md).
 
 ### Two controllers, two names
 
@@ -168,6 +191,8 @@ includes a client driver so you can watch each piece fire in the logs. See its
 
 - [Server Examples](server-examples.md) — transport/config variants, including the
   brief [Custom Request Handling](server-examples.md#custom-request-handling) snippet.
+- [Protocol Revisions & Dual-Era Serving](protocol-revisions.md) — why `GET`/`DELETE`
+  are legacy-only, and the transport's era options.
 - [Tools](tools.md) — defining tools, guards, and filters at the tool level.
 - [Per-Tool Authorization](per-tool-authorization.md) — guards/decorators for
   fine-grained access control on the RPC layer.

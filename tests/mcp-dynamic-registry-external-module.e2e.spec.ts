@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { MCP_STRATEGY, McpStrategy } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 import { z } from 'zod';
 
 /**
@@ -139,203 +139,208 @@ class ServerBExternalTools implements OnModuleInit {
 // Tests
 // ============================================================================
 
-describe('E2E: Dynamic registration from an external module', () => {
-  describe('Tools, resources, and prompts registered from a separate module', () => {
-    let app: INestApplication;
-    let serverPort: number;
+describe.each(ERAS)(
+  'E2E: Dynamic registration from an external module (%s era)',
+  (era) => {
+    describe('Tools, resources, and prompts registered from a separate module', () => {
+      let app: INestApplication;
+      let serverPort: number;
 
-    beforeAll(async () => {
-      const { app: a, port } = await bootstrapMcpApp({
-        name: 'external-reg-server',
-        controllers: [],
-        providers: [
-          ExternalToolsService,
-          ExternalResourcesService,
-          ExternalPromptsService,
-        ],
+      beforeAll(async () => {
+        const { app: a, port } = await bootstrapMcpApp({
+          name: 'external-reg-server',
+          controllers: [],
+          providers: [
+            ExternalToolsService,
+            ExternalResourcesService,
+            ExternalPromptsService,
+          ],
+        });
+        app = a;
+        serverPort = port;
       });
-      app = a;
-      serverPort = port;
+
+      afterAll(async () => {
+        await app.close();
+      });
+
+      describe('Dynamic tools', () => {
+        it('should list tools registered from the external module', async () => {
+          const client = await createEraClient(era, serverPort);
+          try {
+            const { tools } = await client.listTools();
+            expect(tools.find((t) => t.name === 'external-tool')).toBeDefined();
+            expect(
+              tools.find((t) => t.name === 'external-tool-no-params'),
+            ).toBeDefined();
+          } finally {
+            await client.close();
+          }
+        });
+
+        it('should execute a tool registered from the external module', async () => {
+          const client = await createEraClient(era, serverPort);
+          try {
+            const result: any = await client.callTool({
+              name: 'external-tool',
+              arguments: { input: 'hello' },
+            });
+            expect(result.content[0].text).toBe('external: hello');
+          } finally {
+            await client.close();
+          }
+        });
+
+        it('should execute a parameterless tool from the external module', async () => {
+          const client = await createEraClient(era, serverPort);
+          try {
+            const result: any = await client.callTool({
+              name: 'external-tool-no-params',
+              arguments: {},
+            });
+            expect(result.content[0].text).toBe('no-params result');
+          } finally {
+            await client.close();
+          }
+        });
+      });
+
+      describe('Dynamic resources', () => {
+        it('should list resources registered from the external module', async () => {
+          const client = await createEraClient(era, serverPort);
+          try {
+            const { resources } = await client.listResources();
+            expect(
+              resources.find((r) => r.name === 'external-config'),
+            ).toBeDefined();
+          } finally {
+            await client.close();
+          }
+        });
+
+        it('should read a resource registered from the external module', async () => {
+          const client = await createEraClient(era, serverPort);
+          try {
+            const result: any = await client.readResource({
+              uri: 'mcp://external-config',
+            });
+            const parsed = JSON.parse(result.contents[0].text);
+            expect(parsed.source).toBe('external-module');
+          } finally {
+            await client.close();
+          }
+        });
+      });
+
+      describe('Dynamic prompts', () => {
+        it('should list prompts registered from the external module', async () => {
+          const client = await createEraClient(era, serverPort);
+          try {
+            const { prompts } = await client.listPrompts();
+            expect(
+              prompts.find((p) => p.name === 'external-prompt'),
+            ).toBeDefined();
+          } finally {
+            await client.close();
+          }
+        });
+
+        it('should get a prompt registered from the external module', async () => {
+          const client = await createEraClient(era, serverPort);
+          try {
+            const result: any = await client.getPrompt({
+              name: 'external-prompt',
+              arguments: { topic: 'NestJS' },
+            });
+            expect(result.messages[0].content.text).toBe(
+              'Tell me about: NestJS',
+            );
+          } finally {
+            await client.close();
+          }
+        });
+      });
     });
 
-    afterAll(async () => {
-      await app.close();
-    });
+    describe('Multi-server isolation — external modules register to the correct server', () => {
+      let appA: INestApplication;
+      let appB: INestApplication;
+      let portA: number;
+      let portB: number;
 
-    describe('Dynamic tools', () => {
-      it('should list tools registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+      beforeAll(async () => {
+        const serverA = await bootstrapMcpApp({
+          name: 'multi-server-a',
+          controllers: [],
+          providers: [ServerAExternalTools],
+        });
+        appA = serverA.app;
+        portA = serverA.port;
+
+        const serverB = await bootstrapMcpApp({
+          name: 'multi-server-b',
+          controllers: [],
+          providers: [ServerBExternalTools],
+        });
+        appB = serverB.app;
+        portB = serverB.port;
+      });
+
+      afterAll(async () => {
+        await appA.close();
+        await appB.close();
+      });
+
+      it('server A should only have its own external tool', async () => {
+        const client = await createEraClient(era, portA);
         try {
           const { tools } = await client.listTools();
-          expect(tools.find((t) => t.name === 'external-tool')).toBeDefined();
           expect(
-            tools.find((t) => t.name === 'external-tool-no-params'),
+            tools.find((t) => t.name === 'server-a-external-tool'),
           ).toBeDefined();
+          expect(
+            tools.find((t) => t.name === 'server-b-external-tool'),
+          ).toBeUndefined();
         } finally {
           await client.close();
         }
       });
 
-      it('should execute a tool registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+      it('server B should only have its own external tool', async () => {
+        const client = await createEraClient(era, portB);
         try {
-          const result: any = await client.callTool({
-            name: 'external-tool',
-            arguments: { input: 'hello' },
-          });
-          expect(result.content[0].text).toBe('external: hello');
+          const { tools } = await client.listTools();
+          expect(
+            tools.find((t) => t.name === 'server-b-external-tool'),
+          ).toBeDefined();
+          expect(
+            tools.find((t) => t.name === 'server-a-external-tool'),
+          ).toBeUndefined();
         } finally {
           await client.close();
         }
       });
 
-      it('should execute a parameterless tool from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
+      it('should execute tools on their respective servers', async () => {
+        const clientA = await createEraClient(era, portA);
+        const clientB = await createEraClient(era, portB);
         try {
-          const result: any = await client.callTool({
-            name: 'external-tool-no-params',
+          const resultA: any = await clientA.callTool({
+            name: 'server-a-external-tool',
             arguments: {},
           });
-          expect(result.content[0].text).toBe('no-params result');
-        } finally {
-          await client.close();
-        }
-      });
-    });
+          expect(resultA.content[0].text).toBe('server-a');
 
-    describe('Dynamic resources', () => {
-      it('should list resources registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
-        try {
-          const { resources } = await client.listResources();
-          expect(
-            resources.find((r) => r.name === 'external-config'),
-          ).toBeDefined();
-        } finally {
-          await client.close();
-        }
-      });
-
-      it('should read a resource registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
-        try {
-          const result: any = await client.readResource({
-            uri: 'mcp://external-config',
+          const resultB: any = await clientB.callTool({
+            name: 'server-b-external-tool',
+            arguments: {},
           });
-          const parsed = JSON.parse(result.contents[0].text);
-          expect(parsed.source).toBe('external-module');
+          expect(resultB.content[0].text).toBe('server-b');
         } finally {
-          await client.close();
+          await clientA.close();
+          await clientB.close();
         }
       });
     });
-
-    describe('Dynamic prompts', () => {
-      it('should list prompts registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
-        try {
-          const { prompts } = await client.listPrompts();
-          expect(
-            prompts.find((p) => p.name === 'external-prompt'),
-          ).toBeDefined();
-        } finally {
-          await client.close();
-        }
-      });
-
-      it('should get a prompt registered from the external module', async () => {
-        const client = await createStreamableClient(serverPort);
-        try {
-          const result: any = await client.getPrompt({
-            name: 'external-prompt',
-            arguments: { topic: 'NestJS' },
-          });
-          expect(result.messages[0].content.text).toBe('Tell me about: NestJS');
-        } finally {
-          await client.close();
-        }
-      });
-    });
-  });
-
-  describe('Multi-server isolation — external modules register to the correct server', () => {
-    let appA: INestApplication;
-    let appB: INestApplication;
-    let portA: number;
-    let portB: number;
-
-    beforeAll(async () => {
-      const serverA = await bootstrapMcpApp({
-        name: 'multi-server-a',
-        controllers: [],
-        providers: [ServerAExternalTools],
-      });
-      appA = serverA.app;
-      portA = serverA.port;
-
-      const serverB = await bootstrapMcpApp({
-        name: 'multi-server-b',
-        controllers: [],
-        providers: [ServerBExternalTools],
-      });
-      appB = serverB.app;
-      portB = serverB.port;
-    });
-
-    afterAll(async () => {
-      await appA.close();
-      await appB.close();
-    });
-
-    it('server A should only have its own external tool', async () => {
-      const client = await createStreamableClient(portA);
-      try {
-        const { tools } = await client.listTools();
-        expect(
-          tools.find((t) => t.name === 'server-a-external-tool'),
-        ).toBeDefined();
-        expect(
-          tools.find((t) => t.name === 'server-b-external-tool'),
-        ).toBeUndefined();
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('server B should only have its own external tool', async () => {
-      const client = await createStreamableClient(portB);
-      try {
-        const { tools } = await client.listTools();
-        expect(
-          tools.find((t) => t.name === 'server-b-external-tool'),
-        ).toBeDefined();
-        expect(
-          tools.find((t) => t.name === 'server-a-external-tool'),
-        ).toBeUndefined();
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should execute tools on their respective servers', async () => {
-      const clientA = await createStreamableClient(portA);
-      const clientB = await createStreamableClient(portB);
-      try {
-        const resultA: any = await clientA.callTool({
-          name: 'server-a-external-tool',
-          arguments: {},
-        });
-        expect(resultA.content[0].text).toBe('server-a');
-
-        const resultB: any = await clientB.callTool({
-          name: 'server-b-external-tool',
-          arguments: {},
-        });
-        expect(resultB.content[0].text).toBe('server-b');
-      } finally {
-        await clientA.close();
-        await clientB.close();
-      }
-    });
-  });
-});
+  },
+);

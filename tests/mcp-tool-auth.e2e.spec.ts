@@ -17,8 +17,8 @@ import {
   StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
-import { Progress, Client } from "@modelcontextprotocol/client";
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { Progress, Client } from '@modelcontextprotocol/client';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 /**
  * AUTHENTICATION for HTTP transports is a NestJS guard on the MCP route, not
@@ -128,99 +128,102 @@ const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
 @UseGuards(AuthGuard)
 class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
-describe('E2E: MCP Server Tool with Authentication', () => {
-  let app: INestApplication;
-  let testPort: number;
+describe.each(ERAS)(
+  'E2E: MCP Server Tool with Authentication (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let testPort: number;
 
-  beforeAll(async () => {
-    const bootstrapped = await bootstrapMcpApp({
-      name: 'test-auth-mcp-server',
-      controllers: [AuthGreetingTool, McpHttpController],
-      providers: [MockUserRepository, AuthGuard],
-      transports: [mcpTransport],
-    });
-    app = bootstrapped.app;
-    testPort = bootstrapped.port;
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it('should list tools', async () => {
-    const client = await createStreamableClient(testPort, {
-      requestInit: {
-        headers: {
-          Authorization: 'Bearer token-xyz',
-        },
-      },
-    });
-    const tools = await client.listTools();
-
-    // Verify that the authenticated tool is available
-    expect(tools.tools.length).toBeGreaterThan(0);
-    expect(
-      tools.tools.find((t) => t.name === 'auth-hello-world'),
-    ).toBeDefined();
-
-    await client.close();
-  });
-
-  it('should inject authentication context into the tool', async () => {
-    const client = await createStreamableClient(testPort, {
-      requestInit: {
-        headers: {
-          Authorization: 'Bearer token-xyz',
-        },
-      },
+    beforeAll(async () => {
+      const bootstrapped = await bootstrapMcpApp({
+        name: 'test-auth-mcp-server',
+        controllers: [AuthGreetingTool, McpHttpController],
+        providers: [MockUserRepository, AuthGuard],
+        transports: [mcpTransport],
+      });
+      app = bootstrapped.app;
+      testPort = bootstrapped.port;
     });
 
-    let progressCount = 0;
-    const result: any = await client.callTool(
-      {
-        name: 'auth-hello-world',
-        arguments: { name: 'Authenticated User' },
-      },
-      {
-        onprogress: () => {
-          progressCount++;
-        },
-      },
-    );
+    afterAll(async () => {
+      await app.close();
+    });
 
-    // Verify that progress notifications were received
-    expect(progressCount).toBeGreaterThan(0);
-
-    // Verify that authentication context was available to the tool
-    expect(result.content[0].type).toBe('text');
-    expect(result.content[0].text).toContain('Auth Test Org');
-    expect(result.content[0].text).toContain('Test User');
-    expect(result.content[0].text).toContain(
-      'Repository user is Repository User',
-    );
-
-    await client.close();
-  });
-
-  it('should reject unauthenticated connections', async () => {
-    // Connection should be rejected by the auth middleware (401)
-    let client: Client | undefined;
-    try {
-      client = await createStreamableClient(testPort, {
+    it('should list tools', async () => {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
-            Authorization: 'Bearer invalid-token',
+            Authorization: 'Bearer token-xyz',
+          },
+        },
+      });
+      const tools = await client.listTools();
+
+      // Verify that the authenticated tool is available
+      expect(tools.tools.length).toBeGreaterThan(0);
+      expect(
+        tools.tools.find((t) => t.name === 'auth-hello-world'),
+      ).toBeDefined();
+
+      await client.close();
+    });
+
+    it('should inject authentication context into the tool', async () => {
+      const client = await createEraClient(era, testPort, {
+        requestInit: {
+          headers: {
+            Authorization: 'Bearer token-xyz',
           },
         },
       });
 
-      // If we get here, the test should fail
-      throw new Error('Connection should have been rejected');
-    } catch (error) {
-      // We expect an error to be thrown when authentication fails
-      expect(error).toBeDefined();
-    } finally {
-      await client?.close();
-    }
-  });
-});
+      let progressCount = 0;
+      const result: any = await client.callTool(
+        {
+          name: 'auth-hello-world',
+          arguments: { name: 'Authenticated User' },
+        },
+        {
+          onprogress: () => {
+            progressCount++;
+          },
+        },
+      );
+
+      // Verify that progress notifications were received
+      expect(progressCount).toBeGreaterThan(0);
+
+      // Verify that authentication context was available to the tool
+      expect(result.content[0].type).toBe('text');
+      expect(result.content[0].text).toContain('Auth Test Org');
+      expect(result.content[0].text).toContain('Test User');
+      expect(result.content[0].text).toContain(
+        'Repository user is Repository User',
+      );
+
+      await client.close();
+    });
+
+    it('should reject unauthenticated connections', async () => {
+      // Connection should be rejected by the auth middleware (401)
+      let client: Client | undefined;
+      try {
+        client = await createEraClient(era, testPort, {
+          requestInit: {
+            headers: {
+              Authorization: 'Bearer invalid-token',
+            },
+          },
+        });
+
+        // If we get here, the test should fail
+        throw new Error('Connection should have been rejected');
+      } catch (error) {
+        // We expect an error to be thrown when authentication fails
+        expect(error).toBeDefined();
+      } finally {
+        await client?.close();
+      }
+    });
+  },
+);

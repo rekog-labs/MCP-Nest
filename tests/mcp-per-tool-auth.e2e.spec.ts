@@ -18,7 +18,7 @@ import {
   ToolScopes,
   ToolRoles,
 } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 /**
  * Authentication is a NestJS guard on the MCP route. The guard reads the bearer token and
@@ -210,7 +210,7 @@ const mcpTransport = new StreamableHttpTransport({ statefulMode: true });
 @UseGuards(AuthGuard)
 class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
-describe('E2E: Per-Tool Authorization', () => {
+describe.each(ERAS)('E2E: Per-Tool Authorization (%s era)', (era) => {
   let app: INestApplication;
   let testPort: number;
 
@@ -232,7 +232,7 @@ describe('E2E: Per-Tool Authorization', () => {
 
   describe('Tool Listing with Authorization', () => {
     it('should list only public tools when not authenticated', async () => {
-      const client = await createStreamableClient(testPort);
+      const client = await createEraClient(era, testPort);
 
       const tools = await client.listTools();
       const toolNames = tools.tools.map((t) => t.name);
@@ -251,7 +251,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should list basic tools for authenticated basic user', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token',
@@ -276,7 +276,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should list all tools for admin user', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer admin-token',
@@ -301,7 +301,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should list premium tools for premium user', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer premium-token',
@@ -326,7 +326,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should include securitySchemes in tool listing', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer admin-token',
@@ -394,7 +394,7 @@ describe('E2E: Per-Tool Authorization', () => {
 
   describe('Tool Execution with Authorization', () => {
     it('should allow calling public tools without auth', async () => {
-      const client = await createStreamableClient(testPort);
+      const client = await createEraClient(era, testPort);
 
       const result = await client.callTool({
         name: 'public-search',
@@ -407,7 +407,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should reject protected tool calls without auth', async () => {
-      const client = await createStreamableClient(testPort);
+      const client = await createEraClient(era, testPort);
 
       await expect(
         client.callTool({
@@ -420,7 +420,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should allow calling protected tools with valid auth', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token',
@@ -439,7 +439,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should reject scope-protected tools without required scopes', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token', // Only has 'read' scope
@@ -458,7 +458,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should allow scope-protected tools with required scopes', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer admin-token', // Has 'admin' and 'write' scopes
@@ -477,7 +477,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should reject role-protected tools without required roles', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token', // Only has 'user' role
@@ -496,7 +496,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should allow role-protected tools with required roles', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer admin-token', // Has 'admin' role
@@ -515,7 +515,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should support optional auth tools - anonymous access', async () => {
-      const client = await createStreamableClient(testPort); // No auth
+      const client = await createEraClient(era, testPort); // No auth
 
       const result = await client.callTool({
         name: 'smart-search',
@@ -528,7 +528,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should support optional auth tools - enhanced with auth', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer premium-token',
@@ -549,7 +549,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should allow premium-only tools for premium users', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer premium-token',
@@ -568,7 +568,7 @@ describe('E2E: Per-Tool Authorization', () => {
     });
 
     it('should reject premium-only tools for basic users', async () => {
-      const client = await createStreamableClient(testPort, {
+      const client = await createEraClient(era, testPort, {
         requestInit: {
           headers: {
             Authorization: 'Bearer basic-token',

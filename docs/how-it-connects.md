@@ -9,7 +9,7 @@ There are four pieces. Three you write or construct; one the library gives you.
 
 | Object | What it is | You write it as |
 | --- | --- | --- |
-| **Transport** | Owns the wire (HTTP verbs, sessions, SSE / stdio). | `new StreamableHttpTransport(...)` |
+| **Transport** | Owns the wire (HTTP verbs, protocol era, sessions, SSE / stdio). | `new StreamableHttpTransport(...)` |
 | **Server** (`McpStrategy`) | Owns the MCP protocol: discovers your tools, runs them through the Nest pipeline. | `new McpStrategy({ transports: [...] })` |
 | **Capability controller** | Holds your `@Tool` / `@Resource` / `@Prompt` methods. | `@McpController()` class |
 | **HTTP controller** | The actual `/mcp` route; applies guards, interceptors, filters. | `extends McpHttpControllerFor(transport)` |
@@ -84,12 +84,13 @@ McpHttpController             (HTTP controller)
    │   extends McpHttpControllerFor(transport)
    ▼
 transport.handlePost(req,res) (StreamableHttpTransport)
-   │   sessions, SSE streaming, raw-body — the wire protocol
+   │   era routing, sessions, SSE streaming, raw-body — the wire protocol
    ▼
-SDK McpServer                 (one per session, created by the strategy)
+SDK McpServer                 (created by the strategy — one per legacy session,
+   │                           one per request on the 2026-07-28 era)
    │   JSON-RPC: "tools/call greet"
    ▼
-McpStrategy request handler   (bound at startup)
+McpStrategy request handler   (bound when the server is created)
    │   validates params, runs the Nest RPC pipeline
    ▼
 GreetingTool.greet()          (your @Tool method on the capability controller)
@@ -98,6 +99,41 @@ GreetingTool.greet()          (your @Tool method on the capability controller)
 The HTTP controller and the transport handle *transport*; the strategy and your
 capability controller handle *protocol and logic*. The transport is the seam
 between them.
+
+---
+
+## The fifth thing: which era served the request
+
+The four objects above are the same on every MCP revision, but one endpoint now
+serves **two protocol eras** concurrently — the 2025-era protocol (`initialize`
+handshake, sessions) and the stateless `2026-07-28` revision. The transport
+classifies each `POST` and picks the leg:
+
+```
+transport.handlePost
+   │
+   ├─ POST carrying a per-request `_meta` envelope  ──►  modern leg (2026-07-28)
+   │                                                     one SDK server per request
+   │
+   └─ claim-less POST (`initialize`, a 2025 call)   ──►  legacy leg
+                                                         stateless, or a session
+                                                         in `statefulMode`
+
+GET / DELETE  ──────────────────────────────────────►  legacy leg only
+                                                         (session operations)
+```
+
+Era changes **nothing** above the strategy: the same `@McpController` classes,
+the same handlers, the same Nest pipeline. It only changes what the transport
+does with the wire and what `ctx.getSession()` reports:
+
+```ts
+ctx.getSession().era; // 'legacy' | 'modern'
+```
+
+Read the full model — the transport's `protocol`/`responseMode`/`legacy` options,
+the era-aware `Context` accessors, and what breaks — in
+[Protocol Revisions & Dual-Era Serving](protocol-revisions.md).
 
 ---
 
@@ -248,3 +284,6 @@ the whole chain is one screen.
 - For multiple servers, add a `server: '<name>'` to the strategy and its
   `@McpController`s; HTTP controllers stay clear because they reference their
   transport directly.
+- Every endpoint is **dual-era**: the transport routes each request to the
+  2025-era or `2026-07-28` leg, and everything from the strategy upward is
+  unchanged either way ([Protocol Revisions](protocol-revisions.md)).

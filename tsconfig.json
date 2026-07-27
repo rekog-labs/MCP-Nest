@@ -26,13 +26,23 @@
       "@rekog/mcp-nest-auth": ["packages/mcp-nest-auth/src/index.ts"]
     }
   },
+  "comment": [
+    "Scope is the two published packages plus their tests. Each examples/<project>",
+    "is a standalone npm project with its own tsconfig.json and its own",
+    "node_modules — including them here loaded ~15 duplicate copies of the NestJS",
+    "and MCP SDK type trees into one program, which exhausted the default heap.",
+    "An example is typechecked from inside its own directory; note that under",
+    "'npm run examples:local' that needs --preserveSymlinks, or resolution follows",
+    "the @rekog/* symlink out to the root node_modules and loads a second copy.",
+    "'packages/*/src' rather than 'packages/**' so built output in packages/*/dist",
+    "is not compiled alongside the sources it was generated from."
+  ],
   "include": [
-    "packages/**/*",
-    "tests/**/*",
-    "examples/**/*"
+    "packages/*/src/**/*",
+    "tests/**/*"
   ],
   "exclude": [
-    "node_modules",
-    "dist"
+    "**/node_modules",
+    "**/dist"
   ]
 }

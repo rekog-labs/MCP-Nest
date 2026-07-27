@@ -2,9 +2,10 @@ import { INestApplication, Injectable } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { McpController, Tool } from '@rekog/mcp-nest';
 import {
-  createStreamableClient,
   McpStrategy,
   StreamableHttpTransport,
+  createEraClient,
+  ERAS,
 } from './utils';
 
 /**
@@ -112,199 +113,204 @@ async function bootstrapServer(config: {
   return { app, port };
 }
 
-describe('E2E: Tool Discovery Scope (Streamable HTTP)', () => {
-  let primaryApp: INestApplication;
-  let secondaryApp: INestApplication;
-  let explicitApp: INestApplication;
-  let primaryPort: number;
-  let secondaryPort: number;
-  let explicitPort: number;
+describe.each(ERAS)(
+  'E2E: Tool Discovery Scope (Streamable HTTP) (%s era)',
+  (era) => {
+    let primaryApp: INestApplication;
+    let secondaryApp: INestApplication;
+    let explicitApp: INestApplication;
+    let primaryPort: number;
+    let secondaryPort: number;
+    let explicitPort: number;
 
-  jest.setTimeout(15000);
+    jest.setTimeout(15000);
 
-  beforeAll(async () => {
-    // Primary server: declares only PrimaryServerTools. The shared tools live in
-    // a separate concern and must NOT leak in.
-    const primary = await bootstrapServer({
-      name: 'primary-server',
-      controllers: [PrimaryServerTools],
-    });
-    primaryApp = primary.app;
-    primaryPort = primary.port;
+    beforeAll(async () => {
+      // Primary server: declares only PrimaryServerTools. The shared tools live in
+      // a separate concern and must NOT leak in.
+      const primary = await bootstrapServer({
+        name: 'primary-server',
+        controllers: [PrimaryServerTools],
+      });
+      primaryApp = primary.app;
+      primaryPort = primary.port;
 
-    // Secondary server: declares only SecondaryServerTools.
-    const secondary = await bootstrapServer({
-      name: 'secondary-server',
-      controllers: [SecondaryServerTools],
-    });
-    secondaryApp = secondary.app;
-    secondaryPort = secondary.port;
+      // Secondary server: declares only SecondaryServerTools.
+      const secondary = await bootstrapServer({
+        name: 'secondary-server',
+        controllers: [SecondaryServerTools],
+      });
+      secondaryApp = secondary.app;
+      secondaryPort = secondary.port;
 
-    // Explicit-import server: explicitly declares the shared controllers (and
-    // provides their dependency) alongside its own tool, so all are exposed.
-    const explicit = await bootstrapServer({
-      name: 'explicit-import-server',
-      controllers: [ExplicitlyImportedTools, SharedUtilityTools],
-      providers: [SharedUtilityService],
-    });
-    explicitApp = explicit.app;
-    explicitPort = explicit.port;
-  });
-
-  afterAll(async () => {
-    await primaryApp.close();
-    await secondaryApp.close();
-    await explicitApp.close();
-  });
-
-  describe('Primary Server - Should NOT expose shared module tools', () => {
-    it('should list only the primary tool', async () => {
-      const client = await createStreamableClient(primaryPort);
-      try {
-        const tools = await client.listTools();
-
-        expect(tools.tools.length).toBe(1);
-        expect(
-          tools.tools.find((t) => t.name === 'primary-tool'),
-        ).toBeDefined();
-
-        expect(
-          tools.tools.find((t) => t.name === 'shared-utility-tool'),
-        ).toBeUndefined();
-        expect(
-          tools.tools.find((t) => t.name === 'shared-health-check'),
-        ).toBeUndefined();
-      } finally {
-        await client.close();
-      }
+      // Explicit-import server: explicitly declares the shared controllers (and
+      // provides their dependency) alongside its own tool, so all are exposed.
+      const explicit = await bootstrapServer({
+        name: 'explicit-import-server',
+        controllers: [ExplicitlyImportedTools, SharedUtilityTools],
+        providers: [SharedUtilityService],
+      });
+      explicitApp = explicit.app;
+      explicitPort = explicit.port;
     });
 
-    it('should call the primary tool successfully', async () => {
-      const client = await createStreamableClient(primaryPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'primary-tool',
-          arguments: {},
-        });
-
-        expect(result.content[0].text).toBe('Primary tool result');
-      } finally {
-        await client.close();
-      }
+    afterAll(async () => {
+      await primaryApp.close();
+      await secondaryApp.close();
+      await explicitApp.close();
     });
 
-    it('should fail when calling a shared module tool', async () => {
-      const client = await createStreamableClient(primaryPort);
-      try {
-        await expect(
-          client.callTool({
+    describe('Primary Server - Should NOT expose shared module tools', () => {
+      it('should list only the primary tool', async () => {
+        const client = await createEraClient(era, primaryPort);
+        try {
+          const tools = await client.listTools();
+
+          expect(tools.tools.length).toBe(1);
+          expect(
+            tools.tools.find((t) => t.name === 'primary-tool'),
+          ).toBeDefined();
+
+          expect(
+            tools.tools.find((t) => t.name === 'shared-utility-tool'),
+          ).toBeUndefined();
+          expect(
+            tools.tools.find((t) => t.name === 'shared-health-check'),
+          ).toBeUndefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should call the primary tool successfully', async () => {
+        const client = await createEraClient(era, primaryPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'primary-tool',
+            arguments: {},
+          });
+
+          expect(result.content[0].text).toBe('Primary tool result');
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should fail when calling a shared module tool', async () => {
+        const client = await createEraClient(era, primaryPort);
+        try {
+          await expect(
+            client.callTool({
+              name: 'shared-utility-tool',
+              arguments: {},
+            }),
+          ).rejects.toThrow();
+        } finally {
+          await client.close();
+        }
+      });
+    });
+
+    describe('Secondary Server - Should NOT expose shared module tools', () => {
+      it('should list only the secondary tool', async () => {
+        const client = await createEraClient(era, secondaryPort);
+        try {
+          const tools = await client.listTools();
+
+          expect(tools.tools.length).toBe(1);
+          expect(
+            tools.tools.find((t) => t.name === 'secondary-tool'),
+          ).toBeDefined();
+
+          expect(
+            tools.tools.find((t) => t.name === 'shared-utility-tool'),
+          ).toBeUndefined();
+          expect(
+            tools.tools.find((t) => t.name === 'shared-health-check'),
+          ).toBeUndefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should call the secondary tool successfully', async () => {
+        const client = await createEraClient(era, secondaryPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'secondary-tool',
+            arguments: {},
+          });
+
+          expect(result.content[0].text).toBe('Secondary tool result');
+        } finally {
+          await client.close();
+        }
+      });
+    });
+
+    describe('Explicit Import Server - SHOULD expose explicitly imported tools', () => {
+      it('should list both explicitly imported and its own tools', async () => {
+        const client = await createEraClient(era, explicitPort);
+        try {
+          const tools = await client.listTools();
+
+          // Should have 3 tools (2 from shared + 1 from explicit)
+          expect(tools.tools.length).toBe(3);
+
+          expect(
+            tools.tools.find((t) => t.name === 'explicitly-imported-tool'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'shared-utility-tool'),
+          ).toBeDefined();
+          expect(
+            tools.tools.find((t) => t.name === 'shared-health-check'),
+          ).toBeDefined();
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should call the explicitly imported tool successfully', async () => {
+        const client = await createEraClient(era, explicitPort);
+        try {
+          const result: any = await client.callTool({
+            name: 'explicitly-imported-tool',
+            arguments: {},
+          });
+
+          expect(result.content[0].text).toBe(
+            'Explicitly imported tool result',
+          );
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should call a shared utility tool successfully', async () => {
+        const client = await createEraClient(era, explicitPort);
+        try {
+          const result: any = await client.callTool({
             name: 'shared-utility-tool',
             arguments: {},
-          }),
+          });
+
+          expect(result.content[0].text).toBe('Shared utility service value');
+        } finally {
+          await client.close();
+        }
+      });
+    });
+
+    describe('Dependency Validation - Tools without their dependencies should fail', () => {
+      it('should fail to create the app when a controller dependency is missing', async () => {
+        await expect(
+          Test.createTestingModule({
+            // SharedUtilityTools needs SharedUtilityService, which is NOT provided.
+            controllers: [SharedUtilityTools],
+          }).compile(),
         ).rejects.toThrow();
-      } finally {
-        await client.close();
-      }
+      });
     });
-  });
-
-  describe('Secondary Server - Should NOT expose shared module tools', () => {
-    it('should list only the secondary tool', async () => {
-      const client = await createStreamableClient(secondaryPort);
-      try {
-        const tools = await client.listTools();
-
-        expect(tools.tools.length).toBe(1);
-        expect(
-          tools.tools.find((t) => t.name === 'secondary-tool'),
-        ).toBeDefined();
-
-        expect(
-          tools.tools.find((t) => t.name === 'shared-utility-tool'),
-        ).toBeUndefined();
-        expect(
-          tools.tools.find((t) => t.name === 'shared-health-check'),
-        ).toBeUndefined();
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should call the secondary tool successfully', async () => {
-      const client = await createStreamableClient(secondaryPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'secondary-tool',
-          arguments: {},
-        });
-
-        expect(result.content[0].text).toBe('Secondary tool result');
-      } finally {
-        await client.close();
-      }
-    });
-  });
-
-  describe('Explicit Import Server - SHOULD expose explicitly imported tools', () => {
-    it('should list both explicitly imported and its own tools', async () => {
-      const client = await createStreamableClient(explicitPort);
-      try {
-        const tools = await client.listTools();
-
-        // Should have 3 tools (2 from shared + 1 from explicit)
-        expect(tools.tools.length).toBe(3);
-
-        expect(
-          tools.tools.find((t) => t.name === 'explicitly-imported-tool'),
-        ).toBeDefined();
-        expect(
-          tools.tools.find((t) => t.name === 'shared-utility-tool'),
-        ).toBeDefined();
-        expect(
-          tools.tools.find((t) => t.name === 'shared-health-check'),
-        ).toBeDefined();
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should call the explicitly imported tool successfully', async () => {
-      const client = await createStreamableClient(explicitPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'explicitly-imported-tool',
-          arguments: {},
-        });
-
-        expect(result.content[0].text).toBe('Explicitly imported tool result');
-      } finally {
-        await client.close();
-      }
-    });
-
-    it('should call a shared utility tool successfully', async () => {
-      const client = await createStreamableClient(explicitPort);
-      try {
-        const result: any = await client.callTool({
-          name: 'shared-utility-tool',
-          arguments: {},
-        });
-
-        expect(result.content[0].text).toBe('Shared utility service value');
-      } finally {
-        await client.close();
-      }
-    });
-  });
-
-  describe('Dependency Validation - Tools without their dependencies should fail', () => {
-    it('should fail to create the app when a controller dependency is missing', async () => {
-      await expect(
-        Test.createTestingModule({
-          // SharedUtilityTools needs SharedUtilityService, which is NOT provided.
-          controllers: [SharedUtilityTools],
-        }).compile(),
-      ).rejects.toThrow();
-    });
-  });
-});
+  },
+);

@@ -1,7 +1,7 @@
 /**
  * e2e for `examples/per-tool-authorization` — verifies the behaviors documented
  * in docs/per-tool-authorization.md against a real, spawned example server,
- * driven by a pinned old MCP client.
+ * driven by both a pinned old (1.10.0) and a modern (2026-07-28) client.
  *
  * Run:  bun test per-tool-authorization   (from the e2e/ directory)
  *
@@ -25,8 +25,15 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
-import { createLegacyClient, getFreePort, startExample, type RunningExample } from './harness';
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import {
+  createEraClient,
+  ERAS,
+  getFreePort,
+  startExample,
+  type Era,
+  type EraClient,
+  type RunningExample,
+} from './harness';
 
 const BOOT_MS = 90_000;
 const EXAMPLE_DIR = join(import.meta.dir, '..', 'examples', 'per-tool-authorization');
@@ -48,9 +55,9 @@ function mintToken(profile: 'admin' | 'basic' | 'premium'): string {
 }
 
 let server: RunningExample;
-let anon: Client;
-let basic: Client;
-let admin: Client;
+const anonClients: Partial<Record<Era, EraClient>> = {};
+const basicClients: Partial<Record<Era, EraClient>> = {};
+const adminClients: Partial<Record<Era, EraClient>> = {};
 
 beforeAll(async () => {
   const port = await getFreePort();
@@ -65,75 +72,82 @@ beforeAll(async () => {
   const basicToken = mintToken('basic');
   const adminToken = mintToken('admin');
 
-  anon = await createLegacyClient(server.url);
-  basic = await createLegacyClient(server.url, {
-    requestInit: { headers: { Authorization: `Bearer ${basicToken}` } },
-  });
-  admin = await createLegacyClient(server.url, {
-    requestInit: { headers: { Authorization: `Bearer ${adminToken}` } },
-  });
+  for (const era of ERAS) {
+    anonClients[era] = await createEraClient(era, server.url);
+    basicClients[era] = await createEraClient(era, server.url, {
+      requestInit: { headers: { Authorization: `Bearer ${basicToken}` } },
+    });
+    adminClients[era] = await createEraClient(era, server.url, {
+      requestInit: { headers: { Authorization: `Bearer ${adminToken}` } },
+    });
+  }
 }, BOOT_MS);
 
 afterAll(async () => {
-  await anon?.close?.();
-  await basic?.close?.();
-  await admin?.close?.();
+  for (const era of ERAS) {
+    await anonClients[era]?.close();
+    await basicClients[era]?.close();
+    await adminClients[era]?.close();
+  }
   await server?.stop();
 });
 
-describe('examples/per-tool-authorization e2e (pinned @modelcontextprotocol/sdk@1.10.0 client)', () => {
+describe.each(ERAS)('examples/per-tool-authorization e2e (%s era)', (era) => {
+  const anon = () => anonClients[era]!;
+  const basic = () => basicClients[era]!;
+  const admin = () => adminClients[era]!;
   test('anonymous caller only sees the @PublicTool() tool', async () => {
-    const { tools } = await anon.listTools();
+    const { tools } = await anon().listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(['public-search']);
   });
 
   test('anonymous caller can call the public tool', async () => {
-    const res = await anon.callTool({ name: 'public-search', arguments: { query: 'nest' } });
+    const res = await anon().callTool({ name: 'public-search', arguments: { query: 'nest' } });
     expect(text(res)).toContain('Public search results for: nest');
   });
 
   test('anonymous caller is rejected from a protected tool (protocol error)', async () => {
-    await expect(anon.callTool({ name: 'user-profile', arguments: {} })).rejects.toThrow(
+    await expect(anon().callTool({ name: 'user-profile', arguments: {} })).rejects.toThrow(
       "Tool 'user-profile' requires authentication",
     );
   });
 
   test('anonymous caller is rejected from a scope-gated tool (protocol error)', async () => {
     await expect(
-      anon.callTool({ name: 'admin-delete', arguments: { userId: 'u1' } }),
+      anon().callTool({ name: 'admin-delete', arguments: { userId: 'u1' } }),
     ).rejects.toThrow("Tool 'admin-delete' requires authentication");
   });
 
   test('anonymous caller is rejected from a role-gated tool (protocol error)', async () => {
-    await expect(anon.callTool({ name: 'system-config', arguments: {} })).rejects.toThrow(
+    await expect(anon().callTool({ name: 'system-config', arguments: {} })).rejects.toThrow(
       "Tool 'system-config' requires authentication",
     );
   });
 
   test('authenticated caller without required scopes/roles sees only public + protected tools', async () => {
-    const { tools } = await basic.listTools();
+    const { tools } = await basic().listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(['public-search', 'user-profile']);
   });
 
   test('authenticated caller can call the plain protected tool', async () => {
-    const res = await basic.callTool({ name: 'user-profile', arguments: {} });
+    const res = await basic().callTool({ name: 'user-profile', arguments: {} });
     expect(text(res)).toContain('Profile for Basic User');
   });
 
   test('caller lacking required scopes is denied the scope-gated tool', async () => {
     await expect(
-      basic.callTool({ name: 'admin-delete', arguments: { userId: 'u1' } }),
+      basic().callTool({ name: 'admin-delete', arguments: { userId: 'u1' } }),
     ).rejects.toThrow("Tool 'admin-delete' requires scopes: admin, write");
   });
 
   test('caller lacking required role is denied the role-gated tool', async () => {
-    await expect(basic.callTool({ name: 'system-config', arguments: {} })).rejects.toThrow(
+    await expect(basic().callTool({ name: 'system-config', arguments: {} })).rejects.toThrow(
       "Tool 'system-config' requires roles: admin",
     );
   });
 
   test('admin caller (matching scopes + role) sees every tool', async () => {
-    const { tools } = await admin.listTools();
+    const { tools } = await admin().listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       'admin-delete',
       'public-search',
@@ -143,12 +157,12 @@ describe('examples/per-tool-authorization e2e (pinned @modelcontextprotocol/sdk@
   });
 
   test('admin caller can call the scope-gated tool', async () => {
-    const res = await admin.callTool({ name: 'admin-delete', arguments: { userId: 'u1' } });
+    const res = await admin().callTool({ name: 'admin-delete', arguments: { userId: 'u1' } });
     expect(text(res)).toContain('User u1 deleted');
   });
 
   test('admin caller can call the role-gated tool', async () => {
-    const res = await admin.callTool({ name: 'system-config', arguments: {} });
+    const res = await admin().callTool({ name: 'system-config', arguments: {} });
     expect(text(res)).toContain('System configured');
   });
 });

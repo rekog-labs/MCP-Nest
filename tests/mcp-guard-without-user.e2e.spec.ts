@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { z } from 'zod';
 import { Payload } from '@nestjs/microservices';
 import { McpController, Tool } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createStreamableClient } from './utils';
+import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
 
 /**
  * Represents authentication that authorizes through means other than a user
@@ -40,52 +40,55 @@ export class SimpleGreetingTool {
   }
 }
 
-describe('E2E: MCP Server with Guard but no User', () => {
-  let app: INestApplication;
-  let testPort: number;
+describe.each(ERAS)(
+  'E2E: MCP Server with Guard but no User (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let testPort: number;
 
-  beforeAll(async () => {
-    const bootstrapped = await bootstrapMcpApp({
-      name: 'test-simple-guard-server',
-      controllers: [SimpleGreetingTool],
-      // Gate (middleware) allows the request through but doesn't set
-      // request.user.
-      configure: (nestApp) => {
-        nestApp.use(allowAllMiddleware);
-      },
-    });
-    app = bootstrapped.app;
-    testPort = bootstrapped.port;
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it('should list tools even when guard does not set request.user', async () => {
-    const client = await createStreamableClient(testPort);
-    const tools = await client.listTools();
-
-    // This should work because the gate allowed the request through
-    // even though request.user is not set
-    expect(tools.tools.length).toBeGreaterThan(0);
-    expect(tools.tools.find((t) => t.name === 'simple-hello')).toBeDefined();
-
-    await client.close();
-  });
-
-  it('should execute tool even when guard does not set request.user', async () => {
-    const client = await createStreamableClient(testPort);
-
-    const result: any = await client.callTool({
-      name: 'simple-hello',
-      arguments: { name: 'Test' },
+    beforeAll(async () => {
+      const bootstrapped = await bootstrapMcpApp({
+        name: 'test-simple-guard-server',
+        controllers: [SimpleGreetingTool],
+        // Gate (middleware) allows the request through but doesn't set
+        // request.user.
+        configure: (nestApp) => {
+          nestApp.use(allowAllMiddleware);
+        },
+      });
+      app = bootstrapped.app;
+      testPort = bootstrapped.port;
     });
 
-    // This should work because the gate allowed the request through
-    expect(result.content[0].type).toBe('text');
-    expect(result.content[0].text).toContain('Hello, Test!');
+    afterAll(async () => {
+      await app.close();
+    });
 
-    await client.close();
-  });
-});
+    it('should list tools even when guard does not set request.user', async () => {
+      const client = await createEraClient(era, testPort);
+      const tools = await client.listTools();
+
+      // This should work because the gate allowed the request through
+      // even though request.user is not set
+      expect(tools.tools.length).toBeGreaterThan(0);
+      expect(tools.tools.find((t) => t.name === 'simple-hello')).toBeDefined();
+
+      await client.close();
+    });
+
+    it('should execute tool even when guard does not set request.user', async () => {
+      const client = await createEraClient(era, testPort);
+
+      const result: any = await client.callTool({
+        name: 'simple-hello',
+        arguments: { name: 'Test' },
+      });
+
+      // This should work because the gate allowed the request through
+      expect(result.content[0].type).toBe('text');
+      expect(result.content[0].text).toContain('Hello, Test!');
+
+      await client.close();
+    });
+  },
+);

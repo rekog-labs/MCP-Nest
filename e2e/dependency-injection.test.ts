@@ -1,23 +1,29 @@
 /**
  * e2e for `examples/dependency-injection` — verifies the behaviors documented
  * in docs/dependency-injection.md against a real, spawned example server,
- * driven by a pinned old MCP client.
+ * driven by both a pinned old (1.10.0) and a modern (2026-07-28) client.
  *
  * Run:  bun test dependency-injection.test.ts        (from the e2e/ directory)
  *
- * Green on `main` = an old (1.10.0) client fully interoperates with the current
- * server. If the v1->v2 SDK migration (or any future server change) breaks that,
- * one of these assertions fails and names exactly what regressed.
+ * Green = a dual-era server serves both: old clients in the wild keep working,
+ * and the 2026 leg does too. A break names exactly which era regressed.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
-import { createLegacyClient, getFreePort, startExample, type RunningExample } from './harness';
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import {
+  createEraClient,
+  ERAS,
+  getFreePort,
+  startExample,
+  type Era,
+  type EraClient,
+  type RunningExample,
+} from './harness';
 
 const BOOT_MS = 90_000;
 
 let server: RunningExample;
-let client: Client;
+const clients: Partial<Record<Era, EraClient>> = {};
 
 function text(result: any): string {
   return (result?.content ?? []).map((c: any) => c.text ?? '').join('\n');
@@ -26,23 +32,27 @@ function text(result: any): string {
 beforeAll(async () => {
   const port = await getFreePort();
   server = await startExample('dependency-injection', port, { readyTimeoutMs: BOOT_MS });
-  client = await createLegacyClient(server.url);
+  // One server, both eras: also the dual-era concurrency proof.
+  for (const era of ERAS) {
+    clients[era] = await createEraClient(era, server.url);
+  }
 }, BOOT_MS);
 
 afterAll(async () => {
-  await client?.close?.();
+  for (const era of ERAS) await clients[era]?.close();
   await server?.stop();
 });
 
-describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.10.0 client)', () => {
+describe.each(ERAS)('examples/dependency-injection e2e (%s era)', (era) => {
+  const client = () => clients[era]!;
   test('tools/list advertises every documented tool', async () => {
-    const { tools } = await client.listTools();
+    const { tools } = await client().listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(['hello-world', 'inspect-request'].sort());
   });
 
   test('resources/list advertises the injected-repository resource', async () => {
-    const { resources } = await client.listResources();
+    const { resources } = await client().listResources();
     const byUri = Object.fromEntries(resources.map((r) => [r.uri, r]));
     expect(Object.keys(byUri)).toEqual(['mcp://users/world']);
     expect(byUri['mcp://users/world']).toMatchObject({
@@ -53,7 +63,7 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('prompts/list advertises the injected-repository prompt', async () => {
-    const { prompts } = await client.listPrompts();
+    const { prompts } = await client().listPrompts();
     const names = prompts.map((p) => p.name);
     expect(names).toEqual(['greet-known-user']);
     const prompt = prompts.find((p) => p.name === 'greet-known-user');
@@ -64,7 +74,7 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('constructor-injected singleton service resolves a known user', async () => {
-    const res = await client.callTool({
+    const res = await client().callTool({
       name: 'hello-world',
       arguments: { name: 'World' },
     });
@@ -72,7 +82,7 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('constructor-injected singleton service is shared across calls (same data)', async () => {
-    const res = await client.callTool({
+    const res = await client().callTool({
       name: 'hello-world',
       arguments: { name: 'Alice' },
     });
@@ -80,7 +90,7 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('constructor-injected service reports a miss for unknown users', async () => {
-    const res = await client.callTool({
+    const res = await client().callTool({
       name: 'hello-world',
       arguments: { name: 'Zork' },
     });
@@ -88,7 +98,7 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('resource handler uses the same injected UserRepository', async () => {
-    const res = await client.readResource({ uri: 'mcp://users/world' });
+    const res = await client().readResource({ uri: 'mcp://users/world' });
     expect(res.contents).toHaveLength(1);
     const content = res.contents[0] as { uri: string; mimeType: string; text: string };
     expect(content.uri).toBe('mcp://users/world');
@@ -100,7 +110,7 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('prompt handler uses the same injected UserRepository (known user)', async () => {
-    const res = await client.getPrompt({
+    const res = await client().getPrompt({
       name: 'greet-known-user',
       arguments: { name: 'Alice' },
     });
@@ -117,7 +127,7 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('prompt handler falls back gracefully for an unknown user', async () => {
-    const res = await client.getPrompt({
+    const res = await client().getPrompt({
       name: 'greet-known-user',
       arguments: { name: 'Ghost' },
     });
@@ -133,7 +143,7 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('request-scoped controller: @Inject(REQUEST) is a wrapper, not McpContext directly', async () => {
-    const res = await client.callTool({ name: 'inspect-request', arguments: {} });
+    const res = await client().callTool({ name: 'inspect-request', arguments: {} });
     const payload = JSON.parse(text(res));
 
     // @Inject(REQUEST) resolves to a RequestContextHost-style wrapper, NOT the
@@ -145,7 +155,7 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('request-scoped controller: @McpRawRequest() exposes the raw HTTP request directly', async () => {
-    const res = await client.callTool({ name: 'inspect-request', arguments: {} });
+    const res = await client().callTool({ name: 'inspect-request', arguments: {} });
     const payload = JSON.parse(text(res));
 
     expect(payload.rawRequestHasHeaders).toBe(true);
@@ -156,6 +166,6 @@ describe('examples/dependency-injection e2e (pinned @modelcontextprotocol/sdk@1.
   });
 
   test('getting an unknown prompt name still rejects (protocol-level, not DI-specific)', async () => {
-    await expect(client.getPrompt({ name: 'does-not-exist' })).rejects.toThrow();
+    await expect(client().getPrompt({ name: 'does-not-exist' })).rejects.toThrow();
   });
 });

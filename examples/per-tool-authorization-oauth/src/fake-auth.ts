@@ -43,16 +43,23 @@ export const FAKE_USERS: Record<string, FakeUser> = {
 // HS256, signed with the same jwtSecret the module was configured with. The
 // guard reads `scope` (space-delimited) and `user_data.roles`, and derives
 // username/displayName/name from `user_data`.
+//
+// `iss` and `aud` are not decoration: JwtTokenService validates the issuer on
+// every token and the audience on every bearer token (RFC 8707 §2), so `issuer`
+// must be the module's configured `serverUrl` and `resource` its configured
+// `resource`, or the guard answers 401.
 export function mintFakeToken(
   user: FakeUser,
   jwtSecret: string,
   resource: string,
+  issuer: string,
 ): string {
   const payload = {
     sub: user.sub,
     type: 'access' as const,
     scope: user.scope,
     resource,
+    iss: issuer,
     aud: resource,
     user_data: {
       username: user.username,

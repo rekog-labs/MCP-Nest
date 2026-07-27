@@ -1,8 +1,12 @@
 # Example end-to-end tests
 
 These tests boot each `examples/<name>` project as a **real subprocess** and drive
-it with a **pinned, intentionally-old MCP client** — `@modelcontextprotocol/sdk@1.10.0`,
-the floor of `@rekog/mcp-nest`'s supported peer range (`>=1.10.0`).
+it with **two clients, one per protocol era**:
+
+| Era | Package | What it proves |
+|---|---|---|
+| `legacy` | `@modelcontextprotocol/sdk@1.10.0` (pinned) | clients already in the wild keep working |
+| `modern` | `@modelcontextprotocol/client` pinned to `2026-07-28` | the 2026 leg actually serves |
 
 Why an old client? The server-side SDK moves (the v1 `@modelcontextprotocol/sdk`
 → v2 `@modelcontextprotocol/{core,node,server}` migration is the immediate reason),
@@ -10,17 +14,43 @@ but real users don't upgrade their clients in lockstep. Freezing the client here
 means: **if a server/SDK change breaks a client already in the wild, these tests
 go red and name what regressed.**
 
+They are two *different packages*, deliberately — so the old one stays frozen at the
+floor of our peer range no matter where the modern one moves.
+
 ```
-static old client  ──drives──▶  example server (moving SDK)
-   (this project)                (published OR local build)
+old client (1.10.0)  ──┐
+                       ├──drives──▶  ONE example server (moving SDK)
+modern client (2026)  ─┘              (published OR local build)
 ```
 
-This project is deliberately **not** part of the npm workspace, so its client SDK
-stays pinned no matter what the workspace/examples upgrade to.
+Each example boots **once** and both clients drive it, so the second era costs
+almost nothing (wall-clock here is installs and boots, not requests) — and it
+doubles as a dual-era concurrency proof, including on `main-stateful.ts`, where a
+sessionless modern client shares an endpoint with a session-managed legacy one.
+
+Tests are written once against `EraClient` (see `harness.ts`), which normalises the
+two clients' differing APIs, and run via `describe.each(ERAS)`. To run a single era:
+
+```bash
+bun test -t "modern era"
+bun test -t "legacy era"
+```
+
+The modern client is **pinned**, not `mode: 'auto'`: `auto` probes and silently falls
+back to `initialize`, so a server that lost its modern leg would still go green.
+
+This project is deliberately **not** part of the npm workspace, so its client SDKs
+stay pinned no matter what the workspace/examples upgrade to.
+
+> **Local mode gotcha.** `harness.ts` deletes each example's `package-lock.json` before
+> installing and passes `--install-links=false`. Both are load-bearing: a lockfile written
+> in published mode pins a *registry* resolution that npm honours over the `file:` spec, and
+> npm 9 defaults `install-links=true`, which copies a `file:` dep rather than symlinking it.
+> Without these, `e2e:local` silently tests the published package.
 
 ## Coverage
 
-One `*.test.ts` per example (165 assertions total): `tools`, `resources`,
+One `*.test.ts` per example: `tools`, `resources`,
 `resource-templates`, `prompts`, `dependency-injection`, `dynamic-capabilities`,
 `server-mutation`, `tool-discovery`, `multiple-servers`, `server-examples` (6
 transport variants), `custom-controllers`, `per-tool-authorization`,
@@ -28,6 +58,16 @@ transport variants), `custom-controllers`, `per-tool-authorization`,
 `built-in-authorization-server`. Examples needing a real external IdP/Docker
 (`azure-ad-*`, `external-authorization-server-casdoor`) are out of scope; the
 OAuth/JWT examples run offline via `MCP_FAKE_AUTH=1` with locally-minted tokens.
+
+309 assertions: 141 legacy + 141 modern + 27 legacy-only.
+
+**`built-in-authorization-server` and `per-tool-authorization-oauth` are legacy-only**,
+deliberately. The two client packages ship different client-side OAuth implementations,
+so porting them would be a rewrite against a different auth API rather than a
+parameterisation. The MCP era and the OAuth handshake are independent, and per-tool
+authorization on the modern era is already covered by `per-tool-authorization` and
+`per-tool-authorization-jwt`, which drive the same guards with a bearer header on both
+eras. Each file's header says so.
 
 ### Auth examples and local linking
 

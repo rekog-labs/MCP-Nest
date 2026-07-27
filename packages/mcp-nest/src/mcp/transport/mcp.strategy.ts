@@ -14,10 +14,14 @@ import {
   ReadResourceResult,
   ServerCapabilities,
   ProtocolErrorCode,
+  ServerContext,
 } from '@modelcontextprotocol/server';
 import { firstValueFrom } from 'rxjs';
 import { z } from 'zod';
-import { resolveToolSchema } from './tool-schema';
+import {
+  assertNoMcpParamHeaderMirroring,
+  resolveToolSchema,
+} from './tool-schema';
 import type { ToolInputSchema } from '../decorators/tool.decorator';
 
 import {
@@ -33,7 +37,10 @@ import {
   ResourceTemplateMetadata,
   ToolMetadata,
 } from '../decorators';
-import { ToolAuthorizationService } from '../services/tool-authorization.service';
+import {
+  ToolAuthorizationService,
+  type ToolScopeDeficiency,
+} from '../services/tool-authorization.service';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 import type { McpRequest } from '../interfaces/mcp-tool.interface';
 import type {
@@ -49,7 +56,7 @@ import {
   McpHandlerExtras,
   McpMethodRef,
 } from './mcp-transport.constants';
-import { McpContext, McpSessionInfo } from './mcp-context';
+import { McpContext, McpSessionSeed } from './mcp-context';
 import { McpServerOptions } from './mcp-server-options.interface';
 import { McpTransportContext } from './mcp-transport.interface';
 import {
@@ -142,6 +149,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     try {
       this.buildCapabilities();
       this.warnIfNamedServerHasNoDecoratorCapabilities();
+      this.warnIfToolListCacheHintIsPublic();
       const ctx = this.createTransportContext();
       for (const transport of this.options.transports) {
         await transport.start(ctx);
@@ -206,6 +214,32 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         `'${this.options.server}' }) exists and is listed in a module's ` +
         `controllers. (Safe to ignore if this server is populated at runtime ` +
         `via strategy.registerTool()/registerResource()/registerPrompt().)`,
+    );
+  }
+
+  /**
+   * Warn — but do not refuse — when `tools/list` is hinted `cacheScope: 'public'`
+   * on a server whose tool list depends on who is asking. See
+   * {@link McpServerOptions.cacheHints} for what that leaks.
+   *
+   * A warning rather than a hard failure: a `public` hint is not *always* wrong
+   * (an operator may front the endpoint with a cache keyed on the access token,
+   * or know the list is uniform in ways we cannot see — authorization enforced
+   * entirely inside a guard, tools registered dynamically after startup).
+   * Refusing to boot on a spec-legal configuration would be overruling the
+   * operator; refusing *silently* is what this actually fixes.
+   */
+  private warnIfToolListCacheHintIsPublic(): void {
+    if (this.options.cacheHints?.['tools/list']?.cacheScope !== 'public')
+      return;
+    if (!this.toolListVariesByCaller()) return;
+    this.logger.warn(
+      `cacheHints['tools/list'].cacheScope is 'public', but this server filters ` +
+        `tools/list per caller (@ToolScopes / @ToolRoles / ` +
+        `allowUnauthenticatedAccess). A public result may be cached by a client ` +
+        `and reused outside the requesting caller's authorization context, so one ` +
+        `principal's visible tool set can be served to another. Use ` +
+        `cacheScope: 'private' unless the list is genuinely identical for every caller.`,
     );
   }
 
@@ -297,6 +331,14 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     if (isPublic !== undefined) base.isPublic = isPublic;
     if (requiredScopes) base.requiredScopes = requiredScopes;
     if (requiredRoles) base.requiredRoles = requiredRoles;
+    // Fail at startup rather than serving a schema whose SEP-2243 contract we
+    // cannot honour — see `assertNoMcpParamHeaderMirroring`.
+    if (base.parameters) {
+      assertNoMcpParamHeaderMirroring(
+        base.parameters,
+        `@Tool({ name: '${base.name}' })`,
+      );
+    }
     return base;
   }
 
@@ -312,6 +354,29 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private getTools(): ToolCapability[] {
     return [...this.tools, ...this.dynamicTools.values()];
+  }
+
+  /**
+   * Whether `tools/list` can answer differently for different callers.
+   *
+   * `tools/list` always runs through `canAccessTool`, but that only *narrows* the
+   * list when per-tool authorization is actually declared: freemium mode
+   * (`allowUnauthenticatedAccess`, where an undecorated tool needs a resolved
+   * `req.user`) or a tool carrying `@ToolScopes()`/`@ToolRoles()`.
+   * `@PublicTool()` alone never narrows anything outside freemium mode.
+   *
+   * Used to judge a SEP-2549 `cacheScope: 'public'` hint on `tools/list`: a
+   * public hint lets a client cache the result and reuse it across authorization
+   * contexts, which on a caller-dependent list means one principal's visible tool
+   * set leaking to another.
+   */
+  private toolListVariesByCaller(): boolean {
+    if (this.options.allowUnauthenticatedAccess) return true;
+    return this.getTools().some(
+      ({ metadata }) =>
+        (metadata.requiredScopes?.length ?? 0) > 0 ||
+        (metadata.requiredRoles?.length ?? 0) > 0,
+    );
   }
   private getResources(): ResourceCapability[] {
     return [...this.resources, ...this.dynamicResources.values()];
@@ -332,6 +397,10 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       createServer: () => this.createServer(),
       bindRequestHandlers: (server, session, rawRequest) =>
         this.bindRequestHandlers(server, session, rawRequest),
+      createBoundServer: (session, rawRequest) =>
+        this.createBoundServer(session, rawRequest),
+      toolCallScopeDeficiency: (toolName, rawRequest) =>
+        this.toolCallScopeDeficiency(toolName, rawRequest),
       httpAdapter: this.httpAdapter,
       options: this.options,
       logger: this.logger,
@@ -351,6 +420,14 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     if (this.getPrompts().length > 0) {
       capabilities.prompts = capabilities.prompts ?? { listChanged: true };
     }
+    // `Context.log` is available to every handler, and the spec requires that
+    // "servers that emit log message notifications MUST declare the `logging`
+    // capability". Opt out by passing the key explicitly as
+    // `capabilities: { logging: undefined }` — hence the `in` check rather than
+    // `??`, which cannot tell "absent" from "explicitly undefined".
+    if (!('logging' in capabilities)) {
+      capabilities.logging = {};
+    }
 
     const server = new McpServer(
       {
@@ -363,7 +440,15 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         ...(this.options.websiteUrl && { websiteUrl: this.options.websiteUrl }),
         ...(this.options.icons && { icons: this.options.icons }),
       },
-      { capabilities, instructions: this.options.instructions ?? '' },
+      {
+        capabilities,
+        instructions: this.options.instructions ?? '',
+        // Era-blind by design: the SDK carries the hint to the wire codec on a
+        // symbol-keyed property that is never serialized, so it fills the
+        // required `ttlMs`/`cacheScope` fields on 2026-era results and leaves
+        // 2025-era responses byte-identical.
+        ...(this.options.cacheHints && { cacheHints: this.options.cacheHints }),
+      },
     );
 
     return this.options.serverMutator
@@ -373,7 +458,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   bindRequestHandlers(
     server: McpServer,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
     this.bindToolHandlers(server, session, rawRequest);
@@ -381,18 +466,39 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     this.bindPromptHandlers(server, session, rawRequest);
   }
 
+  /**
+   * Create a server with its request handlers already bound — the shape the SDK
+   * serving entries (`createMcpHandler`, `serveStdio`) expect from an
+   * `McpServerFactory`.
+   *
+   * They call the factory once per serving unit (one HTTP request on the modern
+   * era, one connection on stdio) and own the transport themselves, so there is
+   * no separate `connect()` step for the caller.
+   */
+  createBoundServer(session: McpSessionSeed, rawRequest?: unknown): McpServer {
+    const server = this.createServer();
+    this.bindRequestHandlers(server, session, rawRequest);
+    return server;
+  }
+
   private buildContext(
     server: McpServer,
     request: McpRequest,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
+    sdkContext?: ServerContext,
   ): McpContext {
+    const era = session.era ?? 'legacy';
+    // Protocol sessions were removed in 2026-07-28, so a modern request never
+    // has one — don't go fishing for a session id on the transport there.
     const sessionId =
-      session.sessionId ??
-      (server.server.transport as { sessionId?: string } | undefined)
-        ?.sessionId;
+      era === 'modern'
+        ? undefined
+        : (session.sessionId ??
+          (server.server.transport as { sessionId?: string } | undefined)
+            ?.sessionId);
     return new McpContext(
-      [server, request, { ...session, sessionId }, rawRequest],
+      [server, request, { ...session, era, sessionId }, rawRequest, sdkContext],
       this.logger,
     );
   }
@@ -401,9 +507,30 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     return rawRequest ? (rawRequest as { user?: unknown }).user : undefined;
   }
 
+  /**
+   * The scope shortfall a `tools/call` would be denied for, for a transport that
+   * wants to answer it as `403 insufficient_scope` instead of letting the
+   * JSON-RPC pipeline deny it inside an HTTP 200 (see
+   * {@link McpTransportContext.toolCallScopeDeficiency}).
+   *
+   * Resolves the tool exactly the way the `tools/call` handler does — including
+   * runtime-registered tools — and delegates the decision to the same
+   * `ToolAuthorizationService` instance, so this cannot drift from what the
+   * handler will do a moment later. An unknown tool yields `undefined`: it must
+   * reach the handler to get its `-32602`, not a 403.
+   */
+  private toolCallScopeDeficiency(
+    toolName: string,
+    rawRequest?: unknown,
+  ): ToolScopeDeficiency | undefined {
+    const tool = this.getTools().find((t) => t.metadata.name === toolName);
+    if (!tool) return undefined;
+    return this.authService.findScopeDeficiency(this.getUser(rawRequest), tool);
+  }
+
   private bindToolHandlers(
     server: McpServer,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
     if (this.getTools().length === 0) return;
@@ -444,10 +571,16 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
               tool.metadata.outputSchema,
             ).toJsonSchema('output');
             if (output) {
-              schema.outputSchema = {
-                ...output,
-                type: 'object',
-              };
+              // Advertise the schema as authored. This used to force
+              // `type: 'object'`, which corrupted every non-object output
+              // schema: SEP-2106 widened `structuredContent` to any JSON value
+              // and the spec documents array `outputSchema`s explicitly, so a
+              // conforming client validating against a mangled schema fails on a
+              // perfectly valid result. (The override was always a no-op for the
+              // Zod path — `normalizeObjectSchema` only ever yields object
+              // schemas there — so this only unbreaks Standard Schema and raw
+              // JSON Schema output schemas.)
+              schema.outputSchema = output;
             }
           }
           return schema;
@@ -455,13 +588,19 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       return { tools } as unknown as ListToolsResult;
     });
 
-    server.server.setRequestHandler('tools/call', async (request) => {
+    server.server.setRequestHandler('tools/call', async (request, sdkCtx) => {
       const tool = this.getTools().find(
         (t) => t.metadata.name === request.params.name,
       );
       if (!tool) {
+        // An unknown *tool* is a bad `params.name`, not an unimplemented RPC
+        // *method*. The spec reserves -32601 for "the server does not implement
+        // the requested RPC method" (answered with HTTP 404), which clients also
+        // use for era/transport detection — so emitting it here invites a client
+        // to conclude `tools/call` itself is unsupported. The spec's own
+        // unknown-tool example uses -32602.
         throw new ProtocolError(
-          ProtocolErrorCode.MethodNotFound,
+          ProtocolErrorCode.InvalidParams,
           `Unknown tool: ${request.params.name}`,
         );
       }
@@ -490,7 +629,13 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         request.params.arguments = validation.data as Record<string, unknown>;
       }
 
-      const ctx = this.buildContext(server, request, session, rawRequest);
+      const ctx = this.buildContext(
+        server,
+        request,
+        session,
+        rawRequest,
+        sdkCtx,
+      );
       try {
         const result = await tool.invoke(request.params.arguments ?? {}, ctx);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
@@ -504,7 +649,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private bindResourceHandlers(
     server: McpServer,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
     if (this.getResources().length + this.getTemplates().length === 0) return;
@@ -519,7 +664,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
     server.server.setRequestHandler(
       'resources/read',
-      async (request) => {
+      async (request, sdkCtx) => {
         const uri = request.params.uri;
         const templateMatch = matchResourceTemplateByUri(
           this.getTemplates().map((cap) => ({
@@ -542,13 +687,22 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           invoke = resourceMatch.resource.cap.invoke;
           params = { ...resourceMatch.params, ...request.params };
         } else {
+          // Spec: "If the requested resource does not exist, servers MUST
+          // return a JSON-RPC error with code -32602 (Invalid Params)." The
+          // older -32002 is reserved and MUST NOT be emitted on this revision.
           throw new ProtocolError(
-            ProtocolErrorCode.MethodNotFound,
+            ProtocolErrorCode.InvalidParams,
             `Unknown resource: ${uri}`,
           );
         }
 
-        const ctx = this.buildContext(server, request, session, rawRequest);
+        const ctx = this.buildContext(
+          server,
+          request,
+          session,
+          rawRequest,
+          sdkCtx,
+        );
         return (await invoke(params, ctx)) as ReadResourceResult;
       },
     );
@@ -556,7 +710,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private bindPromptHandlers(
     server: McpServer,
-    session: Pick<McpSessionInfo, 'transport' | 'stateless' | 'sessionId'>,
+    session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
     if (this.getPrompts().length === 0) return;
@@ -577,17 +731,24 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       })),
     }));
 
-    server.server.setRequestHandler('prompts/get', async (request) => {
+    server.server.setRequestHandler('prompts/get', async (request, sdkCtx) => {
       const prompt = this.getPrompts().find(
         (p) => p.metadata.name === request.params.name,
       );
       if (!prompt) {
+        // -32602, not -32601 — same reasoning as the unknown-tool case above.
         throw new ProtocolError(
-          ProtocolErrorCode.MethodNotFound,
+          ProtocolErrorCode.InvalidParams,
           `Unknown prompt: ${request.params.name}`,
         );
       }
-      const ctx = this.buildContext(server, request, session, rawRequest);
+      const ctx = this.buildContext(
+        server,
+        request,
+        session,
+        rawRequest,
+        sdkCtx,
+      );
       return (await prompt.invoke(
         request.params.arguments,
         ctx,
@@ -689,8 +850,28 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   // Dynamic capability registration
   // ---------------------------------------------------------------------------
 
+  /** Fan a runtime capability change out to every transport that can deliver it. */
+  private announceListChanged(kind: 'tools' | 'resources' | 'prompts'): void {
+    for (const transport of this.options.transports) {
+      try {
+        transport.notifyListChanged?.(kind);
+      } catch (err) {
+        this.logger.error(
+          `Failed to announce ${kind} list change`,
+          err as Error,
+        );
+      }
+    }
+  }
+
   registerTool(definition: DynamicToolDefinition): void {
     const handler: DynamicToolHandler = definition.handler;
+    if (definition.parameters) {
+      assertNoMcpParamHeaderMirroring(
+        definition.parameters,
+        `registerTool('${definition.name}')`,
+      );
+    }
     this.dynamicTools.set(definition.name, {
       metadata: {
         name: definition.name,
@@ -708,6 +889,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           handler(payload as any, ctx, ctx.getRawRequest()) as unknown,
         ),
     });
+    this.announceListChanged('tools');
   }
 
   registerResource(definition: DynamicResourceDefinition): void {
@@ -725,6 +907,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           handler(payload as any, ctx, ctx.getRawRequest()) as unknown,
         ),
     });
+    this.announceListChanged('resources');
   }
 
   registerPrompt(definition: DynamicPromptDefinition): void {
@@ -740,15 +923,19 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
           handler(payload as any, ctx, ctx.getRawRequest()) as unknown,
         ),
     });
+    this.announceListChanged('prompts');
   }
 
   removeTool(name: string): void {
     this.dynamicTools.delete(name);
+    this.announceListChanged('tools');
   }
   removeResource(uri: string): void {
     this.dynamicResources.delete(uri);
+    this.announceListChanged('resources');
   }
   removePrompt(name: string): void {
     this.dynamicPrompts.delete(name);
+    this.announceListChanged('prompts');
   }
 }
