@@ -87,9 +87,9 @@ async function bootstrap() {
 
   // Required by the REAL (GitHub) handshake: /auth/authorize sets the
   // `oauth_session` + `oauth_state` cookies, and /auth/callback reads them back
-  // off `req.cookies`. Without cookie-parser `req.cookies` is undefined and the
-  // callback fails with `400 Missing OAuth session`. This is session plumbing,
-  // not authentication.
+  // off `req.cookies`. Without cookie-parser `req.cookies` is undefined, and
+  // /auth/authorize refuses the request with a 500 naming this middleware.
+  // Session plumbing, not authentication.
   app.use(cookieParser());
 
   strategy.setHttpAdapter(app.getHttpAdapter());

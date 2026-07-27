@@ -18,6 +18,7 @@ import {
   Tool,
 } from '@rekog/mcp-nest';
 import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
 import { McpAuthJwtGuard, McpAuthModule } from '@rekog/mcp-nest-auth';
 import { OAuthProviderConfig, OAuthUserProfile } from '@rekog/mcp-nest-auth';
 import type {
@@ -258,6 +259,11 @@ describe.each(ERAS)('E2E: McpAuthModule OAuth Flow (%s era)', (era) => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    // The authorization handshake keeps its in-flight state in cookies, so
+    // without this the flow cannot get past session creation. See the
+    // "missing cookie-parser" block at the bottom of this file for the
+    // deliberately unmounted counterpart.
+    app.use(cookieParser());
     strategy.setHttpAdapter(app.getHttpAdapter());
     app.connectMicroservice({ strategy });
 
@@ -679,5 +685,102 @@ describe.each(ERAS)('E2E: McpAuthModule OAuth Flow (%s era)', (era) => {
         })
         .expect(400);
     });
+  });
+});
+
+/**
+ * `cookie-parser` is the one piece of middleware `McpAuthModule` cannot install
+ * for itself, and forgetting it used to fail three legs downstream: `/authorize`
+ * happily redirected to the IdP, the user logged in, and only the callback threw
+ * a bare `400 Missing OAuth session` that named neither the cause nor the fix.
+ *
+ * Era-agnostic — the failure is in the authorization server's HTTP plumbing and
+ * has nothing to do with the MCP protocol revision — so this deliberately sits
+ * outside the `describe.each(ERAS)` block above.
+ */
+describe('E2E: McpAuthModule without cookie-parser', () => {
+  let app: INestApplication;
+  let client: OAuthClient;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [
+        McpAuthModule.forRoot({
+          provider: MockOAuthProvider,
+          clientId: 'test-client-id',
+          clientSecret: 'test-client-secret',
+          jwtSecret: 'test-jwt-secret-that-is-at-least-32-characters-long',
+          serverUrl: 'http://localhost:3000',
+          apiPrefix: 'auth',
+          cookieSecure: false,
+          storeConfiguration: { type: 'custom', store: new MockOAuthStore() },
+        }),
+      ],
+    }).compile();
+
+    // The whole point of this block: no `app.use(cookieParser())`.
+    app = moduleFixture.createNestApplication();
+    await app.init();
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        client_name: 'No Cookie Parser Client',
+        redirect_uris: ['http://localhost:8080/callback'],
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+      });
+    client = response.body;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  const authorizeUrl = (clientId: string, redirectUri: string) => {
+    const codeChallenge = createHash('sha256')
+      .update(randomBytes(32).toString('base64url'))
+      .digest('base64url');
+    return (
+      `/auth/authorize?response_type=code&client_id=${clientId}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&code_challenge=${codeChallenge}&code_challenge_method=S256&state=s`
+    );
+  };
+
+  it('fails the authorization request with a message naming the middleware', async () => {
+    const response = await request(app.getHttpServer())
+      .get(authorizeUrl(client.client_id, client.redirect_uris[0]))
+      .expect(500);
+
+    // The diagnosis a developer actually needs: what is missing, and the line
+    // that fixes it.
+    expect(response.body.message).toContain('cookie-parser');
+    expect(response.body.message).toContain('app.use(cookieParser())');
+  });
+
+  it('fails before redirecting the user to the identity provider', async () => {
+    const response = await request(app.getHttpServer()).get(
+      authorizeUrl(client.client_id, client.redirect_uris[0]),
+    );
+
+    // A 302 here would mean the user gets bounced through a full IdP login only
+    // to hit the wall on the way back — the behaviour this check exists to stop.
+    expect(response.status).not.toBe(302);
+    expect(response.headers.location).toBeUndefined();
+  });
+
+  it('still rejects an invalid client_id as a 400, not a 500', async () => {
+    // The misconfiguration must not shadow ordinary request validation: an
+    // unknown client is the caller's error and stays a 400.
+    await request(app.getHttpServer())
+      .get(authorizeUrl('invalid-client', 'http://localhost:8080/callback'))
+      .expect(400);
+  });
+
+  it('still rejects an unregistered redirect_uri as a 400, not a 500', async () => {
+    await request(app.getHttpServer())
+      .get(authorizeUrl(client.client_id, 'http://evil.com/callback'))
+      .expect(400);
   });
 });

@@ -54,11 +54,19 @@ Copy these values from your app registration:
 The Azure AD provider ships with the built-in authorization server package. Install it alongside `@rekog/mcp-nest`:
 
 ```bash
-npm install @rekog/mcp-nest-auth
+npm install @rekog/mcp-nest-auth cookie-parser
+npm install --save-dev @types/cookie-parser
 ```
+
+`cookie-parser` is required, not optional: `/auth/authorize` sets the
+`oauth_session` / `oauth_state` cookies and `/auth/callback` reads them back off
+`req.cookies`. `McpAuthModule` does not register the middleware itself, so
+without `app.use(cookieParser())` the authorization request fails fast with a
+500 whose message names the missing middleware.
 
 ```typescript
 import { Controller, Module, UseGuards } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import {
   McpHttpControllerFor,
   McpStrategy,
@@ -121,6 +129,7 @@ above validates the Bearer JWT and sets `req.user` (see the
 
 ```typescript
 const app = await NestFactory.create(AppModule);
+app.use(cookieParser()); // OAuth session plumbing — see the note above
 mcp.setHttpAdapter(app.getHttpAdapter());
 app.connectMicroservice({ strategy: mcp });
 await app.startAllMicroservices();

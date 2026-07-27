@@ -38,8 +38,8 @@ npm install --save-dev @types/cookie-parser
 `cookie-parser` is not optional for the browser handshake: `/auth/authorize`
 sets the `oauth_session` and `oauth_state` cookies and `/auth/callback` reads
 them back off `req.cookies`. `McpAuthModule` does not register the middleware
-itself, so without `app.use(cookieParser())` the callback fails with
-`400 Missing OAuth session`.
+itself, so without `app.use(cookieParser())` the authorization request fails fast with a
+500 whose message names the missing middleware.
 
 ## The wiring
 
@@ -118,8 +118,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // OAuth session plumbing (NOT authentication): /auth/callback reads the
-  // cookies /auth/authorize set. Omit this and the callback 400s with
-  // "Missing OAuth session".
+  // cookies /auth/authorize set. Omit this and /auth/authorize refuses the
+  // request with a 500 naming the missing middleware.
   app.use(cookieParser());
 
   strategy.setHttpAdapter(app.getHttpAdapter());

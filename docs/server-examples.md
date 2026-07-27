@@ -242,11 +242,19 @@ Mount the MCP transport route as a real Nest controller (via `McpHttpControllerF
 If you use the built-in OAuth authorization server (`McpAuthModule`), install the auth package alongside `@rekog/mcp-nest`:
 
 ```bash
-npm install @rekog/mcp-nest-auth
+npm install @rekog/mcp-nest-auth cookie-parser
+npm install --save-dev @types/cookie-parser
 ```
+
+`cookie-parser` is required for the browser handshake: `/auth/authorize` sets the
+`oauth_session` / `oauth_state` cookies and `/auth/callback` reads them back off
+`req.cookies`. `McpAuthModule` does not register the middleware itself, so
+without `app.use(cookieParser())` the authorization request fails fast with a
+500 whose message names the missing middleware.
 
 ```typescript
 import { Controller, UseGuards } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import { McpHttpControllerFor } from '@rekog/mcp-nest';
 import { AuthGuard } from './auth.guard';
 
@@ -274,6 +282,7 @@ class AppModule {}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(cookieParser()); // OAuth session plumbing — see the note above
   mcp.setHttpAdapter(app.getHttpAdapter());
   app.connectMicroservice({ strategy: mcp });
   await app.startAllMicroservices();

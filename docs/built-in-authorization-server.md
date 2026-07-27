@@ -874,4 +874,13 @@ DATABASE_URL=postgresql://user:password@localhost:5432/oauth_db
 1. **JWT Secret Too Short**: Ensure `jwtSecret` is at least 32 characters
 2. **Invalid Redirect URI**: OAuth provider redirect URI must match `{serverUrl}/{apiPrefix}/callback`
 3. **CORS Issues**: Enable CORS with `credentials: true` for browser-based clients
-4. **Cookie Problems**: Ensure `cookieParser()` middleware is installed for session management
+4. **A 500 from `/auth/authorize` naming `cookie-parser`**: `app.use(cookieParser())`
+   is missing. `/auth/authorize` sets the `oauth_session` / `oauth_state`
+   cookies and the callback reads them back off `req.cookies`, which Express
+   only populates when `cookie-parser` is mounted — `McpAuthModule` cannot
+   register the middleware for you. The request is refused before the redirect
+   to the IdP, so you never get sent on a login round-trip that was going to
+   fail on the way back.
+5. **Cookies not sent back**: the IdP's redirect URI host must match
+   `serverUrl` exactly — cookies set on `localhost` are not sent to
+   `127.0.0.1`.

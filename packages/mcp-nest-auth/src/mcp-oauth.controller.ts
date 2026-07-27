@@ -6,6 +6,7 @@ import {
   Header,
   HttpCode,
   Inject,
+  InternalServerErrorException,
   Logger,
   Next,
   Post,
@@ -364,6 +365,34 @@ export function createMcpOAuthController(
       return await this.clientService.registerClient(registrationDto);
     }
 
+    /**
+     * `cookie-parser` is a hard requirement of the browser handshake, and nothing
+     * in this module can satisfy it: middleware belongs to the host
+     * application's bootstrap, so all we can do is notice and say so.
+     *
+     * Express leaves `req.cookies` as `undefined` when the middleware is absent
+     * — once mounted it always assigns at least `{}` — which is what makes this
+     * a reliable probe rather than a guess about an empty cookie jar. Without
+     * the check the misconfiguration surfaced as a bare
+     * `400 Missing OAuth session` from `/callback`, i.e. after the user had
+     * already been bounced through the IdP and with nothing pointing at the
+     * actual cause.
+     */
+    assertCookieParserMounted(req: { cookies?: unknown }) {
+      if (req.cookies !== undefined) {
+        return;
+      }
+      const message =
+        'cookie-parser is not mounted, so the OAuth session cookie cannot be read. ' +
+        'Add `app.use(cookieParser())` to your bootstrap (npm i cookie-parser ' +
+        '@types/cookie-parser). McpAuthModule stores the in-flight authorization ' +
+        'in the `oauth_session` / `oauth_state` cookies that the authorize endpoint ' +
+        'sets and the callback endpoint reads back; the module cannot register the ' +
+        'middleware for you. This is session plumbing, not authentication.';
+      this.logger.error(message);
+      throw new InternalServerErrorException(message);
+    }
+
     @Get(endpoints.authorize)
     async authorize(
       @Query() query: any,
@@ -461,6 +490,13 @@ export function createMcpOAuthController(
       // authorization code and the token claim all agree on what was actually
       // granted rather than on what was asked for.
       const grantedScope = this.scopePolicy.narrow(scope);
+
+      // Deliberately *after* request validation and *before* the session is
+      // minted: this is the first step that depends on cookies, so a
+      // misconfigured host still fails here — before the user is bounced to the
+      // IdP — without a missing middleware masking an invalid `client_id` or
+      // `redirect_uri` behind a 500 that isn't the caller's fault.
+      this.assertCookieParserMounted(req);
 
       // Create OAuth session
       const sessionId = randomBytes(32).toString('base64url');
@@ -571,6 +607,12 @@ export function createMcpOAuthController(
       if (!user) {
         throw new BadRequestException('Authentication failed');
       }
+
+      // Distinguishes "middleware absent" (a 500 naming the misconfiguration)
+      // from "cookie genuinely gone" — an expired session, a cleared jar, a
+      // callback replayed in a different browser — which stays a client-facing
+      // 400.
+      this.assertCookieParserMounted(req);
 
       const sessionId = req.cookies?.oauth_session;
       if (!sessionId) {
@@ -772,6 +814,8 @@ export function createMcpOAuthController(
       @Res() res: Response,
     ) {
       const parsed = this.parseRequestBody(body, req);
+
+      this.assertCookieParserMounted(req);
 
       const sessionId = req.cookies?.oauth_session as string | undefined;
       if (!sessionId) {

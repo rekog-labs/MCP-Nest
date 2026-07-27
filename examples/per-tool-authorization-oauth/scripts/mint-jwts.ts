@@ -7,5 +7,7 @@ const JWT_SECRET =
   process.env.JWT_SECRET || 'fake_local_dev_secret_at_least_32_chars_long';
 
 for (const [label, user] of Object.entries(FAKE_USERS)) {
-  console.log(`export ${label}='${mintFakeToken(user, JWT_SECRET, RESOURCE)}'`);
+  console.log(
+    `export ${label}='${mintFakeToken(user, JWT_SECRET, RESOURCE, SERVER_URL)}'`,
+  );
 }

@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { Controller, Module, UseGuards } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import {
   McpHttpControllerFor,
   McpStrategy,
@@ -75,6 +76,14 @@ export class AppModule {}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Required by the REAL (Azure AD) handshake: /auth/authorize sets the
+  // `oauth_session` + `oauth_state` cookies and /auth/callback reads them back
+  // off `req.cookies`. Without cookie-parser `req.cookies` is undefined, and
+  // /auth/authorize refuses the request with a 500 naming this middleware.
+  // Session plumbing, not authentication.
+  app.use(cookieParser());
+
   app.enableCors({ origin: true, credentials: true });
 
   mcp.setHttpAdapter(app.getHttpAdapter());
