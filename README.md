@@ -1,5 +1,7 @@
 # NestJS MCP Server Module
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Frekog-labs%2FMCP-Nest.svg)](https://mcptoplist.com/server/glama%2Frekog-labs%2FMCP-Nest)
+
 <div align="center">
   <img src="https://raw.githubusercontent.com/rekog-labs/MCP-Nest/main/image.png" height="200">
 
