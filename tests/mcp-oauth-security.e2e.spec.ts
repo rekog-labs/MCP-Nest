@@ -585,6 +585,9 @@ describe('E2E: OAuth authorization security', () => {
       }).compile();
 
       app = moduleFixture.createNestApplication();
+      // Not incidental: importing McpAuthModule always mounts the handshake
+      // routes, so the bootstrap check requires this of every host.
+      app.use(cookieParser());
       await app.init();
     });
 

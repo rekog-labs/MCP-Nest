@@ -259,6 +259,18 @@ export interface OAuthUserModuleOptions {
   cookieSecure?: boolean;
   cookieMaxAge?: number;
 
+  /**
+   * Opt out of the bootstrap check that refuses to start the application when
+   * `cookie-parser` is not mounted.
+   *
+   * The check looks for the middleware by the name Express records for it, so
+   * it cannot see an equivalent parser mounted under another name — a wrapped
+   * or re-exported cookie-parser, `@fastify/cookie`, something hand-rolled.
+   * Set this when `req.cookies` is populated by such a means; the handshake
+   * itself only ever reads `req.cookies`, so it does not care what filled it.
+   */
+  skipCookieParserCheck?: boolean;
+
   // OAuth Session Configuration
   oauthSessionExpiresIn?: number; // in milliseconds
   authCodeExpiresIn?: number; // in milliseconds
@@ -367,4 +379,5 @@ export type OAuthModuleOptions = Required<
     // Optional fields that may remain undefined
     cookieSecure: boolean;
     storeConfiguration?: StoreConfiguration;
+    skipCookieParserCheck?: boolean;
   };

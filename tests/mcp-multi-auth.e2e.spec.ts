@@ -8,6 +8,7 @@ import {
   Tool,
 } from '@rekog/mcp-nest';
 import { McpAuthModule } from '@rekog/mcp-nest-auth';
+import cookieParser from 'cookie-parser';
 import { z } from 'zod';
 
 const MockOAuthProviderA = {
@@ -167,6 +168,9 @@ describe('E2E: Multiple McpAuthModule instances', () => {
     // One HTTP adapter, but both strategies connect to it; each mounts its own
     // transports on its own distinct endpoints.
     const app: INestApplication = moduleFixture.createNestApplication();
+    // Required of every McpAuthModule host: the handshake routes are always
+    // mounted, and they read `req.cookies`.
+    app.use(cookieParser());
     strategyA.setHttpAdapter(app.getHttpAdapter());
     strategyB.setHttpAdapter(app.getHttpAdapter());
     app.connectMicroservice({ strategy: strategyA });

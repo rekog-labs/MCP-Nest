@@ -96,8 +96,8 @@ npm install --save-dev @types/cookie-parser
 `cookie-parser` is required, not optional: `/auth/authorize` sets the
 `oauth_session` / `oauth_state` cookies and `/auth/callback` reads them back off
 `req.cookies`. `McpAuthModule` does not register the middleware itself, so
-without `app.use(cookieParser())` the authorization request fails fast with a
-500 whose message names the missing middleware.
+without `app.use(cookieParser())` the application refuses to start, with a
+bootstrap error naming the missing middleware.
 
 ```typescript
 import { McpAuthModule, AzureADOAuthProvider } from '@rekog/mcp-nest-auth';

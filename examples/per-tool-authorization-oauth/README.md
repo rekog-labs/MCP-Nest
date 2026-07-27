@@ -26,9 +26,9 @@ The wiring is identical in both modes; only how the caller gets a JWT differs.
   - `app.use(cookieParser())` in `src/main.ts`. `/auth/authorize` sets the
     `oauth_session` / `oauth_state` cookies and `/auth/callback` reads them back
     off `req.cookies`; `McpAuthModule` cannot register the middleware itself, so
-    without it `/auth/authorize` refuses the request with a 500 naming the
-    missing middleware (older versions got as far as the IdP and then failed the
-    callback with `400 Missing OAuth session`).
+    without it the server refuses to start, naming the missing middleware
+    (older versions booted fine and then failed the callback with
+    `400 Missing OAuth session`, after the user had already logged in).
   - The GitHub OAuth app's **Authorization callback URL** must be
     `$SERVER_URL/auth/callback` (e.g. `http://localhost:3013/auth/callback`), and
     its host must match `SERVER_URL` exactly — cookies set on `localhost` are not

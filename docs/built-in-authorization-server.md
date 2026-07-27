@@ -208,6 +208,7 @@ Pass a field name to project a single property, e.g. `@McpUser('email') email?: 
 | `clientIdMetadataDocuments` | `{ enabled?: boolean; allowInsecureClientIdScheme?: boolean; cacheTtlMs?: number; maxCacheEntries?: number; timeoutMs?: number; maxDocumentBytes?: number }` | `{ enabled: false, allowInsecureClientIdScheme: false, cacheTtlMs: 300000, maxCacheEntries: 256, timeoutMs: 5000, maxDocumentBytes: 5120 }` | Accept URL-shaped `client_id`s by fetching the client's own metadata document. See [CIMD](#client-id-metadata-documents-cimd) |
 | `cookieSecure` | `boolean` | `nodeEnv === 'production'` | Use secure cookies |
 | `cookieMaxAge` | `number` | `24 * 60 * 60 * 1000` | Cookie expiration (24 hours) |
+| `skipCookieParserCheck` | `boolean` | `false` | Allow the app to start without `cookie-parser` mounted. Only for hosts that populate `req.cookies` another way — the check finds the middleware by name and cannot see a wrapped or re-exported one. |
 | `oauthSessionExpiresIn` | `number` | `10 * 60 * 1000` | OAuth session timeout (10 minutes) |
 | `authCodeExpiresIn` | `number` | `10 * 60 * 1000` | Authorization code timeout (10 minutes) |
 | `endpoints` | `object` | See below | Custom endpoint paths |
@@ -874,13 +875,16 @@ DATABASE_URL=postgresql://user:password@localhost:5432/oauth_db
 1. **JWT Secret Too Short**: Ensure `jwtSecret` is at least 32 characters
 2. **Invalid Redirect URI**: OAuth provider redirect URI must match `{serverUrl}/{apiPrefix}/callback`
 3. **CORS Issues**: Enable CORS with `credentials: true` for browser-based clients
-4. **A 500 from `/auth/authorize` naming `cookie-parser`**: `app.use(cookieParser())`
+4. **The app refuses to start, naming `cookie-parser`**: `app.use(cookieParser())`
    is missing. `/auth/authorize` sets the `oauth_session` / `oauth_state`
    cookies and the callback reads them back off `req.cookies`, which Express
-   only populates when `cookie-parser` is mounted — `McpAuthModule` cannot
-   register the middleware for you. The request is refused before the redirect
-   to the IdP, so you never get sent on a login round-trip that was going to
-   fail on the way back.
+   only populates when `cookie-parser` is mounted — and `McpAuthModule` cannot
+   register the middleware for you, since middleware belongs to your bootstrap.
+   A server that cannot complete the handshake should not accept traffic, so
+   this fails at boot rather than on the callback of the first user who tries to
+   log in. If you populate `req.cookies` by some other means — a wrapped or
+   re-exported cookie-parser, `@fastify/cookie` — the check cannot see it by
+   name; set `skipCookieParserCheck: true` to opt out.
 5. **Cookies not sent back**: the IdP's redirect URI host must match
    `serverUrl` exactly — cookies set on `localhost` are not sent to
    `127.0.0.1`.

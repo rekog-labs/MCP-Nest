@@ -426,8 +426,8 @@ worked (and still works) by supplying a guard, e.g. `McpAuthJwtGuard`, into that
 same slot. Plain `app.use(...)`-style middleware for other HTTP concerns still
 works as usual, but don't reach for middleware to set `req.user` — use a guard.
 (One piece of middleware is not optional: `McpAuthModule`'s browser handshake
-needs `app.use(cookieParser())`; without it `/auth/authorize` fails with a 500
-naming the missing middleware. That is session plumbing, not authentication.)
+needs `app.use(cookieParser())`; without it the application refuses to start.
+That is session plumbing, not authentication.)
 
 - **Authenticate** with a NestJS guard on the MCP controller
   (`@UseGuards(YourGuard)`) that sets `req.user` (and throws

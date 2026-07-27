@@ -690,20 +690,21 @@ describe.each(ERAS)('E2E: McpAuthModule OAuth Flow (%s era)', (era) => {
 
 /**
  * `cookie-parser` is the one piece of middleware `McpAuthModule` cannot install
- * for itself, and forgetting it used to fail three legs downstream: `/authorize`
- * happily redirected to the IdP, the user logged in, and only the callback threw
- * a bare `400 Missing OAuth session` that named neither the cause nor the fix.
+ * for itself, and forgetting it used to fail as late as an error can: discovery,
+ * registration and `/authorize` all succeeded, the user was bounced through a
+ * full IdP login, and only the callback answered — with a bare
+ * `400 Missing OAuth session` that named neither cause nor fix.
  *
- * Era-agnostic — the failure is in the authorization server's HTTP plumbing and
- * has nothing to do with the MCP protocol revision — so this deliberately sits
- * outside the `describe.each(ERAS)` block above.
+ * A server that cannot authenticate anyone should not start, so the omission is
+ * now a bootstrap failure. These tests pin that it happens at `app.init()`,
+ * before a single request is served.
+ *
+ * Era-agnostic — this is the authorization server's HTTP plumbing, nothing to do
+ * with the MCP protocol revision — so it sits outside `describe.each(ERAS)`.
  */
-describe('E2E: McpAuthModule without cookie-parser', () => {
-  let app: INestApplication;
-  let client: OAuthClient;
-
-  beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+describe('E2E: McpAuthModule cookie-parser bootstrap check', () => {
+  const buildModule = (extraOptions: Record<string, unknown> = {}) =>
+    Test.createTestingModule({
       imports: [
         McpAuthModule.forRoot({
           provider: MockOAuthProvider,
@@ -714,73 +715,54 @@ describe('E2E: McpAuthModule without cookie-parser', () => {
           apiPrefix: 'auth',
           cookieSecure: false,
           storeConfiguration: { type: 'custom', store: new MockOAuthStore() },
+          ...extraOptions,
         }),
       ],
     }).compile();
 
-    // The whole point of this block: no `app.use(cookieParser())`.
-    app = moduleFixture.createNestApplication();
-    await app.init();
-
-    const response = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({
-        client_name: 'No Cookie Parser Client',
-        redirect_uris: ['http://localhost:8080/callback'],
-        grant_types: ['authorization_code'],
-        response_types: ['code'],
-      });
-    client = response.body;
-  });
-
-  afterAll(async () => {
+  it('refuses to start when cookie-parser is not mounted', async () => {
+    const app = (await buildModule()).createNestApplication();
+    // Deliberately no `app.use(cookieParser())`.
+    await expect(app.init()).rejects.toThrow(/cookie-parser/);
     await app.close();
   });
 
-  const authorizeUrl = (clientId: string, redirectUri: string) => {
-    const codeChallenge = createHash('sha256')
-      .update(randomBytes(32).toString('base64url'))
-      .digest('base64url');
-    return (
-      `/auth/authorize?response_type=code&client_id=${clientId}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&code_challenge=${codeChallenge}&code_challenge_method=S256&state=s`
-    );
-  };
+  it('names the fix in the bootstrap error', async () => {
+    const app = (await buildModule()).createNestApplication();
 
-  it('fails the authorization request with a message naming the middleware', async () => {
-    const response = await request(app.getHttpServer())
-      .get(authorizeUrl(client.client_id, client.redirect_uris[0]))
-      .expect(500);
-
-    // The diagnosis a developer actually needs: what is missing, and the line
-    // that fixes it.
-    expect(response.body.message).toContain('cookie-parser');
-    expect(response.body.message).toContain('app.use(cookieParser())');
+    // The diagnosis a developer actually needs: the missing line, not just the
+    // missing concept.
+    await expect(app.init()).rejects.toThrow(/app\.use\(cookieParser\(\)\)/);
+    await app.close();
   });
 
-  it('fails before redirecting the user to the identity provider', async () => {
-    const response = await request(app.getHttpServer()).get(
-      authorizeUrl(client.client_id, client.redirect_uris[0]),
-    );
+  it('starts normally once cookie-parser is mounted', async () => {
+    const app = (await buildModule()).createNestApplication();
+    app.use(cookieParser());
 
-    // A 302 here would mean the user gets bounced through a full IdP login only
-    // to hit the wall on the way back — the behaviour this check exists to stop.
-    expect(response.status).not.toBe(302);
-    expect(response.headers.location).toBeUndefined();
-  });
+    await app.init();
 
-  it('still rejects an invalid client_id as a 400, not a 500', async () => {
-    // The misconfiguration must not shadow ordinary request validation: an
-    // unknown client is the caller's error and stays a 400.
+    // Reaching a served request at all is the assertion; the endpoint is
+    // incidental.
     await request(app.getHttpServer())
-      .get(authorizeUrl('invalid-client', 'http://localhost:8080/callback'))
-      .expect(400);
+      .get('/.well-known/oauth-authorization-server')
+      .expect(200);
+    await app.close();
   });
 
-  it('still rejects an unregistered redirect_uri as a 400, not a 500', async () => {
+  it('starts without cookie-parser when the check is opted out of', async () => {
+    // For hosts that populate `req.cookies` by other means — a wrapped or
+    // re-exported cookie-parser, @fastify/cookie — which the name-based probe
+    // cannot see. Refusing to boot those would be worse than the bug.
+    const app = (
+      await buildModule({ skipCookieParserCheck: true })
+    ).createNestApplication();
+
+    await app.init();
+
     await request(app.getHttpServer())
-      .get(authorizeUrl(client.client_id, 'http://evil.com/callback'))
-      .expect(400);
+      .get('/.well-known/oauth-authorization-server')
+      .expect(200);
+    await app.close();
   });
 });
