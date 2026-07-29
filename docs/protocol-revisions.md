@@ -469,9 +469,9 @@ matching the final `2026-07-28` wire. `beta.4` ships the pre-final shape and is
 interop-broken against conforming peers.
 
 ```bash
-npm install @modelcontextprotocol/server@^2.0.0-beta.5 \
-            @modelcontextprotocol/core@^2.0.0-beta.5 \
-            @modelcontextprotocol/node@^2.0.0-beta.5
+npm install @modelcontextprotocol/server \
+            @modelcontextprotocol/core \
+            @modelcontextprotocol/node
 ```
 
 ## Related

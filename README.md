@@ -44,16 +44,11 @@ Find out how to do that with `@rekog/MCP-Nest` in this repository [MCP-Nest-Samp
 
 ```bash
 npm install @rekog/mcp-nest \
-  @modelcontextprotocol/server@^2.0.0-beta.5 \
-  @modelcontextprotocol/core@^2.0.0-beta.5 \
-  @modelcontextprotocol/node@^2.0.0-beta.5 \
+  @modelcontextprotocol/server \
+  @modelcontextprotocol/core \
+  @modelcontextprotocol/node \
   zod@^4
 ```
-
-The MCP SDK packages are peer dependencies. **`2.0.0-beta.5` is the minimum** —
-it is the first release matching the final `2026-07-28` wire, which MCP-Nest
-serves alongside the 2025-era protocol (see
-[Protocol Revisions](docs/protocol-revisions.md)).
 
 ### Optional dependencies
 

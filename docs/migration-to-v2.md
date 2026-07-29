@@ -25,6 +25,88 @@ This guide maps the old API to the new one.
 | Async config | `McpModule.forRootAsync({ useFactory, ... })` | build the strategy inside your own async `bootstrap()`, before `connectMicroservice` |
 | Custom HTTP controller | inject `McpStreamableHttpService` + empty `transport: []` | `class X extends McpHttpControllerFor(transport)` |
 | Resources / Prompts | same decorators, positional `(args, context, request)` | same decorators, now on `@McpController()` with `@Payload()`/`@Ctx()` — identical change to Tools |
+| Packages | `@rekog/mcp-nest` + `@modelcontextprotocol/sdk` v1 | `@rekog/mcp-nest` + MCP SDK **v2** (three packages) + `@nestjs/microservices`; OAuth moves to `@rekog/mcp-nest-auth` — see [§0](#0-install-the-v2-packages) |
+
+## 0. Install the v2 packages
+
+The dependency set changed in three ways: the MCP SDK moved from one v1 package
+to three v2 packages, `@nestjs/microservices` became **required**, and the OAuth
+authorization server moved into its own package.
+
+```bash
+# remove the v1 SDK — v2 does not use it
+npm uninstall @modelcontextprotocol/sdk
+
+npm install @rekog/mcp-nest \
+  @modelcontextprotocol/server \
+  @modelcontextprotocol/core \
+  @modelcontextprotocol/node \
+  @nestjs/microservices \
+  zod
+```
+
+| | Before (v1) | After (v2) |
+| --- | --- | --- |
+| MCP SDK | `@modelcontextprotocol/sdk@>=1.10.0` | `@modelcontextprotocol/{core,node,server}` — **v2, `2.0.0-beta.5` minimum** |
+| Nest microservices | not used | `@nestjs/microservices` — **required**, it's how the strategy attaches |
+| OAuth server | bundled in `@rekog/mcp-nest` | separate package `@rekog/mcp-nest-auth` |
+| `zod` | `^4` | `^4` (unchanged; and `parameters` now also accepts any Standard Schema or raw JSON Schema) |
+| `express` / `@nestjs/platform-fastify` | peer / optional peer | unchanged |
+
+**`2.0.0-beta.5` is the minimum SDK version.** It is the first release matching
+the *final* `2026-07-28` wire; `beta.4` ships the pre-final shape and is
+interop-broken against conforming peers. The declared peer range
+(`^2.0.0-beta.5`) also accepts later `2.0.0-beta.x`, `2.0.0-rc.x`, and the
+eventual stable `2.0.0`/`2.x`.
+
+> Don't read `LATEST_PROTOCOL_VERSION` from the SDK as "the newest revision
+> MCP-Nest speaks" — it is `2025-11-25`. The modern revision string
+> `2026-07-28` is not exported by the SDK; write it literally.
+
+### If you use the built-in OAuth authorization server
+
+`McpAuthModule` and everything that came with it now ship as
+**`@rekog/mcp-nest-auth`**, so the core package stays free of `typeorm`,
+`passport`, and `@nestjs/jwt` for everyone who doesn't need an auth server.
+
+```bash
+npm install @rekog/mcp-nest-auth \
+  @nestjs/jwt @nestjs/passport \
+  cookie-parser
+npm install -D @types/cookie-parser
+
+# only if you use the TypeORM store (optional peers)
+npm install @nestjs/typeorm typeorm
+```
+
+Every auth symbol changes its import path — the API itself is unchanged:
+
+```diff
+- import { McpAuthModule, McpAuthJwtGuard, McpUser } from '@rekog/mcp-nest';
++ import { McpAuthModule, McpAuthJwtGuard, McpUser } from '@rekog/mcp-nest-auth';
+```
+
+That covers `McpAuthModule`, `McpAuthJwtGuard`, `McpUser`,
+`GitHubOAuthProvider` / `GoogleOAuthProvider` / `AzureADOAuthProvider`,
+`IOAuthStore`, `MemoryStore`, `JwtTokenService`, `OAuthClient`,
+`AuthenticatedRequest` / `McpRequestWithUser`, and the rest of the old
+`src/authz/` surface.
+
+**`cookie-parser` is not optional.** `McpAuthModule`'s browser handshake sets
+and reads cookies across `/authorize` → IdP → `/callback`, and Nest middleware
+belongs to the host, not the module — so mount it in your bootstrap:
+
+```typescript
+import cookieParser from 'cookie-parser';
+
+const app = await NestFactory.create(AppModule);
+app.use(cookieParser());
+```
+
+Without it the application **refuses to start** (rather than failing on the last
+leg of the handshake with a confusing `400 Missing OAuth session`). If you mount
+an equivalent parser the check can't recognise, opt out with
+`skipCookieParserCheck: true`.
 
 ## 1. Bootstrap
 
