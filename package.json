@@ -67,7 +67,7 @@
     "ts-jest": "^29.4.6",
     "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",
-    "typeorm": "^1.0.0",
+    "typeorm": "^1.1.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
     "zod": "^4.3.5",
