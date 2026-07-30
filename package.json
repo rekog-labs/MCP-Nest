@@ -35,7 +35,7 @@
     "@nestjs/microservices": "^11.1.14",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.14",
-    "@nestjs/platform-fastify": "^11.1.14",
+    "@nestjs/platform-fastify": "^11.1.28",
     "@nestjs/testing": "^11.1.14",
     "@nestjs/typeorm": "^11.0.1",
     "@types/cookie-parser": "^1.4.10",
