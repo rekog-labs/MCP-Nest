@@ -191,6 +191,52 @@ export class MyTools {
 }
 ```
 
+## Any-of (OR) matching
+
+By default, `@ToolScopes()` and `@ToolRoles()` require the caller to hold
+**every** listed scope/role (AND). Pass `{ match: 'any' }` as a second argument
+to require only **one** of them instead (OR):
+
+```typescript
+// Reachable by 'admin' OR 'support' — only one role is required
+@Tool({ name: 'escalate-ticket', description: 'Escalate a ticket' })
+@ToolRoles(['admin', 'support'], { match: 'any' })
+async escalateTicket() { /* ... */ }
+
+// Reachable with 'premium' OR 'admin' scope — only one scope is required
+@Tool({ name: 'premium-report', description: 'View a premium report' })
+@ToolScopes(['premium', 'admin'], { match: 'any' })
+async premiumReport() { /* ... */ }
+```
+
+An invalid `match` value (anything other than `'all'` or `'any'`) throws at
+decoration time, the same way an empty array does.
+
+The denial message tells you which mode was in play:
+
+* `all` (default): `Tool 'x' requires roles: admin, support`
+* `any`: `Tool 'x' requires any of roles: admin, support`
+
+(and the equivalent `requires scopes: …` / `requires any of scopes: …` for
+`@ToolScopes()`). This applies uniformly to `tools/list` filtering and the
+`tools/call` denial.
+
+Step-up authorization (below) also honours `match: 'any'`: a caller who holds
+**at least one** of the tool's required scopes is not challenged; the `403` only
+fires when the caller holds **none** of them, and the challenge still advertises
+every listed scope (since obtaining any one of them would satisfy the tool).
+
+Dynamic tools registered via `McpStrategy.registerTool()` accept the same option
+through `requiredRolesMatch` / `requiredScopesMatch` on `DynamicToolDefinition` —
+see [Dynamic Capabilities](dynamic-capabilities.md).
+
+> **Limitation:** the OpenAI `securitySchemes` advertised in `tools/list` has no
+> way to express OR across scopes, so a `match: 'any'` tool still advertises its
+> full scope list the same way an `all`-mode tool does.
+
+Each decorator takes a single flat list matched as `all` or `any` — there is no
+support for nested/boolean expressions like `(a AND b) OR c`.
+
 ## Freemium (unauthenticated access)
 
 `allowUnauthenticatedAccess` decides whether callers with no token are allowed at all:

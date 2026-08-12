@@ -170,7 +170,22 @@ this.strategy.registerTool({
     return { content: [{ type: 'text', text: `Admin action by ${user.name}` }] };
   },
 });
+
+// Reachable by 'admin' OR 'auditor' — only one of the listed roles is required
+this.strategy.registerTool({
+  name: 'escalate-ticket',
+  description: 'Escalate a ticket',
+  requiredRoles: ['admin', 'auditor'],
+  requiredRolesMatch: 'any',
+  handler: async () => {
+    return { content: [{ type: 'text', text: 'Ticket escalated' }] };
+  },
+});
 ```
+
+`requiredRolesMatch` / `requiredScopesMatch` default to `'all'` (AND) and accept `'any'` (OR) — the same option `@ToolRoles()` /
+`@ToolScopes()` take on decorated tools. See
+[Any-of (OR) matching](per-tool-authorization.md#any-of-or-matching).
 
 ## Resources
 
@@ -495,7 +510,9 @@ interface DynamicToolDefinition {
   handler: DynamicToolHandler;
   isPublic?: boolean;
   requiredScopes?: string[];
+  requiredScopesMatch?: 'all' | 'any'; // default 'all'
   requiredRoles?: string[];
+  requiredRolesMatch?: 'all' | 'any'; // default 'all'
 }
 
 type DynamicToolHandler = (

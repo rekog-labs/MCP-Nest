@@ -27,6 +27,13 @@ export type SecurityScheme =
   | { type: 'noauth' }
   | { type: 'oauth2'; scopes?: string[] };
 
+/**
+ * How a list of required scopes/roles is matched against what the caller
+ * holds: `'all'` (AND, the caller needs to hold all roles) or `'any'` (OR —
+ * the caller only needs to hold one of them).
+ */
+export type AccessMatchMode = 'all' | 'any';
+
 export interface ToolMetadata {
   name: string;
   description: string;
@@ -38,7 +45,9 @@ export interface ToolMetadata {
   securitySchemes?: SecurityScheme[];
   isPublic?: boolean;
   requiredScopes?: string[];
+  requiredScopesMatch?: AccessMatchMode;
   requiredRoles?: string[];
+  requiredRolesMatch?: AccessMatchMode;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

@@ -29,7 +29,9 @@ import {
   MCP_PUBLIC_METADATA_KEY,
   MCP_RESOURCE_METADATA_KEY,
   MCP_RESOURCE_TEMPLATE_METADATA_KEY,
+  MCP_ROLES_MATCH_METADATA_KEY,
   MCP_ROLES_METADATA_KEY,
+  MCP_SCOPES_MATCH_METADATA_KEY,
   MCP_SCOPES_METADATA_KEY,
   MCP_TOOL_METADATA_KEY,
   PromptMetadata,
@@ -324,13 +326,23 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       MCP_SCOPES_METADATA_KEY,
       methodRef,
     );
+    const requiredScopesMatch = Reflect.getMetadata(
+      MCP_SCOPES_MATCH_METADATA_KEY,
+      methodRef,
+    );
     const requiredRoles = Reflect.getMetadata(
       MCP_ROLES_METADATA_KEY,
       methodRef,
     );
+    const requiredRolesMatch = Reflect.getMetadata(
+      MCP_ROLES_MATCH_METADATA_KEY,
+      methodRef,
+    );
     if (isPublic !== undefined) base.isPublic = isPublic;
     if (requiredScopes) base.requiredScopes = requiredScopes;
+    if (requiredScopesMatch) base.requiredScopesMatch = requiredScopesMatch;
     if (requiredRoles) base.requiredRoles = requiredRoles;
+    if (requiredRolesMatch) base.requiredRolesMatch = requiredRolesMatch;
     // Fail at startup rather than serving a schema whose SEP-2243 contract we
     // cannot honour — see `assertNoMcpParamHeaderMirroring`.
     if (base.parameters) {
@@ -882,7 +894,9 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         _meta: definition._meta,
         isPublic: definition.isPublic,
         requiredScopes: definition.requiredScopes,
+        requiredScopesMatch: definition.requiredScopesMatch,
         requiredRoles: definition.requiredRoles,
+        requiredRolesMatch: definition.requiredRolesMatch,
       },
       invoke: (payload, ctx) =>
         Promise.resolve(

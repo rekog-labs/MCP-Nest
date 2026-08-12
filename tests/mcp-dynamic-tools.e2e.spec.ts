@@ -1,14 +1,20 @@
 import {
+  CanActivate,
+  Controller,
+  ExecutionContext,
   INestApplication,
   Inject,
   Injectable,
   OnModuleInit,
+  UseGuards,
 } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
 import {
   MCP_STRATEGY,
   McpController,
+  McpHttpControllerFor,
   McpStrategy,
+  StreamableHttpTransport,
   Tool,
 } from '@rekog/mcp-nest';
 import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
@@ -122,6 +128,52 @@ class OutputSchemaToolService implements OnModuleInit {
           active: true,
         };
       },
+    });
+  }
+}
+
+// ============================================================================
+// Test Setup: Dynamic tool with any-of (OR) role matching, guarded by a
+// role-resolving auth guard (mirrors tests/mcp-per-tool-auth.e2e.spec.ts).
+// ============================================================================
+
+function resolveRolesUser(
+  authHeader?: string,
+): Record<string, unknown> | undefined {
+  if (authHeader?.includes('admin-token')) {
+    return { sub: 'admin123', roles: ['admin', 'user'] };
+  }
+  if (authHeader?.includes('basic-token')) {
+    return { sub: 'user123', roles: ['user'] };
+  }
+  return undefined;
+}
+
+@Injectable()
+class DynamicRolesAuthGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest<{
+      headers: Record<string, string | undefined>;
+      user?: unknown;
+    }>();
+    req.user = resolveRolesUser(req.headers.authorization);
+    return true;
+  }
+}
+
+@Injectable()
+class DynamicAnyRoleToolService implements OnModuleInit {
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
+
+  onModuleInit() {
+    this.strategy.registerTool({
+      name: 'escalate-ticket-dynamic',
+      description: 'Escalate a ticket (admin OR auditor role, dynamic)',
+      requiredRoles: ['admin', 'auditor'],
+      requiredRolesMatch: 'any',
+      handler: async () => ({
+        content: [{ type: 'text', text: 'Ticket escalated (dynamic)' }],
+      }),
     });
   }
 }
@@ -428,6 +480,78 @@ describe.each(ERAS)(
         } finally {
           await client1.close();
           await client2.close();
+        }
+      });
+    });
+
+    describe('Any-of (OR) role matching on a dynamic tool', () => {
+      let app: INestApplication;
+      let serverPort: number;
+
+      beforeAll(async () => {
+        const transport = new StreamableHttpTransport({ statefulMode: true });
+
+        @Controller('mcp')
+        @UseGuards(DynamicRolesAuthGuard)
+        class GuardedMcpController extends McpHttpControllerFor(transport) {}
+
+        const bootstrapped = await bootstrapMcpApp({
+          name: 'dynamic-any-role-server',
+          controllers: [GuardedMcpController],
+          providers: [DynamicRolesAuthGuard, DynamicAnyRoleToolService],
+          transports: [transport],
+          allowUnauthenticatedAccess: true,
+        });
+        app = bootstrapped.app;
+        serverPort = bootstrapped.port;
+      });
+
+      afterAll(async () => {
+        await app.close();
+      });
+
+      it('lists and allows the dynamic any-role tool for a user holding one of the roles', async () => {
+        const client = await createEraClient(era, serverPort, {
+          requestInit: {
+            headers: { Authorization: 'Bearer admin-token' }, // has 'admin', lacks 'auditor'
+          },
+        });
+        try {
+          const tools = await client.listTools();
+          expect(
+            tools.tools.find((t) => t.name === 'escalate-ticket-dynamic'),
+          ).toBeDefined();
+
+          const result: any = await client.callTool({
+            name: 'escalate-ticket-dynamic',
+            arguments: {},
+          });
+          expect(result.content[0].text).toBe('Ticket escalated (dynamic)');
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('hides and rejects the dynamic any-role tool for a user holding none of the roles', async () => {
+        const client = await createEraClient(era, serverPort, {
+          requestInit: {
+            headers: { Authorization: 'Bearer basic-token' }, // only has 'user'
+          },
+        });
+        try {
+          const tools = await client.listTools();
+          expect(
+            tools.tools.find((t) => t.name === 'escalate-ticket-dynamic'),
+          ).toBeUndefined();
+
+          await expect(
+            client.callTool({
+              name: 'escalate-ticket-dynamic',
+              arguments: {},
+            }),
+          ).rejects.toThrow(/requires any of roles: admin, auditor/);
+        } finally {
+          await client.close();
         }
       });
     });

@@ -198,6 +198,57 @@ export class PerToolAuthTools {
       ],
     };
   }
+
+  // Requires ANY of the listed roles (OR) — reachable by 'admin' or 'auditor'
+  @Tool({
+    name: 'escalate-ticket',
+    description: 'Escalate a ticket (admin OR auditor role)',
+  })
+  @ToolRoles(['admin', 'auditor'], { match: 'any' })
+  async escalateTicket() {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: 'Ticket escalated',
+        },
+      ],
+    };
+  }
+
+  // Same roles, but default (ALL) match — proves the default is unchanged
+  @Tool({
+    name: 'escalate-ticket-all',
+    description: 'Escalate a ticket (admin AND auditor role)',
+  })
+  @ToolRoles(['admin', 'auditor'])
+  async escalateTicketAll() {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: 'Ticket escalated (all roles)',
+        },
+      ],
+    };
+  }
+
+  // Requires ANY of the listed scopes (OR) — reachable with 'premium' or 'admin'
+  @Tool({
+    name: 'premium-report',
+    description: 'View a premium report (premium OR admin scope)',
+  })
+  @ToolScopes(['premium', 'admin'], { match: 'any' })
+  async premiumReport() {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: 'Report data...',
+        },
+      ],
+    };
+  }
 }
 
 // Mount the MCP route as a real Nest controller so the guard runs at the HTTP
@@ -582,6 +633,125 @@ describe.each(ERAS)('E2E: Per-Tool Authorization (%s era)', (era) => {
           arguments: {},
         }),
       ).rejects.toThrow();
+
+      await client.close();
+    });
+  });
+
+  describe('Any-of (OR) match mode', () => {
+    it('should list and allow an any-role tool for a user holding one of the roles', async () => {
+      const client = await createEraClient(era, testPort, {
+        requestInit: {
+          headers: {
+            Authorization: 'Bearer admin-token', // has 'admin', lacks 'auditor'
+          },
+        },
+      });
+
+      const tools = await client.listTools();
+      const toolNames = tools.tools.map((t) => t.name);
+      expect(toolNames).toContain('escalate-ticket');
+
+      const result = await client.callTool({
+        name: 'escalate-ticket',
+        arguments: {},
+      });
+      expect((result.content as any)[0].text).toBe('Ticket escalated');
+
+      await client.close();
+    });
+
+    it('should hide and reject an any-role tool for a user holding none of the roles', async () => {
+      const client = await createEraClient(era, testPort, {
+        requestInit: {
+          headers: {
+            Authorization: 'Bearer basic-token', // only has 'user'
+          },
+        },
+      });
+
+      const tools = await client.listTools();
+      const toolNames = tools.tools.map((t) => t.name);
+      expect(toolNames).not.toContain('escalate-ticket');
+
+      await expect(
+        client.callTool({
+          name: 'escalate-ticket',
+          arguments: {},
+        }),
+      ).rejects.toThrow();
+
+      await client.close();
+    });
+
+    it('should keep the default match mode as ALL (unchanged behaviour)', async () => {
+      const client = await createEraClient(era, testPort, {
+        requestInit: {
+          headers: {
+            Authorization: 'Bearer admin-token', // has 'admin', lacks 'auditor'
+          },
+        },
+      });
+
+      const tools = await client.listTools();
+      const toolNames = tools.tools.map((t) => t.name);
+      expect(toolNames).not.toContain('escalate-ticket-all');
+
+      await expect(
+        client.callTool({
+          name: 'escalate-ticket-all',
+          arguments: {},
+        }),
+      ).rejects.toThrow(/requires roles: admin, auditor/);
+
+      await client.close();
+    });
+
+    it('should allow an any-scope tool for both premium and admin tokens', async () => {
+      const premiumClient = await createEraClient(era, testPort, {
+        requestInit: {
+          headers: {
+            Authorization: 'Bearer premium-token',
+          },
+        },
+      });
+      const premiumResult = await premiumClient.callTool({
+        name: 'premium-report',
+        arguments: {},
+      });
+      expect((premiumResult.content as any)[0].text).toBe('Report data...');
+      await premiumClient.close();
+
+      const adminClient = await createEraClient(era, testPort, {
+        requestInit: {
+          headers: {
+            Authorization: 'Bearer admin-token',
+          },
+        },
+      });
+      const adminResult = await adminClient.callTool({
+        name: 'premium-report',
+        arguments: {},
+      });
+      expect((adminResult.content as any)[0].text).toBe('Report data...');
+      await adminClient.close();
+    });
+
+    it('should reject an any-scope tool for a basic token holding neither scope', async () => {
+      const client = await createEraClient(era, testPort, {
+        requestInit: {
+          headers: {
+            Authorization: 'Bearer basic-token', // only has 'read'
+          },
+        },
+      });
+
+      await expect(
+        client.callTool({
+          name: 'premium-report',
+          arguments: {},
+        }),
+      ).rejects.toThrow(/requires any of scopes: premium, admin/);
 
       await client.close();
     });

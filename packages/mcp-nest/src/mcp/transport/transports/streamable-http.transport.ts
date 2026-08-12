@@ -24,6 +24,7 @@ import { McpTransport, McpTransportContext } from '../mcp-transport.interface';
 import { MCP_RESOURCE_METADATA_URL } from '../mcp-transport.constants';
 import type { McpHttpHandler } from '../mcp-http-handler';
 import { readJsonBody } from './read-body';
+import { describeRequirement } from '../../services/tool-authorization.service';
 
 /**
  * How this endpoint answers the two protocol eras.
@@ -482,7 +483,12 @@ export class StreamableHttpTransport implements McpTransport {
 
     // Same wording the in-pipeline denial uses, so the only difference a client
     // sees between the two modes is the status code and the challenge header.
-    const message = `Tool '${toolName}' requires scopes: ${deficiency.requiredScopes.join(', ')}`;
+    const message = describeRequirement(
+      toolName,
+      'scopes',
+      deficiency.requiredScopes,
+      deficiency.match,
+    );
     res.setHeader?.(
       'WWW-Authenticate',
       buildInsufficientScopeChallenge(

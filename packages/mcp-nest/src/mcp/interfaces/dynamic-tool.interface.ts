@@ -1,5 +1,9 @@
 import { Context } from './mcp-tool.interface';
-import { ToolAnnotations, ToolInputSchema } from '../decorators/tool.decorator';
+import {
+  AccessMatchMode,
+  ToolAnnotations,
+  ToolInputSchema,
+} from '../decorators/tool.decorator';
 
 /**
  * Handler function signature for dynamically registered tools.
@@ -47,6 +51,10 @@ export interface DynamicToolDefinition {
   isPublic?: boolean;
   /** Required OAuth scopes */
   requiredScopes?: string[];
+  /** How `requiredScopes` is matched: `'all'` (default, AND) or `'any'` (OR) */
+  requiredScopesMatch?: AccessMatchMode;
   /** Required user roles */
   requiredRoles?: string[];
+  /** How `requiredRoles` is matched: `'all'` (default, AND) or `'any'` (OR) */
+  requiredRolesMatch?: AccessMatchMode;
 }

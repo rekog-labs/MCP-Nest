@@ -94,6 +94,16 @@ class ScopedTools {
   }
 
   @Tool({
+    name: 'read-reports-any',
+    description: 'Needs either of two scopes',
+    parameters: z.object({}),
+  })
+  @ToolScopes([SCOPE_READ, SCOPE_WRITE], { match: 'any' })
+  readReportsAny() {
+    return { content: [{ type: 'text', text: 'reports (any)' }] };
+  }
+
+  @Tool({
     name: 'admin-reports',
     description: 'Needs a role, not a scope',
     parameters: z.object({}),
@@ -350,6 +360,34 @@ describe.each(ERAS)(
       });
       expect(res.status).toBe(200);
       expect(res.challenge).toBeNull();
+    });
+
+    it('does not challenge an any-scope tool when the caller holds one of the scopes', async () => {
+      // read-token only carries SCOPE_READ, but `match: 'any'` is satisfied by
+      // holding just one of the two listed scopes — no step-up, call succeeds.
+      const res = await rawToolCall(port, era, {
+        tool: 'read-reports-any',
+        token: 'read-token',
+      });
+      expect(res.status).toBe(200);
+      expect(res.challenge).toBeNull();
+      expect(res.json.result).toBeDefined();
+    });
+
+    it('challenges an any-scope tool with error="insufficient_scope" when the caller holds none', async () => {
+      const res = await rawToolCall(port, era, {
+        tool: 'read-reports-any',
+        token: 'roleless-token',
+      });
+      const params = challengeParams(res.challenge);
+
+      expect(res.status).toBe(403);
+      expect(params.error).toBe('insufficient_scope');
+      // Both scopes are advertised — obtaining either one would satisfy the tool.
+      expect(params.scope).toBe(`${SCOPE_READ} ${SCOPE_WRITE}`);
+      expect(res.json.error.message).toContain('requires any of scopes');
+      expect(res.json.error.message).toContain(SCOPE_READ);
+      expect(res.json.error.message).toContain(SCOPE_WRITE);
     });
 
     it('does not challenge a @PublicTool() call', async () => {

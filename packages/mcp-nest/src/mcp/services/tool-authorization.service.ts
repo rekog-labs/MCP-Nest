@@ -1,11 +1,31 @@
 import { Injectable } from '@nestjs/common';
 import { ProtocolError, ProtocolErrorCode } from '@modelcontextprotocol/server';
-import { ToolMetadata, SecurityScheme } from '../decorators/tool.decorator';
+import {
+  AccessMatchMode,
+  ToolMetadata,
+  SecurityScheme,
+} from '../decorators/tool.decorator';
 import { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 
 /** Minimal shape the authorization logic needs: a capability carrying tool metadata. */
 export interface AuthorizableTool {
   metadata: ToolMetadata;
+}
+
+/**
+ * Renders the wording shared by the JSON-RPC denial ({@link ToolAuthorizationService.validateToolAccess})
+ * and the 403 step-up challenge (`streamable-http.transport.ts`), so the two can
+ * never drift: `Tool 'x' requires scopes: a, b` for `'all'`, or
+ * `Tool 'x' requires any of scopes: a, b` for `'any'`.
+ */
+export function describeRequirement(
+  toolName: string,
+  kind: 'scopes' | 'roles',
+  required: string[],
+  match: AccessMatchMode,
+): string {
+  const prefix = match === 'any' ? `any of ${kind}` : kind;
+  return `Tool '${toolName}' requires ${prefix}: ${required.join(', ')}`;
 }
 
 /**
@@ -29,6 +49,8 @@ export interface ToolScopeDeficiency {
   requiredScopes: string[];
   /** The subset the caller does not hold; always non-empty. */
   missingScopes: string[];
+  /** The match mode `requiredScopes` was declared with — lets the transport render the right wording. */
+  match: AccessMatchMode;
 }
 
 /**
@@ -121,14 +143,26 @@ export class ToolAuthorizationService {
 
     // If tool has specific scopes, validate them
     if (metadata.requiredScopes && metadata.requiredScopes.length > 0) {
-      if (!this.hasRequiredScopes(user, metadata.requiredScopes)) {
+      if (
+        !this.hasRequiredScopes(
+          user,
+          metadata.requiredScopes,
+          metadata.requiredScopesMatch ?? 'all',
+        )
+      ) {
         return false;
       }
     }
 
     // If tool has specific roles, validate them
     if (metadata.requiredRoles && metadata.requiredRoles.length > 0) {
-      if (!this.hasRequiredRoles(user, metadata.requiredRoles)) {
+      if (
+        !this.hasRequiredRoles(
+          user,
+          metadata.requiredRoles,
+          metadata.requiredRolesMatch ?? 'all',
+        )
+      ) {
         return false;
       }
     }
@@ -184,20 +218,44 @@ export class ToolAuthorizationService {
 
     // Validate scopes if required
     if (metadata.requiredScopes && metadata.requiredScopes.length > 0) {
-      if (!this.hasRequiredScopes(user, metadata.requiredScopes)) {
+      const requiredScopesMatch = metadata.requiredScopesMatch ?? 'all';
+      if (
+        !this.hasRequiredScopes(
+          user,
+          metadata.requiredScopes,
+          requiredScopesMatch,
+        )
+      ) {
         throw new ProtocolError(
           ProtocolErrorCode.InvalidRequest,
-          `Tool '${toolName}' requires scopes: ${metadata.requiredScopes.join(', ')}`,
+          describeRequirement(
+            toolName,
+            'scopes',
+            metadata.requiredScopes,
+            requiredScopesMatch,
+          ),
         );
       }
     }
 
     // Validate roles if required
     if (metadata.requiredRoles && metadata.requiredRoles.length > 0) {
-      if (!this.hasRequiredRoles(user, metadata.requiredRoles)) {
+      const requiredRolesMatch = metadata.requiredRolesMatch ?? 'all';
+      if (
+        !this.hasRequiredRoles(
+          user,
+          metadata.requiredRoles,
+          requiredRolesMatch,
+        )
+      ) {
         throw new ProtocolError(
           ProtocolErrorCode.InvalidRequest,
-          `Tool '${toolName}' requires roles: ${metadata.requiredRoles.join(', ')}`,
+          describeRequirement(
+            toolName,
+            'roles',
+            metadata.requiredRoles,
+            requiredRolesMatch,
+          ),
         );
       }
     }
@@ -240,6 +298,13 @@ export class ToolAuthorizationService {
    * Takes no `allowUnauthenticatedAccess`, unlike its siblings: freemium mode only
    * ever changes the verdict for a caller with no user, or for an undecorated tool
    * — and both of those already return `undefined` here.
+   *
+   * `match: 'any'` scopes: a deficiency is only reported when the caller holds
+   * NONE of the required scopes. Holding at least one already satisfies the
+   * tool, even though some listed scopes remain "missing" — so that partial
+   * case returns `undefined` too. When a deficiency is reported, it still lists
+   * every required scope in `requiredScopes` (and as `missingScopes`, since none
+   * are held), because obtaining any one of them would fix it.
    */
   findScopeDeficiency(
     user: AuthenticatedUser | undefined,
@@ -250,6 +315,7 @@ export class ToolAuthorizationService {
 
     const requiredScopes = metadata.requiredScopes ?? [];
     if (requiredScopes.length === 0) return undefined;
+    const match = metadata.requiredScopesMatch ?? 'all';
 
     // Unauthenticated: 401 territory (or freemium's "requires authentication"),
     // handled by whatever already denies it. Note this is also why the check is
@@ -259,26 +325,40 @@ export class ToolAuthorizationService {
     const missing = this.missingScopes(user, requiredScopes);
     if (missing.length === 0) return undefined;
 
+    // 'any' mode: holding at least one required scope satisfies the tool, so
+    // there is no deficiency to challenge for even though some are missing.
+    if (match === 'any' && missing.length < requiredScopes.length) {
+      return undefined;
+    }
+
     return {
       toolName: metadata.name,
       requiredScopes: [...requiredScopes],
       missingScopes: missing,
+      match,
     };
   }
 
   /**
-   * Check if user has all required scopes
+   * Check if user has the required scopes, honouring the match mode: `'all'`
+   * (every scope, the default) or `'any'` (at least one).
    *
    * @param user - The authenticated user (may be undefined)
    * @param requiredScopes - Array of required scope strings
-   * @returns true if user has all required scopes
+   * @param match - `'all'` (AND) or `'any'` (OR)
+   * @returns true if user satisfies the required scopes for the given match mode
    */
   private hasRequiredScopes(
     user: AuthenticatedUser | undefined,
     requiredScopes: string[],
+    match: AccessMatchMode,
   ): boolean {
     if (!user) {
       return false;
+    }
+    if (match === 'any') {
+      const missing = this.missingScopes(user, requiredScopes);
+      return missing.length < requiredScopes.length;
     }
     return this.missingScopes(user, requiredScopes).length === 0;
   }
@@ -308,15 +388,18 @@ export class ToolAuthorizationService {
   }
 
   /**
-   * Check if user has all required roles
+   * Check if user has the required roles, honouring the match mode: `'all'`
+   * (every role, the default) or `'any'` (at least one).
    *
    * @param user - The authenticated user (may be undefined)
    * @param requiredRoles - Array of required role strings
-   * @returns true if user has all required roles
+   * @param match - `'all'` (AND) or `'any'` (OR)
+   * @returns true if user satisfies the required roles for the given match mode
    */
   private hasRequiredRoles(
     user: AuthenticatedUser | undefined,
     requiredRoles: string[],
+    match: AccessMatchMode,
   ): boolean {
     if (!user) {
       return false;
@@ -335,7 +418,20 @@ export class ToolAuthorizationService {
       userRoles = user.user_data.roles;
     }
 
-    // Check if user has ALL required roles
-    return requiredRoles.every((required) => userRoles.includes(required));
+    return this.satisfies(userRoles, requiredRoles, match);
+  }
+
+  /**
+   * Whether `held` satisfies `required` under the given match mode: every
+   * entry (`'all'`, AND) or at least one (`'any'`, OR).
+   */
+  private satisfies(
+    held: string[],
+    required: string[],
+    match: AccessMatchMode,
+  ): boolean {
+    return match === 'any'
+      ? required.some((r) => held.includes(r))
+      : required.every((r) => held.includes(r));
   }
 }

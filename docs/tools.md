@@ -531,6 +531,11 @@ export class MyTools {
 
 `@UseGuards()` can be combined with `@PublicTool()`, `@ToolScopes()`, and `@ToolRoles()` (the bespoke JWT-based authorization checks). Multiple guards use AND logic: all guards must pass for access to be granted.
 
+By default `@ToolScopes()` / `@ToolRoles()` require **every** listed scope/role
+(AND). Pass a second argument, `{ match: 'any' }`, to require only **one** of
+them instead (OR) — see [Any-of (OR) matching](per-tool-authorization.md#any-of-or-matching)
+for the full details and denial-message wording.
+
 Guards that rely on an HTTP request are not usable with STDIO transport (`ctx.getRawRequest()` is `undefined` there).
 
 ## Example Location
