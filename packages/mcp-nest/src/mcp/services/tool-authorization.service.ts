@@ -356,11 +356,7 @@ export class ToolAuthorizationService {
     if (!user) {
       return false;
     }
-    if (match === 'any') {
-      const missing = this.missingScopes(user, requiredScopes);
-      return missing.length < requiredScopes.length;
-    }
-    return this.missingScopes(user, requiredScopes).length === 0;
+    return this.satisfies(this.getUserScopes(user), requiredScopes, match);
   }
 
   /**
@@ -373,18 +369,21 @@ export class ToolAuthorizationService {
     user: AuthenticatedUser,
     requiredScopes: string[],
   ): string[] {
-    // Get user scopes - could be in 'scope' (space-delimited string) or 'scopes' (array)
-    let userScopes: string[] = [];
-
-    if (user.scope) {
-      // OAuth 2.0 standard: space-delimited string
-      userScopes = user.scope.split(' ').filter((s) => s.length > 0);
-    } else if ((user as any).scopes && Array.isArray((user as any).scopes)) {
-      // Alternative: array of scopes
-      userScopes = (user as any).scopes;
-    }
-
+    const userScopes = this.getUserScopes(user);
     return requiredScopes.filter((required) => !userScopes.includes(required));
+  }
+
+  /**
+   * The scopes the user holds, whether carried as `scope` (OAuth 2.0 standard:
+   * space-delimited string) or `scopes` (array).
+   */
+  private getUserScopes(user: AuthenticatedUser): string[] {
+    if (user.scope) {
+      return user.scope.split(' ').filter((s) => s.length > 0);
+    } else if ((user as any).scopes && Array.isArray((user as any).scopes)) {
+      return (user as any).scopes;
+    }
+    return [];
   }
 
   /**
