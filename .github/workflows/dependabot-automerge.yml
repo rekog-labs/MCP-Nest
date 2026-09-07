@@ -89,6 +89,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         # `--auto` queues the merge behind the branch's required status checks
-        # (the `test (20.x|22.x|24.x)` matrix and `e2e`). If any of them fails,
+        # (the `test (22.x|24.x)` matrix and `e2e`). If any of them fails,
         # nothing merges and the PR just sits there for the sweeper.
         run: gh pr merge --auto --squash "$PR_URL"

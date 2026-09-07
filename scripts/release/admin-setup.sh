@@ -64,7 +64,6 @@ cat > "$tmp" <<JSON
         "strict_required_status_checks_policy": false,
         "do_not_enforce_on_create": false,
         "required_status_checks": [
-          { "context": "test (20.x)", "integration_id": $GITHUB_ACTIONS_APP_ID },
           { "context": "test (22.x)", "integration_id": $GITHUB_ACTIONS_APP_ID },
           { "context": "test (24.x)", "integration_id": $GITHUB_ACTIONS_APP_ID },
           { "context": "e2e",         "integration_id": $GITHUB_ACTIONS_APP_ID }

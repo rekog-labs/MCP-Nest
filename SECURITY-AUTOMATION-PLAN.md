@@ -60,7 +60,7 @@ No npm token or other secret is needed anywhere in this design.
   `@dependabot ignore this major version` — it needs NestJS 12, which is a feature decision.
 - Enable repo setting `allow_auto_merge`.
 - Change ruleset `protect-main`:
-  - add **required status checks**: `test (20.x)`, `test (22.x)`, `test (24.x)`, plus the new
+  - add **required status checks**: `test (22.x)`, `test (24.x)`, plus the new
     `e2e` job (see 3.3). Auto-merge only fires when all required checks pass, so this is the
     safety gate.
   - keep "1 approving review" but let the workflow's approval satisfy it (`github-actions[bot]`
@@ -246,7 +246,7 @@ Implemented on branch `security-automation` (PR pending):
 ### Needs the maintainer (admin / npm access)
 
 1. `scripts/release/admin-setup.sh` — auto-merge on, Actions may approve PRs, required checks
-   `test (20.x|22.x|24.x)` + `e2e` on the `protect-main` ruleset, `release-broken` label.
+   `test (22.x|24.x)` + `e2e` on the `protect-main` ruleset, `release-broken` label.
    Run it **after** this PR is merged (the `e2e` check only exists from then on).
 2. Comment `@dependabot rebase` on #252, #254, #255. That fires `synchronize` and the new
    auto-merge workflow handles them — the first live test. Close #253 (needs NestJS 12).
