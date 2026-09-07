@@ -1,0 +1,190 @@
+name: Auto release
+
+# Cuts a patch release when -- and only when -- a dependency bump that actually
+# reaches users has landed on `main` with no human work riding along.
+#
+# The two conditions are implemented in scripts/release/decide.sh:
+#   1. every commit since the last non-prerelease tag is a bot commit, so an
+#      unfinished feature sitting on `main` never ships on a security patch's
+#      coat-tails;
+#   2. the range touches packages/mcp-nest/package.json or
+#      packages/mcp-nest-auth/package.json, because the published tarballs
+#      contain no lockfile -- a root package-lock.json bump produces a
+#      byte-identical tarball and is not worth a version.
+#
+# The job `if` below is only a cheap pre-filter on who pushed; decide.sh is the
+# real gate and re-checks everything from the compare API.
+
+on:
+  # The primary trigger is the schedule, not the push. Dependabot PRs are
+  # merged by GitHub's auto-merge, armed by dependabot-automerge.yml with the
+  # repository GITHUB_TOKEN -- and "events triggered by the GITHUB_TOKEN will
+  # not create a new workflow run", so the resulting push to main never starts
+  # this workflow. Polling every 6 hours needs no extra token or GitHub App.
+  # decide.sh is idempotent: once main HEAD is tagged there are zero commits
+  # since the base tag and it says "no". A patch is therefore published at
+  # most ~6 hours after the merge that made it necessary.
+  schedule:
+    - cron: '23 */6 * * *'
+  # Kept for pushes that DO fire: a human merging a Dependabot PR by hand, or
+  # a merge done with a PAT/App token in the future.
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Release main HEAD as the next patch, skipping BOTH the bot-only and shipped-range checks'
+        type: boolean
+        required: false
+        default: false
+
+# Serialise the whole pipeline: two runs racing here would both compute the
+# same next tag and the second `gh release create` would fail on a tag that now
+# exists. Never cancel -- a cancelled run could leave a tag created but nothing
+# published.
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  decide:
+    name: Decide whether to release
+    runs-on: ubuntu-latest
+    # Cheap pre-filter so an ordinary human push to main does not even start a
+    # runner. It is about *who pushed*, not about what is in the range: a
+    # Dependabot PR the maintainer merges by hand from the UI arrives with
+    # actor=<maintainer> and is skipped on the push event -- but the next
+    # scheduled run evaluates it anyway, from commit authorship, and releases
+    # if the range is bot-only.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.actor == 'dependabot[bot]' ||
+      github.actor == 'github-actions[bot]'
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.gate.outputs.release }}
+      reason: ${{ steps.gate.outputs.reason }}
+      tag: ${{ steps.version.outputs.tag }}
+      base_tag: ${{ steps.version.outputs.base_tag }}
+
+    steps:
+      # fetch-depth: 0 -- next-version.sh reads `git tag --list`, and the
+      # default shallow checkout fetches no tags at all.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # main never carries the released version (publish.yml sets it from the
+      # tag and does not commit the bump back), so the tag list is the only
+      # source of truth for "what was last released".
+      - name: Compute base tag and next patch tag
+        id: version
+        run: bash scripts/release/next-version.sh
+
+      - name: Decide
+        id: gate
+        env:
+          BASE_TAG: ${{ steps.version.outputs.base_tag }}
+          HEAD_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          # `inputs.force` is a real boolean on workflow_dispatch and an empty
+          # string on push, so compare as a string in the shell.
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          if [ "$FORCE" = "true" ]; then
+            # The maintainer asked for a patch release explicitly. Skip both
+            # checks -- that is the entire point of the knob.
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "reason=forced via workflow_dispatch by ${ACTOR}" >> "$GITHUB_OUTPUT"
+            echo "Forced release requested; skipping the bot-only and shipped-range checks."
+            exit 0
+          fi
+          bash scripts/release/decide.sh
+
+      - name: Summary
+        env:
+          RELEASE: ${{ steps.gate.outputs.release }}
+          REASON: ${{ steps.gate.outputs.reason }}
+          BASE_TAG: ${{ steps.version.outputs.base_tag }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          {
+            echo "### Auto release decision"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Release | \`$RELEASE\` |"
+            echo "| Base tag | \`$BASE_TAG\` |"
+            echo "| Candidate tag | \`$TAG\` |"
+            echo "| Reason | $REASON |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  create-release:
+    name: Create release ${{ needs.decide.outputs.tag }}
+    needs: decide
+    if: needs.decide.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and the release
+
+    steps:
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.decide.outputs.tag }}
+          BASE_TAG: ${{ needs.decide.outputs.base_tag }}
+          REASON: ${{ needs.decide.outputs.reason }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # --target pins the tag to the exact commit that was evaluated, not
+          # to whatever main points at by the time this step runs.
+          # --notes is *prepended* to --generate-notes output (gh documents:
+          # "Additional release notes can be prepended to automatically
+          # generated notes by using the --notes flag").
+          # --notes-start-tag makes the generated changelog cover exactly the
+          # range decide.sh judged.
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --target "$SHA" \
+            --title "$TAG" \
+            --generate-notes \
+            --notes-start-tag "$BASE_TAG" \
+            --notes "Automated security patch release. No human-authored changes since ${BASE_TAG}; cut because a shipped dependency range changed. ($REASON)"
+
+  # A release created with GITHUB_TOKEN does NOT fire `on: release`.
+  # GitHub docs, "Triggering a workflow from a workflow":
+  #   "When you use the repository's GITHUB_TOKEN to perform tasks, events
+  #    triggered by the GITHUB_TOKEN will not create a new workflow run"
+  #   (only workflow_dispatch and repository_dispatch are exceptions).
+  # So the `create-release` job above cannot start publish.yml through its
+  # `release: published` trigger -- there is no event to catch. We call
+  # publish.yml directly instead, via its `workflow_call` entry point. The
+  # maintainer's own hand-made releases still arrive through `release:
+  # published`, so publish.yml keeps both triggers.
+  #
+  # No `if:` here on purpose: a job's default condition is success() over all
+  # its needs, so when `create-release` is skipped this is skipped too. Adding
+  # an explicit `if:` would *replace* that default and let publish run after a
+  # skipped or failed release creation.
+  publish:
+    name: Publish
+    needs: [decide, create-release]
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: ${{ needs.decide.outputs.tag }}
+    # publish.yml needs NPM_TOKEN (rollback) on top of the OIDC publish; pass
+    # the whole secret set rather than enumerating it here.
+    secrets: inherit
+    # A job that calls a reusable workflow may declare permissions; the called
+    # workflow's GITHUB_TOKEN is capped by what is granted here.
+    permissions:
+      contents: write # tag checkout + `gh release edit` on rollback
+      issues: write # rollback opens the "release broken" issue
+      id-token: write # npm OIDC trusted publishing
+      pull-requests: read # release-note generation
