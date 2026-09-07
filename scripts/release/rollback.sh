@@ -1,40 +1,34 @@
 #!/usr/bin/env bash
 #
-# Roll back a broken published release.
+# Record a broken published release and page the maintainer.
 #
-# This runs ONLY when the packages were actually published and the post-publish
-# smoke test failed. It is deliberately "best effort": every step is allowed to
-# fail without aborting the remaining steps, because a partial rollback that
-# still opens the GitHub issue is far better than an aborted one that leaves the
-# maintainer unaware.
+# Runs ONLY when the packages were actually published and the post-publish
+# smoke test failed. By then the `roll-forward` job (publish.yml) has normally
+# re-published the last good code as the next version through OIDC, so users
+# on a caret range are already safe; ROLLED_FORWARD carries that version.
 #
-# Order matters:
-#   1. move the dist-tag (latest|next) back to the previous good version, so a
-#      fresh `npm install @rekog/mcp-nest` stops resolving to the broken build
-#      immediately -- this is the only step users feel;
-#   2. unpublish the broken versions, auth first (it peer-depends on core);
-#   3. deprecate whatever could not be unpublished, as the fallback;
-#   4. mark the GitHub release as a pre-release with a "rolled back" banner;
-#   5. open an issue assigned to the maintainer -- the single ping.
+# This script touches GitHub only. It never talks to npm: OIDC trusted
+# publishing can only `npm publish`, and the maintainer decided that cleaning
+# up the broken version on the registry (deprecate / unpublish) is a human
+# step, driven by the issue this script opens.
 #
-# npm policy notes (docs.npmjs.com/policies/unpublish):
-#   - a version can be unpublished within 72h of publishing as long as no other
-#     package in the public registry depends on it; we run minutes after the
-#     publish, so we are well inside that window;
-#   - `package@version` can NEVER be reused. The follow-up fix must go out as a
-#     NEW patch version, not a re-publish of the rolled-back one.
+#   1. mark the GitHub release as a pre-release with a "rolled back" banner;
+#   2. open an issue assigned to the maintainer -- the single ping -- with the
+#      exact npm commands still to run by hand.
+#
+# Every step is best effort: a failure is logged and the remaining steps run.
 #
 # Environment:
-#   TAG        required  git tag of the release, e.g. v2.0.3
-#   VERSION    required  version without the leading v, e.g. 2.0.3
-#   NPM_TAG    optional  dist-tag that was published to (default: latest)
-#   PREV_CORE  optional  version @rekog/mcp-nest's NPM_TAG pointed at before
-#   PREV_AUTH  optional  version @rekog/mcp-nest-auth's NPM_TAG pointed at before
-#   DRY_RUN    optional  1 = echo the npm/gh commands instead of running them
-#   SKIP_NPM   optional  1 = skip every npm step (set when NPM_TOKEN is absent)
-#   RUN_URL    optional  URL of the workflow run, for the issue body
-#   ASSIGNEE   optional  issue assignee (default: rinormaloku)
-#   LABEL      optional  issue label (default: release-broken)
+#   TAG             required  git tag of the release, e.g. v2.0.3
+#   VERSION         required  version without the leading v, e.g. 2.0.3
+#   NPM_TAG         optional  dist-tag that was published to (default: latest)
+#   PREV_CORE       optional  version @rekog/mcp-nest's NPM_TAG pointed at before
+#   PREV_AUTH       optional  version @rekog/mcp-nest-auth's NPM_TAG pointed at before
+#   ROLLED_FORWARD  optional  version the roll-forward job published (empty if none)
+#   DRY_RUN         optional  1 = echo the gh commands instead of running them
+#   RUN_URL         optional  URL of the workflow run, for the issue body
+#   ASSIGNEE        optional  issue assignee (default: rinormaloku)
+#   LABEL           optional  issue label (default: release-broken)
 #
 set -euo pipefail
 
@@ -43,8 +37,8 @@ VERSION="${VERSION:-}"
 NPM_TAG="${NPM_TAG:-latest}"
 PREV_CORE="${PREV_CORE:-}"
 PREV_AUTH="${PREV_AUTH:-}"
+ROLLED_FORWARD="${ROLLED_FORWARD:-}"
 DRY_RUN="${DRY_RUN:-0}"
-SKIP_NPM="${SKIP_NPM:-0}"
 RUN_URL="${RUN_URL:-(run url unavailable)}"
 ASSIGNEE="${ASSIGNEE:-rinormaloku}"
 LABEL="${LABEL:-release-broken}"
@@ -57,15 +51,14 @@ if [ -z "$TAG" ] || [ -z "$VERSION" ]; then
   exit 2
 fi
 
-# Human-readable log of what actually happened, reused verbatim in the issue.
+# Human-readable log of what happened, reused verbatim in the issue.
 REPORT_FILE="$(mktemp)"
 note() {
   echo "$*"
   echo "$*" >>"$REPORT_FILE"
 }
 
-# Run a command, or echo it under DRY_RUN. Never aborts the script: the caller
-# decides what to do with the exit status.
+# Run a command, or echo it under DRY_RUN. Never aborts the script.
 run() {
   if [ "$DRY_RUN" = "1" ]; then
     echo "DRY-RUN: $*"
@@ -74,69 +67,25 @@ run() {
   "$@"
 }
 
-npm_run() {
-  run "$@"
-}
-
 echo "=============================================="
-echo " Rolling back $TAG (version $VERSION, dist-tag $NPM_TAG)"
+echo " Recording broken release $TAG (version $VERSION, dist-tag $NPM_TAG)"
 echo " previous $CORE_PKG@$NPM_TAG: ${PREV_CORE:-<none>}"
 echo " previous $AUTH_PKG@$NPM_TAG: ${PREV_AUTH:-<none>}"
-echo " DRY_RUN=$DRY_RUN SKIP_NPM=$SKIP_NPM"
+echo " rolled forward to: ${ROLLED_FORWARD:-<no roll-forward>}"
+echo " DRY_RUN=$DRY_RUN"
 echo "=============================================="
 
-# ---------------------------------------------------------------------------
-# 1. Move the dist-tag back to the last known-good version.
-# ---------------------------------------------------------------------------
-restore_dist_tag() {
-  local pkg="$1" prev="$2"
-  if [ -z "$prev" ]; then
-    note "- dist-tag: $pkg had no previous \`$NPM_TAG\` recorded; left as published."
-    return 0
-  fi
-  if npm_run npm dist-tag add "$pkg@$prev" "$NPM_TAG"; then
-    note "- dist-tag: $pkg \`$NPM_TAG\` -> $prev (was $VERSION)."
-  else
-    note "- dist-tag: FAILED to move $pkg \`$NPM_TAG\` back to $prev -- do this by hand."
-  fi
-}
-
-if [ "$SKIP_NPM" = "1" ]; then
-  note "- **npm steps were SKIPPED**: no write-capable \`NPM_TOKEN\` was available to the job."
-  note "  \`$NPM_TAG\` still points at the broken $VERSION on both packages. Fix this by hand, now."
+if [ -n "$ROLLED_FORWARD" ]; then
+  note "- roll-forward: the code of ${PREV_CORE:-the previous release} was re-published as **$ROLLED_FORWARD**; \`$NPM_TAG\` now points at it. Users on a caret range are safe."
+  USERS_SAFE=1
 else
-  restore_dist_tag "$CORE_PKG" "$PREV_CORE"
-  restore_dist_tag "$AUTH_PKG" "$PREV_AUTH"
+  note "- **roll-forward did NOT happen.** \`$NPM_TAG\` still points at the broken $VERSION on both packages. Fix this by hand, now (commands below)."
+  USERS_SAFE=0
 fi
+note "- $VERSION is still listed on npm. Deprecate or unpublish it by hand (commands below)."
 
 # ---------------------------------------------------------------------------
-# 2. Unpublish the broken versions. Auth first: it peer-depends on core, so
-#    removing core while auth still points at it would leave a dangling peer.
-# 3. Whatever refuses to unpublish gets deprecated instead.
-# ---------------------------------------------------------------------------
-remove_version() {
-  local pkg="$1" prev="$2"
-  if npm_run npm unpublish "$pkg@$VERSION"; then
-    note "- unpublished: $pkg@$VERSION."
-    return 0
-  fi
-
-  note "- unpublish FAILED for $pkg@$VERSION; falling back to deprecate."
-  local msg="Broken release $VERSION, rolled back; use ${prev:-a previous version}"
-  if npm_run npm deprecate "$pkg@$VERSION" "$msg"; then
-    note "- deprecated: $pkg@$VERSION (\"$msg\")."
-  else
-    note "- deprecate FAILED for $pkg@$VERSION -- this version is still live, fix by hand."
-  fi
-}
-
-if [ "$SKIP_NPM" != "1" ]; then
-  remove_version "$AUTH_PKG" "$PREV_AUTH"
-  remove_version "$CORE_PKG" "$PREV_CORE"
-fi
-
-# ---------------------------------------------------------------------------
-# 4. Mark the GitHub release as a pre-release with a rolled-back banner.
+# 1. Mark the GitHub release as a pre-release with a rolled-back banner.
 #    The release exists in both entry paths: the `release: published` event
 #    obviously, and workflow_call because auto-release.yml creates it before
 #    calling us.
@@ -146,16 +95,14 @@ if [ "$DRY_RUN" != "1" ]; then
   EXISTING_NOTES="$(gh release view "$TAG" --json body -q .body 2>/dev/null || true)"
 fi
 
-if [ "$SKIP_NPM" = "1" ]; then
-  ROLLBACK_SUMMARY="> No npm write token was available, so \`$NPM_TAG\` STILL POINTS AT $VERSION on
-> the registry. This needs a manual fix."
+if [ "$USERS_SAFE" = "1" ]; then
+  SUMMARY="> The code of ${PREV_CORE:-the previous release} was re-published as $ROLLED_FORWARD; \`$NPM_TAG\` points at it."
 else
-  ROLLBACK_SUMMARY="> \`$NPM_TAG\` was moved back to ${PREV_CORE:-the previous version} and $VERSION was
-> unpublished (or deprecated if unpublish was refused)."
+  SUMMARY="> Roll-forward failed: \`$NPM_TAG\` STILL POINTS AT $VERSION on the registry. This needs a manual fix."
 fi
 
 RELEASE_NOTES="> **ROLLED BACK** - the post-publish smoke test failed for $VERSION.
-$ROLLBACK_SUMMARY
+$SUMMARY
 > Do not use this release.
 > Run: $RUN_URL
 
@@ -168,49 +115,65 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Open the issue. This is the single notification the maintainer gets.
+# 2. Open the issue. This is the single notification the maintainer gets.
 # ---------------------------------------------------------------------------
-# `--force` makes label creation idempotent; tolerate failure either way.
 run gh label create "$LABEL" --color B60205 \
-  --description "A published release was rolled back" --force || \
+  --description "A published release failed its smoke test" --force || \
   echo "note: could not create/update label '$LABEL'; continuing"
 
 ISSUE_BODY_FILE="$(mktemp)"
 {
-  echo "The published release **$TAG** ($VERSION) failed its post-publish smoke test and was rolled back automatically."
+  echo "The published release **$TAG** ($VERSION) failed its post-publish smoke test."
   echo
   echo "**Failing run:** $RUN_URL"
   echo
-  echo "## What the rollback did"
+  echo "## What the automation did"
   echo
   cat "$REPORT_FILE"
   echo
-  echo "## Previous good versions"
-  echo
-  echo "| package | previous \`$NPM_TAG\` |"
+  echo "| | |"
   echo "|---|---|"
-  echo "| \`$CORE_PKG\` | ${PREV_CORE:-_unknown_} |"
-  echo "| \`$AUTH_PKG\` | ${PREV_AUTH:-_unknown_} |"
+  echo "| previous \`$NPM_TAG\` of \`$CORE_PKG\` | ${PREV_CORE:-_unknown_} |"
+  echo "| previous \`$NPM_TAG\` of \`$AUTH_PKG\` | ${PREV_AUTH:-_unknown_} |"
+  echo "| roll-forward version | ${ROLLED_FORWARD:-_none_} |"
   echo
-  echo "## What to do"
+  echo "## What to do (by hand, needs your npm login)"
   echo
+  if [ "$USERS_SAFE" != "1" ]; then
+    echo "0. **Urgent - users still get the broken version.** Point \`$NPM_TAG\` back:"
+    echo
+    echo '```bash'
+    echo "npm dist-tag add $CORE_PKG@${PREV_CORE:-<previous>} $NPM_TAG"
+    echo "npm dist-tag add $AUTH_PKG@${PREV_AUTH:-<previous>} $NPM_TAG"
+    echo '```'
+    echo
+  fi
   echo "1. Open the run above and read the failing smoke/e2e step -- that is the actual bug."
-  echo "2. Confirm the rollback landed: \`npm view $CORE_PKG dist-tags\` and \`npm view $AUTH_PKG dist-tags\` should show \`$NPM_TAG\` on the previous version, and \`npm view $CORE_PKG versions\` should no longer list $VERSION."
+  echo "2. Remove the broken version from the registry. Deprecate always works; unpublish only inside 72 h and only if nothing depends on it (do auth first, it peer-depends on core):"
+  echo
+  echo '```bash'
+  echo "npm deprecate $CORE_PKG@$VERSION \"Broken release, use ${ROLLED_FORWARD:-${PREV_CORE:-a previous version}}\""
+  echo "npm deprecate $AUTH_PKG@$VERSION \"Broken release, use ${ROLLED_FORWARD:-${PREV_AUTH:-a previous version}}\""
+  echo "# or, within 72 h:"
+  echo "npm unpublish $AUTH_PKG@$VERSION && npm unpublish $CORE_PKG@$VERSION"
+  echo '```'
+  echo
   echo "3. Fix the bug on \`main\`."
-  echo "4. Release a **new** patch version. npm never lets \`package@$VERSION\` be reused, even after an unpublish, so $VERSION is burned."
+  echo "4. Release a **new** version. npm never lets \`package@$VERSION\` be reused, even after an unpublish, so $VERSION is burned."
   echo "5. If any line above says FAILED, do that step by hand before releasing again."
+  echo "6. **Close this issue.** Automated releases stay paused while an open \`$LABEL\` issue exists, so the same broken state is not released again every few hours."
   echo
   echo "_Opened automatically by the release rollback job._"
 } >"$ISSUE_BODY_FILE"
 
 if [ "$DRY_RUN" = "1" ]; then
-  echo "DRY-RUN: gh issue create --title 'Release $TAG is broken and was rolled back' --assignee $ASSIGNEE --label $LABEL --body-file <<"
+  echo "DRY-RUN: gh issue create --title 'Release $TAG is broken' --assignee $ASSIGNEE --label $LABEL --body-file <<"
   echo "----- issue body -----"
   cat "$ISSUE_BODY_FILE"
   echo "----- end issue body -----"
 else
   if gh issue create \
-    --title "Release $TAG is broken and was rolled back" \
+    --title "Release $TAG is broken and needs manual npm cleanup" \
     --assignee "$ASSIGNEE" \
     --label "$LABEL" \
     --body-file "$ISSUE_BODY_FILE"; then
@@ -221,4 +184,4 @@ else
   fi
 fi
 
-echo "Rollback of $TAG finished."
+echo "Rollback bookkeeping for $TAG finished."

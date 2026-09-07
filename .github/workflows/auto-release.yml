@@ -63,6 +63,7 @@ jobs:
       github.actor == 'github-actions[bot]'
     permissions:
       contents: read
+      issues: read # decide.sh pauses releases while a `release-broken` issue is open
     outputs:
       release: ${{ steps.gate.outputs.release }}
       reason: ${{ steps.gate.outputs.reason }}
@@ -178,9 +179,8 @@ jobs:
     uses: ./.github/workflows/publish.yml
     with:
       tag: ${{ needs.decide.outputs.tag }}
-    # publish.yml needs NPM_TOKEN (rollback) on top of the OIDC publish; pass
-    # the whole secret set rather than enumerating it here.
-    secrets: inherit
+    # No secrets: publishing (and the roll-forward after a broken release)
+    # uses OIDC trusted publishing; everything else uses GITHUB_TOKEN.
     # A job that calls a reusable workflow may declare permissions; the called
     # workflow's GITHUB_TOKEN is capped by what is granted here.
     permissions:

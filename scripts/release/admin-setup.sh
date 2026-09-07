@@ -7,8 +7,8 @@
 #   scripts/release/admin-setup.sh            # apply
 #   DRY_RUN=1 scripts/release/admin-setup.sh  # print the calls only
 #
-# What it does NOT do (needs a human with npm access):
-#   - create the granular npm token and store it:  gh secret set NPM_TOKEN
+# No npm token is needed anywhere: publishing (including the roll-forward after
+# a broken release) uses OIDC trusted publishing.
 set -euo pipefail
 
 REPO=${REPO:-rekog-labs/MCP-Nest}
@@ -84,6 +84,5 @@ run label create release-broken --repo "$REPO" --color B60205 \
   --description "A published version failed its smoke test and was rolled back" --force
 
 echo
-echo "Remaining manual step: create a granular npm access token with read+write on"
-echo "@rekog/mcp-nest and @rekog/mcp-nest-auth, then:  gh secret set NPM_TOKEN --repo $REPO"
-echo "Then: gh secret list --repo $REPO   # NPM_TOKEN must be listed"
+echo "Done. No npm token is needed: a broken release is rolled forward via OIDC and an"
+echo "issue with the manual npm cleanup commands is assigned to you."

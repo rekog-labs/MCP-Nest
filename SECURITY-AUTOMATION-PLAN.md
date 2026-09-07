@@ -20,7 +20,7 @@ Measured, not assumed:
 | Dependabot edits only `package-lock.json`; the committed root `bun.lock` goes stale, hence the local `bun install` ritual (see commit 5f3453f) | PR file lists |
 | PR #253 (fastify) fails because the fix needs `@nestjs/platform-fastify@12`, which needs NestJS 12 — not fixable inside Nest 11 | run log: `ERESOLVE` |
 | Releases are manual: create a GitHub release → `publish.yml` builds, tests, runs e2e, publishes, then smoke-tests the published artifact | `.github/workflows/publish.yml` |
-| Publish uses npm OIDC trusted publishing; that token can **only** `npm publish` (no `dist-tag`, no `deprecate`) | npm docs |
+| Publish uses npm OIDC trusted publishing; that token can **only** `npm publish` (no `dist-tag`, `deprecate`, `unpublish`). A real npm write token is capped at 90 days since Oct 2025 | npm docs |
 | The release pipeline takes ~5 min (publish 3 min incl. 2 min e2e, smoke 2 min) | last two publish runs |
 
 Two consequences shape the design:
@@ -42,7 +42,7 @@ Two consequences shape the design:
 | Fix breaks CI on the PR | PR stays open, unmerged. Weekly sweeper closes stale failed Dependabot PRs. Dependabot re-opens when a newer fix version appears. | No |
 | Fix needs a major bump / peer conflict (e.g. Nest 12) | Dependabot PR fails CI; handled as above. | No |
 | Pre-publish gate fails (build/test/e2e on release) | No publish. Release is deleted/marked failed. Nothing changes for users. | No (a failed run is visible in Actions; optional silent status issue) |
-| **Published version fails the smoke test** | 1) move `latest` dist-tag back to previous good version, 2) `npm unpublish` the broken version (auth first, then core), 3) if unpublish fails, `npm deprecate` it instead, 4) mark GitHub release as pre-release, 5) open an issue assigned to `@rinormaloku` labelled `release-broken` | **Yes** — this is the only ping |
+| **Published version fails the smoke test** | 1) **roll forward**: re-publish the last good tag's code as the next version via OIDC (no secret), so `latest` and every caret range resolve to good code again, 2) mark the GitHub release as pre-release, 3) open an issue assigned to `@rinormaloku` labelled `release-broken` with the manual `npm deprecate` / `npm unpublish` commands, 4) pause automated releases while that issue is open | **Yes** — this is the only ping |
 
 Same guard applies to your manual feature releases: a broken manual release also rolls back
 and pings you.
@@ -50,6 +50,8 @@ and pings you.
 ## 3. Components
 
 ### 3.1 Repo hygiene (prerequisites)
+
+No npm token or other secret is needed anywhere in this design.
 
 - **Delete root `bun.lock`.** CI installs with `npm ci`; `bun test` runs against
   `node_modules` and does not read `bun.lock`. Keeping two lockfiles for one manifest is the
@@ -165,29 +167,28 @@ Decision (2026-09-07): no half-finished features ship — hence the bot-only-com
 
 ### 3.7 Post-publish guard and rollback (the only place you get paged)
 
-Extend the existing `smoke-test` job in `publish.yml` with a `rollback` job (`if: failure()`,
-`needs: smoke-test`):
+Two jobs after the existing `smoke-test` job in `publish.yml`, both only when a broken
+version was actually published:
 
-```bash
-PREV=$(npm view @rekog/mcp-nest dist-tags.latest)   # captured *before* publish, passed as output
-for p in @rekog/mcp-nest @rekog/mcp-nest-auth; do
-  npm dist-tag add "$p@$PREV" latest
-  npm deprecate "$p@$V" "Broken release, rolled back. Use $PREV."
-done
-gh release edit "v$V" --prerelease --notes "ROLLED BACK: smoke test failed. latest -> $PREV"
-gh issue create --title "Release v$V broken and rolled back" \
-  --assignee rinormaloku --label release-broken --body "<run url, failing step>"
-```
+**`roll-forward`** (no secret). Checks out the tag the dist-tag pointed at before the publish
+(`v<prev>`), runs `npm ci`, build and unit tests, publishes that code as the next version
+(`semver -i patch`, or `-i prerelease` on the `next` tag) through OIDC, and creates the
+matching tag + GitHub release so the tag list stays the source of truth. Users on a caret range
+resolve to good code again within minutes. The broken version stays listed on npm.
 
-Requirements:
-- **`NPM_TOKEN` secret**: a granular npm access token with *read & write* on both packages
-  (OIDC covers `publish` only). Used only by the rollback job.
-- `permissions: issues: write, contents: write` on that job.
-- Pre-release versions (`--tag next`) roll back the `next` tag instead of `latest`.
+**`rollback`** (GitHub only). Marks the broken GitHub release as pre-release with a banner and
+opens an issue assigned to `rinormaloku`, label `release-broken`, containing: run URL, what the
+roll-forward did, previous versions, and the exact manual commands (`npm deprecate`, or
+`npm unpublish` inside 72 h; `npm dist-tag add` if the roll-forward itself failed).
 
-Decision (2026-09-07): unpublish too. Order: dist-tag revert → `npm unpublish` (auth first,
-then core; inside npm's 72-hour window) → `npm deprecate` only as a fallback if unpublish is
-refused → mark release → open issue.
+Why no npm token: OIDC can only publish. A granular write token is capped at 90 days by npm,
+so it would expire every quarter and silently disable the cleanup — the opposite of hands-off.
+Decision (2026-09-07): registry cleanup of the broken version is a manual step, driven by the
+issue.
+
+**Pause rule.** `decide.sh` refuses to auto-release while an open `release-broken` issue
+exists. Otherwise the next scheduled run would re-release the same broken `main` and burn
+another version number every 6 hours. Closing the issue re-enables the automation.
 
 ### 3.8 Notifications
 
@@ -208,7 +209,8 @@ refused → mark release → open issue.
    `rollback` job. Add `NPM_TOKEN` secret *(you create the token)*.
 6. Add `auto-release.yml`.
 7. Dry-run the rollback path once: publish a `v2.0.3-rc.0` pre-release with an intentionally
-   broken smoke, confirm `next` moves back and an issue lands in your inbox. Delete the rc.
+   broken smoke, confirm the roll-forward re-publishes the previous code as `2.0.3-rc.1` and
+   an issue lands in your inbox. Close the issue.
 8. Add `dependabot-sweeper.yml` (optional).
 
 ## 5. Out of scope, but noted
@@ -236,7 +238,7 @@ Implemented on branch `security-automation` (PR pending):
 | `.github/workflows/dependabot-automerge.yml` | approve + `gh pr merge --auto --squash`; refuses a major bump of a shipped range |
 | `.github/workflows/dependabot-sweeper.yml` | Mondays: close Dependabot PRs red for > 7 days |
 | `.github/workflows/auto-release.yml` | every 6 h: bot-only + shipped-range check → tag + release → call publish |
-| `.github/workflows/publish.yml` | now also `workflow_call`; `resolve` job; `rollback` job |
+| `.github/workflows/publish.yml` | now also `workflow_call`; `resolve` job; `roll-forward` (OIDC re-publish of last good) + `rollback` (release banner + issue) jobs |
 | `scripts/release/{next-version,decide,rollback}.sh` | testable pieces of the above (`DRY_RUN=1`, `COMPARE_JSON_FILE=`) |
 | `scripts/release/admin-setup.sh` | the admin-only GitHub settings, idempotent |
 | `bun.lock` (root) | deleted and gitignored |
@@ -246,10 +248,7 @@ Implemented on branch `security-automation` (PR pending):
 1. `scripts/release/admin-setup.sh` — auto-merge on, Actions may approve PRs, required checks
    `test (20.x|22.x|24.x)` + `e2e` on the `protect-main` ruleset, `release-broken` label.
    Run it **after** this PR is merged (the `e2e` check only exists from then on).
-2. Create a granular npm token (read+write on both packages) → `gh secret set NPM_TOKEN`.
-   Without it a broken release is still detected and an issue is opened, but the npm side of
-   the rollback is skipped and the broken version stays on `latest`.
-3. Comment `@dependabot rebase` on #252, #254, #255. That fires `synchronize` and the new
+2. Comment `@dependabot rebase` on #252, #254, #255. That fires `synchronize` and the new
    auto-merge workflow handles them — the first live test. Close #253 (needs NestJS 12).
 
 ### Verify once, then forget
@@ -257,9 +256,9 @@ Implemented on branch `security-automation` (PR pending):
 - First Dependabot PR after setup: check it got an approval from `github-actions[bot]` and an
   "auto-merge enabled" badge, then merged on its own once `e2e` was green.
 - Rollback rehearsal (plan step 7): create a pre-release `v2.0.3-rc.0` whose smoke is forced
-  to fail, confirm `next` moves back, the version is unpublished and an issue lands in your
-  inbox. Open question to settle there: whether npm refuses to unpublish core while auth
-  still declares it as a peer (the deprecate fallback covers that case).
+  to fail, confirm the roll-forward publishes `2.0.3-rc.1` with the previous code on `next`,
+  and an issue lands in your inbox. Then close the issue and check the next scheduled
+  auto-release run says "paused" no more.
 
 ### Known limits
 

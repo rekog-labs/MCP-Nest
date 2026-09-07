@@ -19,7 +19,14 @@
 #      produces a byte-identical tarball and reaches nobody. Those merge, close
 #      their alert, and stop there.
 #
+# Condition 0: no open issue labelled `release-broken`. The rollback opens one
+# when a published version failed its smoke test. Until the maintainer closes
+# it, an automated release would just re-release the same broken `main` every
+# few hours (and the roll-forward would burn another version number each time).
+#
 # Inputs (environment):
+#   BROKEN_LABEL       issue label that pauses releases (default: release-broken)
+#   OPEN_BROKEN_ISSUES offline testing only: number of open issues to assume
 #   BASE_TAG           last non-prerelease tag, e.g. v2.0.2      (required)
 #   HEAD_SHA           commit to release, e.g. $GITHUB_SHA       (required)
 #   REPO               owner/name, e.g. rekog-labs/MCP-Nest      (required unless COMPARE_JSON_FILE)
@@ -87,6 +94,20 @@ if [ -n "${HEAD_SHA:-}" ] && [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
     echo "decide: resolved HEAD_SHA '${HEAD_SHA}' -> ${resolved}"
     HEAD_SHA="$resolved"
   fi
+fi
+
+# --- Condition 0: releases are paused while a rollback issue is open ---------
+BROKEN_LABEL="${BROKEN_LABEL:-release-broken}"
+if [ -n "${COMPARE_JSON_FILE:-}" ]; then
+  open_broken="${OPEN_BROKEN_ISSUES:-0}"
+else
+  : "${REPO:?REPO is required (owner/name), or set COMPARE_JSON_FILE}"
+  command -v gh >/dev/null 2>&1 || fail "gh is required"
+  # A label that does not exist yet simply matches nothing.
+  open_broken="$(gh issue list --repo "$REPO" --state open --label "$BROKEN_LABEL" --limit 1 --json number --jq 'length' 2>/dev/null || echo 0)"
+fi
+if [ "${open_broken:-0}" -gt 0 ]; then
+  emit false "an open '${BROKEN_LABEL}' issue exists; automated releases are paused until it is closed"
 fi
 
 if [ -n "${COMPARE_JSON_FILE:-}" ]; then
