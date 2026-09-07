@@ -206,7 +206,7 @@ another version number every 6 hours. Closing the issue re-enables the automatio
 4. Add `dependabot.yml`, `dependabot-automerge.yml`. Verify on the next Dependabot PR that it
    merges itself.
 5. Refactor `publish.yml`: `workflow_call` input + pre-publish capture of previous `latest` +
-   `rollback` job. Add `NPM_TOKEN` secret *(you create the token)*.
+   `roll-forward` and `rollback` jobs. No secret needed.
 6. Add `auto-release.yml`.
 7. Dry-run the rollback path once: publish a `v2.0.3-rc.0` pre-release with an intentionally
    broken smoke, confirm the roll-forward re-publishes the previous code as `2.0.3-rc.1` and
