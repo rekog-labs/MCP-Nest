@@ -9,3 +9,7 @@ tsconfig.build.tsbuildinfo
 
 # Example npm lockfiles churn when switching between local/published mcp-nest
 examples/**/package-lock.json
+
+# Root lockfile is package-lock.json only; bun test does not read bun.lock and a second
+# lockfile goes stale on every Dependabot bump (Dependabot edits package-lock.json only).
+/bun.lock

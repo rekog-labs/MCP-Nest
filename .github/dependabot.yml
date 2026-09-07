@@ -1,0 +1,58 @@
+# Security updates only.
+#
+# `open-pull-requests-limit: 0` is the documented way to turn *version* updates
+# off for an ecosystem ("you can temporarily disable version updates for a
+# package manager by setting this option to zero"). Security update PRs are
+# explicitly exempt: "Security update pull requests are not subject to this
+# limit and do not count toward it." So this file produces exactly one class of
+# PR -- a vulnerability fix -- and no routine dependency churn.
+#
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+version: 2
+updates:
+  # Root workspace: this is where every open Dependabot alert lives, because it
+  # is the only committed npm lockfile that resolves the dev/runtime tree.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: chore(deps)
+    labels:
+      - dependencies
+      - security
+    groups:
+      # One PR per batch of security fixes instead of one per package: fewer
+      # runs of the e2e gate, one auto-merge, one (possible) release.
+      # `applies-to` defaults to version-updates, which we have disabled, so it
+      # must be set explicitly here.
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+
+  # The e2e project is a standalone package (deliberately outside the npm
+  # workspace) whose whole purpose is to drive the examples with an
+  # intentionally old client.
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: chore(deps)
+    labels:
+      - dependencies
+      - security
+    groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    ignore:
+      # Pinned at 1.10.0 on purpose: it is the floor of @rekog/mcp-nest's
+      # supported peer range and the backward-compatibility contract the e2e
+      # suite exists to check. Bumping it would silently delete the test's
+      # reason to exist, so no update -- security included -- may move it.
+      - dependency-name: '@modelcontextprotocol/sdk'

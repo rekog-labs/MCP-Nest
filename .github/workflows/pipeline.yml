@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+# One run per ref. Dependabot rebases its PRs (force-push -> `synchronize`)
+# whenever main moves, so without this every rebase would leave an obsolete
+# run burning a runner while the auto-merge gate waits on the newest one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -41,3 +48,39 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
+
+  # `npm test` exercises the packages in isolation. This boots every
+  # examples/<name> as a real subprocess against a local build and drives it
+  # with both protocol eras (a pinned old 1.10.0 client and a modern
+  # 2026-07-28 one). It is the gate that makes unattended Dependabot
+  # auto-merge safe: a lockfile bump that breaks a real server shows up here
+  # and nowhere else on a PR.
+  #
+  # This job's name is a required status check on `main` -- keep it stable.
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `scripts/use-examples.sh local` repoints every examples/<name> at the
+      # workspace packages, then `npm run build` builds them, then the harness
+      # runs `npm install` per example before booting it -- so this single
+      # script is the whole e2e setup. Same step publish.yml runs pre-release.
+      - name: Run example e2e against a local build
+        run: npm run e2e:local

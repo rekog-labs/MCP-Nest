@@ -1,0 +1,67 @@
+name: Dependabot sweeper
+
+# Some security fixes are simply not applicable yet -- the patched version needs
+# a peer we cannot take (a NestJS major, say). Those PRs go red and stay red.
+# Closing them is not "ignoring the vulnerability": Dependabot re-opens a fresh
+# PR as soon as a newer, installable patched version exists. That is exactly why
+# this workflow never posts `@dependabot ignore ...` -- an ignore would suppress
+# the fix permanently, a close only clears the desk.
+on:
+  schedule:
+    # Mondays, early UTC.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  sweep:
+    name: Close stale failing Dependabot PRs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Close Dependabot PRs that have been red for over 7 days
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          CUTOFF=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          echo "Closing failing Dependabot PRs not updated since $CUTOFF"
+
+          # statusCheckRollup is the head commit's combined check status. Check
+          # runs report `conclusion`, classic commit statuses report `state`;
+          # take whichever is present. A PR with no checks at all is left alone
+          # (absence of a result is not a failure).
+          gh pr list \
+            --author 'app/dependabot' \
+            --state open \
+            --limit 100 \
+            --json number,title,url,updatedAt,statusCheckRollup \
+            --jq '
+              map(select(.updatedAt < "'"$CUTOFF"'"))
+              | map(select(
+                  [.statusCheckRollup[]? | (.conclusion // .state // "")]
+                  | any(
+                      . == "FAILURE" or . == "ERROR" or . == "TIMED_OUT"
+                      or . == "STARTUP_FAILURE" or . == "ACTION_REQUIRED"
+                    )
+                ))
+              | .[] | "\(.number)\t\(.title)"
+            ' > stale.tsv
+
+          if [ ! -s stale.tsv ]; then
+            echo 'Nothing to sweep.'
+            exit 0
+          fi
+
+          while IFS=$'\t' read -r num title; do
+            [ -n "$num" ] || continue
+            echo "Closing #$num ($title)"
+            gh pr comment "$num" --body \
+              'Closing: CI has been failing on this PR for more than 7 days, so the patched version it proposes is not installable here yet. This is not an ignore -- Dependabot will open a fresh PR as soon as a newer patched version lands.'
+            gh pr close "$num"
+          done < stale.tsv

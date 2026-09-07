@@ -1,0 +1,94 @@
+name: Dependabot auto-merge
+
+# Runs on `pull_request`, not `pull_request_target`. Workflow runs triggered by
+# Dependabot "are treated as if they were opened from a repository fork" and so
+# get a read-only GITHUB_TOKEN by default; the documented fix is to "use the
+# permissions key in your workflow to increase the access for the token", which
+# is what the block below does. No repository secrets are read here -- only
+# GITHUB_TOKEN -- so the fork-like restriction costs us nothing and we never
+# check out or execute Dependabot's branch contents.
+#
+# https://docs.github.com/en/code-security/dependabot/troubleshooting-dependabot/troubleshooting-dependabot-on-github-actions
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    name: Dependabot auto-merge
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # A lockfile-only bump never reaches users: the published tarballs carry
+      # no lockfile, so users resolve our `dependencies` ranges themselves. A
+      # change to packages/*/package.json is different -- that range ships. A
+      # major bump of a shipped range is a compatibility decision, not a
+      # security patch, so it stops here.
+      - name: Detect changes to a shipped dependency range
+        id: shipped
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
+          echo "Changed files:"
+          echo "$files"
+          if printf '%s\n' "$files" | grep -Eq '^packages/[^/]+/package\.json$'; then
+            echo 'shipped=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'shipped=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Leave it to a human (major bump of a shipped range)
+        if: steps.meta.outputs.update-type == 'version-update:semver-major' && steps.shipped.outputs.shipped == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          DEPS: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          set -euo pipefail
+          MARKER='<!-- dependabot-automerge:needs-human -->'
+          # `synchronize` fires on every Dependabot rebase; only say this once.
+          # (Collected into a variable rather than piped into `grep -q`, which
+          # would SIGPIPE `gh` and trip `pipefail`.)
+          existing=$(gh pr view "$PR_URL" --json comments --jq '.comments[].body')
+          if printf '%s' "$existing" | grep -Fq "$MARKER"; then
+            echo 'Already commented on this PR; nothing to do.'
+            exit 0
+          fi
+          gh pr comment "$PR_URL" --body "$MARKER
+          Not auto-merging: this is a **major** version update (\`$DEPS\`) that changes a dependency range in \`packages/*/package.json\`, i.e. a range that ships to users and that their own installs must resolve. Widening or moving a published major range is a compatibility decision, so it needs a human. Auto-merge handles everything else."
+
+      - name: Approve
+        if: steps.meta.outputs.update-type != 'version-update:semver-major' || steps.shipped.outputs.shipped != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        # Re-approving on every `synchronize` is deliberate: the branch
+        # protection requires an approval of the most recent reviewable push,
+        # and Dependabot force-pushes when it rebases.
+        run: gh pr review --approve "$PR_URL"
+
+      - name: Enable auto-merge
+        if: steps.meta.outputs.update-type != 'version-update:semver-major' || steps.shipped.outputs.shipped != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        # `--auto` queues the merge behind the branch's required status checks
+        # (the `test (20.x|22.x|24.x)` matrix and `e2e`). If any of them fails,
+        # nothing merges and the PR just sits there for the sweeper.
+        run: gh pr merge --auto --squash "$PR_URL"

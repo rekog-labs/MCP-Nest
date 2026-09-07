@@ -3,21 +3,81 @@ name: Publish
 on:
   release:
     types: [published]
+  # Called by .github/workflows/auto-release.yml. A release created with
+  # GITHUB_TOKEN does NOT fire `release: published`, so the automation cannot
+  # rely on the event above and calls this workflow directly instead:
+  #   uses: ./.github/workflows/publish.yml
+  #   with: { tag: v2.0.3 }
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to build and publish, e.g. v2.0.3'
+        required: true
+        type: string
 
 permissions:
   contents: read
   id-token: write  # Required for OIDC trusted publishing
 
+# One release at a time per tag; never cancel a run that may already have
+# published, otherwise the rollback job would never get to run.
+concurrency:
+  group: publish-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
 jobs:
+  # Single place that knows how the release is identified. Every other job
+  # consumes these outputs instead of re-deriving them from the event, so the
+  # `release: published` and `workflow_call` entry points behave identically.
+  resolve:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.r.outputs.tag }}
+      version: ${{ steps.r.outputs.version }}
+      npm_tag: ${{ steps.r.outputs.npm_tag }}
+
+    steps:
+      - name: Resolve tag, version and npm dist-tag
+        id: r
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAG:-}" ]; then
+            echo "::error::No release tag: neither inputs.tag nor github.event.release.tag_name is set"
+            exit 1
+          fi
+          # Remove 'v' prefix if present
+          VERSION=${TAG#v}
+
+          # Check if this is a pre-release version
+          if [[ "$VERSION" =~ (alpha|beta|rc|next|canary) ]]; then
+            NPM_TAG=next
+          else
+            NPM_TAG=latest
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "npm_tag=$NPM_TAG" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG -> version $VERSION on npm dist-tag $NPM_TAG"
+
   publish:
     name: Publish to npm
+    needs: resolve
     runs-on: ubuntu-latest
+    outputs:
+      # Where the dist-tag pointed BEFORE we published. The rollback job needs
+      # this to put `latest`/`next` back on the last known-good version.
+      prev_core: ${{ steps.prev.outputs.prev_core }}
+      prev_auth: ${{ steps.prev.outputs.prev_auth }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ needs.resolve.outputs.tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -48,11 +108,32 @@ jobs:
       - name: Run example e2e against the build being released
         run: npm run e2e:local
 
-      - name: Update package versions
+      # Snapshot the dist-tag targets while they still point at the previous
+      # good release. Must happen before `npm publish` moves them. A tag that
+      # does not exist yet (first `next` pre-release) yields an empty string,
+      # which the rollback job treats as "nothing to restore".
+      - name: Record current dist-tag targets (for rollback)
+        id: prev
+        env:
+          NPM_TAG: ${{ needs.resolve.outputs.npm_tag }}
         run: |
-          TAG_VERSION=${{ github.event.release.tag_name }}
-          # Remove 'v' prefix if present
-          TAG_VERSION=${TAG_VERSION#v}
+          set -euo pipefail
+          for pkg in @rekog/mcp-nest @rekog/mcp-nest-auth; do
+            prev="$(npm view "$pkg" "dist-tags.$NPM_TAG" 2>/dev/null || true)"
+            # npm prints nothing (and may still exit 0) when the tag is unset.
+            prev="$(echo "$prev" | tr -d '[:space:]')"
+            echo "$pkg dist-tags.$NPM_TAG = ${prev:-<unset>}"
+            if [ "$pkg" = "@rekog/mcp-nest" ]; then
+              echo "prev_core=$prev" >> "$GITHUB_OUTPUT"
+            else
+              echo "prev_auth=$prev" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+      - name: Update package versions
+        env:
+          TAG_VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
           # Bump both published workspace packages to the release version.
           # (auth declares @rekog/mcp-nest as a peer with a >= range, so the
           # core bump does not require touching the auth peer range.)
@@ -61,16 +142,9 @@ jobs:
             -w @rekog/mcp-nest-auth
 
       - name: Publish to npm
+        env:
+          NPM_TAG: ${{ needs.resolve.outputs.npm_tag }}
         run: |
-          TAG_VERSION=${{ github.event.release.tag_name }}
-          TAG_VERSION=${TAG_VERSION#v}
-
-          # Check if this is a pre-release version
-          if [[ "$TAG_VERSION" =~ (alpha|beta|rc|next|canary) ]]; then
-            NPM_TAG=next
-          else
-            NPM_TAG=latest
-          fi
           echo "Publishing @rekog/mcp-nest and @rekog/mcp-nest-auth with --tag $NPM_TAG"
 
           # Publish core first, then the auth package (which peer-depends on it).
@@ -79,13 +153,13 @@ jobs:
 
   smoke-test:
     name: Smoke test published package
-    needs: publish
+    needs: [resolve, publish]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ needs.resolve.outputs.tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -96,15 +170,9 @@ jobs:
         with:
           bun-version: 1.3.4
 
-      - name: Resolve published version
-        id: ver
-        run: |
-          TAG=${{ github.event.release.tag_name }}
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-
       - name: Wait for npm propagation
         env:
-          V: ${{ steps.ver.outputs.version }}
+          V: ${{ needs.resolve.outputs.version }}
         run: |
           for pkg in @rekog/mcp-nest @rekog/mcp-nest-auth; do
             ok=0
@@ -126,7 +194,7 @@ jobs:
       - name: Install and smoke-test the published package
         working-directory: examples/server-examples
         env:
-          V: ${{ steps.ver.outputs.version }}
+          V: ${{ needs.resolve.outputs.version }}
         run: |
           # server-examples is a self-contained project that depends only on
           # @rekog/mcp-nest (no auth). Pin it to the just-published version so
@@ -142,7 +210,167 @@ jobs:
       # it can't drift onto a different build mid-release.
       - name: Run example e2e against the published package
         env:
-          V: ${{ steps.ver.outputs.version }}
+          V: ${{ needs.resolve.outputs.version }}
         run: |
           bash scripts/use-examples.sh published "$V"
           npm run e2e
+
+  # The only place the maintainer gets paged. Runs when something already went
+  # public (`publish` succeeded) and a later job failed — in practice the smoke
+  # test. A failure BEFORE publish (build/test/e2e gate) leaves
+  # needs.publish.result != 'success', so nothing is rolled back and nobody is
+  # pinged: nothing reached users.
+  # First line of defence after a failed smoke test, and the only one that
+  # needs NO secret: re-publish the last known-good release under the next
+  # version number, through the same OIDC trusted-publishing path as every
+  # normal release. Every user on a caret range then resolves to good code
+  # again. (OIDC can only `npm publish`; deprecating or unpublishing the broken
+  # version is the maintainer's manual step, see the `rollback` job.)
+  roll-forward:
+    name: Roll forward to last good version
+    needs: [resolve, publish, smoke-test]
+    if: failure() && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # tag + GitHub release for the roll-forward version
+      id-token: write   # OIDC trusted publishing
+    outputs:
+      # Set only after the roll-forward version is actually published.
+      version: ${{ steps.done.outputs.version }}
+
+    steps:
+      - name: Plan the roll-forward
+        id: plan
+        env:
+          BROKEN: ${{ needs.resolve.outputs.version }}
+          NPM_TAG: ${{ needs.resolve.outputs.npm_tag }}
+          PREV_CORE: ${{ needs.publish.outputs.prev_core }}
+          PREV_AUTH: ${{ needs.publish.outputs.prev_auth }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PREV_CORE" ]; then
+            echo "::warning::No previous '$NPM_TAG' version recorded for @rekog/mcp-nest; nothing to roll forward to."
+            echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ -n "$PREV_AUTH" ] && [ "$PREV_AUTH" != "$PREV_CORE" ]; then
+            echo "::warning::Previous versions differ (core $PREV_CORE, auth $PREV_AUTH); rolling both forward from tag v$PREV_CORE."
+          fi
+          PREV_TAG="v$PREV_CORE"
+          if ! gh api "repos/${{ github.repository }}/git/ref/tags/$PREV_TAG" --jq .object.sha >/dev/null 2>&1; then
+            echo "::warning::Tag $PREV_TAG does not exist; cannot roll forward."
+            echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Next version after the broken one. npm never allows a version to be
+          # reused, so the broken number is burned either way.
+          if [ "$NPM_TAG" = "next" ]; then
+            NEW="$(npx -y semver@7 -i prerelease "$BROKEN")"
+          else
+            NEW="$(npx -y semver@7 -i patch "$BROKEN")"
+          fi
+          echo "Roll forward: publish code of $PREV_TAG as $NEW on dist-tag $NPM_TAG (broken: $BROKEN)"
+          echo "skip=0" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout last good tag
+        if: steps.plan.outputs.skip == '0'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.plan.outputs.prev_tag }}
+
+      - name: Setup Node.js
+        if: steps.plan.outputs.skip == '0'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.plan.outputs.skip == '0'
+        with:
+          bun-version: 1.3.4
+
+      - name: Install, build, test the last good code
+        if: steps.plan.outputs.skip == '0'
+        run: |
+          npm ci
+          bun run build
+          npm test
+
+      - name: Publish the last good code as the roll-forward version
+        if: steps.plan.outputs.skip == '0'
+        env:
+          NEW: ${{ steps.plan.outputs.version }}
+          NPM_TAG: ${{ needs.resolve.outputs.npm_tag }}
+        run: |
+          set -euo pipefail
+          npm version "$NEW" --no-git-tag-version -w @rekog/mcp-nest -w @rekog/mcp-nest-auth
+          npm publish -w @rekog/mcp-nest --provenance --access public --tag "$NPM_TAG"
+          npm publish -w @rekog/mcp-nest-auth --provenance --access public --tag "$NPM_TAG"
+
+      - name: Tag and record the roll-forward release
+        if: steps.plan.outputs.skip == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW: ${{ steps.plan.outputs.version }}
+          PREV_TAG: ${{ steps.plan.outputs.prev_tag }}
+          BROKEN_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Tags are the source of truth for next-version.sh, so the
+          # roll-forward version must exist as a tag on the commit it was
+          # built from.
+          gh release create "v$NEW" \
+            --repo "${{ github.repository }}" \
+            --target "$(git rev-parse HEAD)" \
+            --title "v$NEW (roll-forward of $PREV_TAG)" \
+            --notes "Automatic roll-forward: $BROKEN_TAG failed its post-publish smoke test, so the code of $PREV_TAG was re-published as $NEW. No code changes relative to $PREV_TAG."
+
+      - name: Done
+        id: done
+        if: steps.plan.outputs.skip == '0'
+        env:
+          NEW: ${{ steps.plan.outputs.version }}
+        run: echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+  rollback:
+    name: Record broken release and page the maintainer
+    needs: [resolve, publish, smoke-test, roll-forward]
+    # Runs after roll-forward whether or not that succeeded; only when a broken
+    # version was actually published. GitHub-only: OIDC cannot deprecate or
+    # unpublish, and that cleanup is the maintainer's manual step, driven by
+    # the issue opened here (it contains the exact commands).
+    if: always() && needs.publish.result == 'success' && needs.smoke-test.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release edit
+      issues: write     # gh issue create / gh label create
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+
+      - name: Mark the release and open the issue
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          NPM_TAG: ${{ needs.resolve.outputs.npm_tag }}
+          PREV_CORE: ${{ needs.publish.outputs.prev_core }}
+          PREV_AUTH: ${{ needs.publish.outputs.prev_auth }}
+          ROLLED_FORWARD: ${{ needs.roll-forward.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ASSIGNEE: rinormaloku
+          LABEL: release-broken
+        run: bash scripts/release/rollback.sh
+
+      # Make the run itself red even though the step above is tolerant, so the
+      # rollback is never mistaken for a clean finish.
+      - name: Mark the run as failed
+        run: |
+          echo "::error::Release ${{ needs.resolve.outputs.tag }} was published and failed its smoke test. See the release-broken issue."
+          exit 1

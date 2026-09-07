@@ -49,6 +49,10 @@ Do not read `LATEST_PROTOCOL_VERSION` from the SDK as "the newest revision we sp
 - Tool methods are `(args, context, request)` — `request` is `undefined` under STDIO.
 - Tool `parameters` accept any Standard Schema, not just Zod (`zod` is not a core dependency).
 - `jest.config.js` at the root is a dead leftover; tests run under `bun test`.
+- The only root lockfile is `package-lock.json` (CI uses `npm ci`). Do not add a root `bun.lock`.
+- Releases: create a GitHub release `vX.Y.Z` → `publish.yml`. Security patches release
+  themselves (`auto-release.yml`, Dependabot auto-merge, rollback on a failed smoke test);
+  see `SECURITY-AUTOMATION-PLAN.md` before touching `.github/workflows/`.
 
 ## Directives
 - don't run linting, I don't care about it or formatting
