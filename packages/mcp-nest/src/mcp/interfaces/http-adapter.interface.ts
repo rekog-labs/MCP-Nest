@@ -7,7 +7,9 @@ export interface HttpRequest {
   headers: Record<string, string | string[] | undefined>;
   query: Record<string, any>;
   body?: any;
-  params?: Record<string, string>;
+  // A wildcard segment (Express 5 / path-to-regexp 8 `*splat`) matches more than
+  // one path segment, so a single param can arrive as an array of strings.
+  params?: Record<string, string | string[]>;
   /**
    * Get a header value by name (case-insensitive)
    */
