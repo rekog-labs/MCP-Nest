@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "multer": "^2.2.0",
+    "multer": "^2.3.0",
     "path-to-regexp": "^8.4.2",
     "rxjs": "^7.8.2"
   },
