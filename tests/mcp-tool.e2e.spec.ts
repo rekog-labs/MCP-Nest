@@ -697,10 +697,10 @@ describe('E2E: MCP ToolServer', () => {
     });
   };
 
-  // Elicitation stays LEGACY-ONLY. It is a server->client request, which on the
-  // modern era has to travel back over the request-scoped stream rather than a
-  // session; that wiring (the MRTR wrapper) isn't in place yet. This is a gap in
-  // the product, not in the parameterisation — see SPEC-2026-07-28-SUPPORT.md.
+  // Push-style elicitation (`elicitInput`) stays LEGACY-ONLY: it is a
+  // server->client request, a model 2026-07-28 removed. Its replacement, Multi
+  // Round-Trip Requests (`inputRequired(...)`), serves both eras and is covered
+  // in mcp-mrtr.e2e.spec.ts — see docs/mrtr.md.
   runElicitationTests('streamable http', createStreamableClientWithElicitation);
 
   describe.each(ERAS)(

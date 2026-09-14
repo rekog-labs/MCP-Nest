@@ -261,8 +261,11 @@ Independent of the era work — these are places we don't currently meet the spe
       *added* alongside it (`toContain('2026-07-28')`) to lock in the new default.
 
 Deliberately **not** doing now (deprecated ≥12 months, or out of scope):
-- MRTR migration for elicitation/sampling (`ctx.elicitInput` / `requestSampling` throw on the
-  modern era). Core doesn't expose them; only `serverMutator` users are affected → document.
+- ~~MRTR migration for elicitation/sampling~~ — **done** (`docs/mrtr.md`, `tests/mcp-mrtr.e2e.spec.ts`,
+  `examples/mrtr`): `inputRequired(...)` results pass through untouched, `McpContext` exposes
+  `getInputResponses` / `getAcceptedContent` / `getInputResponse` / `getRequestState` /
+  `getDroppedInputResponseKeys`, and `McpServerOptions` gains `requestState` (verify hook)
+  and `inputRequired` (shim knobs). The legacy push calls remain legacy-only.
 - Roots / Sampling / Logging deprecations — still normative for at least a year.
 - Tasks extension (`io.modelcontextprotocol/tasks`).
 
@@ -364,11 +367,11 @@ legacy wiring), a feature could work on one and break on the other. This closes 
       `mcp-dynamic-tools` register and unregister tools at runtime, and a shared app would
       leak that mutation across the two era passes. `statefulMode` being legacy-only means
       the modern client is unaffected by the transport config either way.
-- [x] Elicitation stays **legacy-only** (`mcp-tool.e2e.spec.ts`). It is a server→client
-      request, which on the modern era must travel back over the request-scoped stream
-      rather than a session; that wiring (the MRTR wrapper, §9) does not exist yet. This is
-      a product gap, not a parameterisation gap. The *fallback* path — a client without the
-      elicitation capability — does run on both eras.
+- [x] Push-style elicitation (`elicitInput`) stays **legacy-only** (`mcp-tool.e2e.spec.ts`).
+      Its replacement, MRTR (`inputRequired(...)`), is wired and covered on both eras in
+      `mcp-mrtr.e2e.spec.ts` (tools, resources, prompts, sampling, `requestState` verify,
+      the legacy shim and its `maxRounds` cap). The *fallback* path — a client without the
+      elicitation capability — runs on both eras.
 - [x] Nothing else needed excluding. The `sessionId` hits in `mcp-oauth-auth` are **OAuth**
       sessions (the auth store), not MCP sessions, so that suite parameterised cleanly.
 

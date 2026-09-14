@@ -50,7 +50,7 @@ stay pinned no matter what the workspace/examples upgrade to.
 
 ## Coverage
 
-One `*.test.ts` per example: `tools`, `resources`,
+One `*.test.ts` per example: `tools`, `mrtr`, `resources`,
 `resource-templates`, `prompts`, `dependency-injection`, `dynamic-capabilities`,
 `server-mutation`, `tool-discovery`, `multiple-servers`, `server-examples` (6
 transport variants), `custom-controllers`, `per-tool-authorization`,

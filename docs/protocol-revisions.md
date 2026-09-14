@@ -350,15 +350,24 @@ that push a request *down* to the client throw before any wire traffic:
 
 The error is a typed `MethodNotSupportedByProtocolVersion` whose message steers
 to the replacement, **Multi Round-Trip Requests**: the handler returns an
-`input_required` result (built with the SDK's `inputRequired({ ... })` helper),
-the client fulfils the embedded requests and retries the original call.
+`input_required` result (`inputRequired({ ... })`, re-exported by mcp-nest),
+the client fulfils the embedded requests and retries the original call, and the
+handler reads the answers back through `ctx.getAcceptedContent(...)` /
+`ctx.getInputResponse(...)` / `ctx.getRequestState()`. mcp-nest wires the loop
+for tools, resources and prompts, **on both eras** — on the legacy leg the SDK
+shim turns the embedded requests into real push requests — so one MRTR handler
+replaces the old call for every client. See the [MRTR guide](mrtr.md).
 
-On a dual-era server these calls still work on the legacy leg, so a tool that
-uses them keeps working for old clients and fails for new ones. If you have such
-a tool — including anything reached through a
-[`serverMutator`](server-mutation.md) — either gate it on
-`ctx.getSession().era === 'legacy'`, or serve that endpoint with
+On a dual-era server the old push calls still work on the legacy leg, so a tool
+that uses them keeps working for old clients and fails for new ones. If you have
+such a tool — including anything reached through a
+[`serverMutator`](server-mutation.md) — migrate it to `inputRequired`, or gate
+it on `ctx.getSession().era === 'legacy'`, or serve that endpoint with
 `protocol: 'legacy-only'` until it is migrated.
+
+Two strategy options belong to this feature: `requestState.verify` (integrity
+check for the echoed state — use `createRequestStateCodec`) and `inputRequired`
+(`maxRounds`, `roundTimeoutMs`, `legacyShim` for the legacy shim).
 
 ### Deprecated, but still working
 

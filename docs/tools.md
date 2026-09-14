@@ -45,7 +45,8 @@ Tool methods are RPC handlers, so their parameters are bound with `@nestjs/micro
 
 2. **`@Ctx() ctx: McpContext`**: The MCP execution context providing access to:
    - `reportProgress()` - Method to report progress updates to the client (see [Tool with Progress Reporting](#tool-with-progress-reporting))
-   - `mcpServer` - Access to the underlying MCP server instance for advanced operations like elicitation
+   - `mcpServer` - Access to the underlying MCP server instance for advanced operations
+   - `getAcceptedContent` / `getInputResponse` / `getRequestState` - Multi Round-Trip Request answers on a retried call (see [MRTR](mrtr.md))
    - `mcpRequest` - The parsed JSON-RPC request
    - `log` - server-side logging
    - `getSession()` - `{ transport, stateless, era, sessionId }`. `era` is `'legacy'` (the 2025-era protocol) or `'modern'` (`2026-07-28`); `sessionId` is only ever set on `legacy`.
@@ -210,13 +211,47 @@ async sayHelloStructured(@Payload() { name, language }: { name: string; language
 
 ## Interactive Tool with Elicitation
 
-Tools can request additional input from users:
+Tools can request additional input from users. The portable way — it serves
+both `2026-07-28` and 2025-era clients from one handler — is **Multi Round-Trip
+Requests**: return `inputRequired({ … })` and read the answer back when the
+call is retried. See the [MRTR guide](mrtr.md) for the full model,
+`requestState` protection, sampling and roots.
 
-> **Legacy era only.** `elicitInput` (and sampling via `createMessage`) is a
-> push-style server→client request, a model that `2026-07-28` removed. On a
-> modern-era request the call throws before any wire traffic, with an error
-> steering you to Multi Round-Trip Requests (`inputRequired({ … })`). On a
-> dual-era server the same tool still works for 2025-era clients. Gate it on
+```typescript
+import { inputRequired, McpContext } from '@rekog/mcp-nest';
+
+const LANGUAGE = z.object({ language: z.enum(['en', 'es', 'fr', 'de']) });
+
+@Tool({
+  name: 'greet-user-interactive',
+  description: 'Interactive greeting with language selection',
+  parameters: z.object({ name: z.string() }),
+})
+sayHelloInteractive(@Payload() { name }: { name: string }, @Ctx() ctx: McpContext) {
+  const picked = ctx.getAcceptedContent('language', LANGUAGE);
+  if (!picked) {
+    // Round 1 (or the user declined / sent something invalid): ask.
+    return inputRequired({
+      inputRequests: {
+        language: inputRequired.elicit({
+          message: 'Please select your preferred language',
+          requestedSchema: LANGUAGE,
+        }),
+      },
+    });
+  }
+  return `Hello, ${name}! (in ${picked.language})`;
+}
+```
+
+### Legacy push-style elicitation
+
+`ctx.mcpServer.server.elicitInput` (and sampling via `createMessage`) is the
+2025 push-style server→client request, a model that `2026-07-28` removed.
+
+> **Legacy era only.** On a modern-era request the call throws before any wire
+> traffic, with an error steering you to `inputRequired({ … })`. On a dual-era
+> server the same tool still works for 2025-era clients. Gate it on
 > `ctx.getSession().era === 'legacy'`, or serve that endpoint with
 > `protocol: 'legacy-only'`. See
 > [Protocol Revisions](protocol-revisions.md#what-breaks).
@@ -426,7 +461,7 @@ Expected output:
 
 **Interactive tool call:**
 
-Interactive tool calls, use elicitation to get additional input from users. The **MCP Inspector CLI currently doesn't support elicitation**, but as soon as this [GitHub issue](https://github.com/modelcontextprotocol/inspector/issues/524) is resolved, you can test it with the command below. **In the meantime, you can test it using the MCP Inspector UI.**
+Interactive tool calls use elicitation to get additional input from users. The **MCP Inspector CLI does not answer elicitation** (see this [GitHub issue](https://github.com/modelcontextprotocol/inspector/issues/524)); the **Inspector UI does**, on both protocol eras — see [`examples/mrtr`](../examples/mrtr/README.md) for the steps.
 
 ```bash
 npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method tools/call --tool-name greet-user-interactive --tool-arg name=Bob

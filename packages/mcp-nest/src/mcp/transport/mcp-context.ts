@@ -1,15 +1,19 @@
 import { Logger } from '@nestjs/common';
 import { BaseRpcContext } from '@nestjs/microservices';
 import {
+  acceptedContent,
   BAGGAGE_META_KEY,
   CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
   ClientCapabilities,
   Implementation,
+  inputResponse,
+  InputResponseView,
   McpServer,
   PROTOCOL_VERSION_META_KEY,
   Progress,
   ServerContext,
+  StandardSchemaV1,
   TRACEPARENT_META_KEY,
   TRACESTATE_META_KEY,
 } from '@modelcontextprotocol/server';
@@ -235,6 +239,96 @@ export class McpContext
     if (tracestate !== undefined) trace.tracestate = tracestate;
     if (baggage !== undefined) trace.baggage = baggage;
     return trace;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Multi Round-Trip Requests (MRTR, protocol revision 2026-07-28)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The input responses a retried request carried (MRTR).
+   *
+   * A handler that returned `inputRequired({ inputRequests: { key: … } })` reads
+   * the client's answers here on re-entry, keyed by the identifiers it assigned.
+   * Entries are the bare response objects (`ElicitResult`, `CreateMessageResult`,
+   * `ListRootsResult`). `undefined` on a first round, or when the retry carried
+   * no responses.
+   *
+   * Works on both eras: on `2026-07-28` the client echoes them on its retry; on
+   * the legacy era the SDK's shim collects them from real server→client requests
+   * and re-enters the handler with the same shape.
+   *
+   * The values arrive from the client and are **not validated** — treat them as
+   * untrusted input. Prefer {@link getAcceptedContent} with a schema, or
+   * {@link getInputResponse} for the discriminated view.
+   */
+  getInputResponses(): Record<string, unknown> | undefined {
+    return this.sdkContext?.mcpReq.inputResponses;
+  }
+
+  /**
+   * Keys of `inputResponses` entries the SDK dropped because they were not bare
+   * response objects (for example the wrapped `{ method, result }` shape some
+   * peers emit). Re-issue the corresponding input request instead of failing
+   * hard — the spec says a server SHOULD ask again for missing information
+   * rather than return an error. Empty when nothing was dropped.
+   */
+  getDroppedInputResponseKeys(): string[] {
+    return this.sdkContext?.mcpReq.droppedInputResponseKeys ?? [];
+  }
+
+  /**
+   * One entry of the retried request's input responses as a discriminated view:
+   * `{ kind: 'missing' }`, `{ kind: 'elicit', action, content? }`,
+   * `{ kind: 'sampling', result }` or `{ kind: 'roots', roots }`. Use it to tell a
+   * declined or cancelled elicitation from a missing one.
+   */
+  getInputResponse(key: string): InputResponseView {
+    return inputResponse(this.getInputResponses(), key);
+  }
+
+  /**
+   * The accepted content of a form-mode elicitation response, or `undefined`
+   * when the key is missing, the user declined or cancelled, or the response is
+   * of another kind.
+   *
+   * Pass a Standard Schema (e.g. a Zod object) as the second argument to
+   * validate the untrusted client value before it reaches your code — a value
+   * that fails validation also reads as `undefined`, so both cases take the
+   * same branch: ask again, or give up. Only synchronous schemas are supported.
+   */
+  getAcceptedContent<T extends Record<string, unknown> = Record<string, unknown>>(
+    key: string,
+  ): T | undefined;
+  getAcceptedContent<S extends StandardSchemaV1>(
+    key: string,
+    schema: S,
+  ): StandardSchemaV1.InferOutput<S> | undefined;
+  getAcceptedContent(key: string, schema?: StandardSchemaV1): unknown {
+    const responses = this.getInputResponses();
+    return schema
+      ? acceptedContent(responses, key, schema)
+      : acceptedContent(responses, key);
+  }
+
+  /**
+   * The multi-round-trip `requestState` for this round, or `undefined` on a
+   * first round.
+   *
+   * With {@link McpServerOptions.requestState} configured (the recommended
+   * setup — pass `createRequestStateCodec(...).verify`), this is the **verified
+   * and decoded** payload the codec minted, and `T` is the type you minted.
+   * Without it, this is the raw wire string exactly as the client echoed it.
+   *
+   * **SECURITY:** `requestState` round-trips through the client and is
+   * attacker-controlled input on re-entry. The spec requires integrity
+   * protection (HMAC or AEAD) whenever the state influences authorization,
+   * resource access or business logic, and rejection of state that fails the
+   * check. The type parameter is a compile-time cast only — it proves nothing
+   * unless a verify hook backs it.
+   */
+  getRequestState<T = unknown>(): T | undefined {
+    return this.sdkContext?.mcpReq.requestState<T>();
   }
 
   private get progressToken(): string | number | undefined {

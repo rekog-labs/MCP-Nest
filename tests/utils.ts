@@ -32,6 +32,14 @@ export interface BootstrapMcpConfig {
   capabilities?: Record<string, unknown>;
   /** SEP-2549 per-operation cache hints for modern-era cacheable results. */
   cacheHints?: Record<string, { ttlMs?: number; cacheScope?: string }>;
+  /** MRTR `requestState` verify hook (e.g. `createRequestStateCodec(...).verify`). */
+  requestState?: { verify?: (state: string, ctx: any) => unknown };
+  /** MRTR serving knobs (`maxRounds`, `roundTimeoutMs`, `legacyShim`). */
+  inputRequired?: {
+    maxRounds?: number;
+    roundTimeoutMs?: number;
+    legacyShim?: boolean;
+  };
   serverMutator?: (server: any) => any;
   /**
    * Hook to configure the app after the microservice is connected but BEFORE
@@ -57,6 +65,8 @@ export async function bootstrapMcpApp(
     allowUnauthenticatedAccess: config.allowUnauthenticatedAccess,
     ...('capabilities' in config ? { capabilities: config.capabilities } : {}),
     ...(config.cacheHints ? { cacheHints: config.cacheHints as any } : {}),
+    ...(config.requestState ? { requestState: config.requestState } : {}),
+    ...(config.inputRequired ? { inputRequired: config.inputRequired } : {}),
     serverMutator: config.serverMutator,
     transports: config.transports ?? [
       new StreamableHttpTransport({ statefulMode: true }),

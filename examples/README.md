@@ -29,6 +29,7 @@ bunx @modelcontextprotocol/inspector --cli http://localhost:3000/mcp \
 | Project | Verifies | Notes |
 | --- | --- | --- |
 | [`tools`](./tools/) | [tools.md](../docs/tools.md) | tools, progress, output schema, elicitation, guards, filters |
+| [`mrtr`](./mrtr/) | [mrtr.md](../docs/mrtr.md) | Multi Round-Trip Requests: elicitation/sampling/roots via `inputRequired`, signed `requestState`, interactive client for both eras |
 | [`resources`](./resources/) | [resources.md](../docs/resources.md) | static resources |
 | [`resource-templates`](./resource-templates/) | [resource-templates.md](../docs/resource-templates.md) | parameterized URI templates |
 | [`prompts`](./prompts/) | [prompts.md](../docs/prompts.md) | prompt templates, roles, content types |

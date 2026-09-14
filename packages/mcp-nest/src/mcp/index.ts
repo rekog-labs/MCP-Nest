@@ -3,6 +3,7 @@ export * from './interfaces';
 export * from './services/tool-authorization.service';
 export * from './filters/mcp-exception.filter';
 export * from './utils/normalize-endpoint';
+export * from './mrtr';
 
 // Microservice transport strategy API
 export * from './transport/mcp-transport.constants';

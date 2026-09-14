@@ -461,6 +461,15 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         // required `ttlMs`/`cacheScope` fields on 2026-era results and leaves
         // 2025-era responses byte-identical.
         ...(this.options.cacheHints && { cacheHints: this.options.cacheHints }),
+        // MRTR (2026-07-28): the `requestState` verify hook and the round
+        // knobs ride the SDK server too, so one setting covers every transport
+        // and both eras (the legacy shim re-enters through the same seam).
+        ...(this.options.requestState && {
+          requestState: this.options.requestState,
+        }),
+        ...(this.options.inputRequired && {
+          inputRequired: this.options.inputRequired,
+        }),
       },
     );
 

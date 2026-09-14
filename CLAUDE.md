@@ -47,6 +47,10 @@ Do not read `LATEST_PROTOCOL_VERSION` from the SDK as "the newest revision we sp
 - `@rekog/mcp-nest-auth` ships as a separate package so core stays free of
   `typeorm`/`passport`/`@nestjs/jwt`. Import every auth symbol from it, not from core.
 - Tool methods are `(args, context, request)` — `request` is `undefined` under STDIO.
+- MRTR (Multi Round-Trip Requests, `2026-07-28`): handlers return `inputRequired({...})` and read
+  the retry's answers via `McpContext.getAcceptedContent/getInputResponse/getRequestState`. The
+  `requestState.verify` hook and `inputRequired` shim knobs are `McpServerOptions`. Works on both
+  eras (the SDK shim converts on legacy). See `docs/mrtr.md`.
 - Tool `parameters` accept any Standard Schema, not just Zod (`zod` is not a core dependency).
 - `jest.config.js` at the root is a dead leftover; tests run under `bun test`.
 - The only root lockfile is `package-lock.json` (CI uses `npm ci`). Do not add a root `bun.lock`.
