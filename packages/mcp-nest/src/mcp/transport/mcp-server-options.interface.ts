@@ -18,6 +18,21 @@ import { McpTransport } from './mcp-transport.interface';
 export type McpCacheHints = NonNullable<ServerOptions['cacheHints']>;
 
 /**
+ * The `requestState` integrity hook for Multi Round-Trip Requests (MRTR,
+ * protocol revision `2026-07-28`). Derived from the SDK's own option so the
+ * hook signature cannot drift. See {@link McpServerOptions.requestState}.
+ */
+export type McpRequestStateOptions = NonNullable<ServerOptions['requestState']>;
+
+/**
+ * Multi-round-trip serving knobs (`maxRounds`, `roundTimeoutMs`, `legacyShim`).
+ * Derived from the SDK's own option. See {@link McpServerOptions.inputRequired}.
+ */
+export type McpInputRequiredOptions = NonNullable<
+  ServerOptions['inputRequired']
+>;
+
+/**
  * Configuration for an {@link McpStrategy} — the NestJS microservice transport
  * strategy that powers an MCP server. Pass an instance to
  * `app.connectMicroservice({ strategy: new McpStrategy(options) })`, set the HTTP
@@ -77,6 +92,48 @@ export interface McpServerOptions {
    * @default undefined (`ttlMs: 0`, `cacheScope: 'private'` — nothing is cached)
    */
   cacheHints?: McpCacheHints;
+  /**
+   * Integrity hook for the Multi Round-Trip Request `requestState` (MRTR,
+   * `2026-07-28`). `verify` runs on every round whose echoed `requestState` is a
+   * string, **before** the handler, on both eras (the legacy shim's in-process
+   * rounds included). Throw to refuse the request: the client gets a wire-level
+   * `-32602` whose message is frozen to `"Invalid or expired requestState"`.
+   * The value `verify` resolves with is what
+   * {@link McpContext.getRequestState} returns to the handler.
+   *
+   * ⚠️ **`requestState` is attacker-controlled input on re-entry.** The spec
+   * requires integrity protection (HMAC or AEAD) whenever the state influences
+   * authorization, resource access or business logic, and rejection of state
+   * that fails verification. The SDK applies **no** protection by default. The
+   * recommended setup is the SDK's HMAC codec, re-exported by this package:
+   *
+   * ```ts
+   * const codec = createRequestStateCodec<MyState>({ key: process.env.MRTR_KEY! });
+   * new McpStrategy({ ..., requestState: { verify: codec.verify } });
+   * // in a handler: inputRequired({ requestState: await codec.mint(state) })
+   * // on re-entry:  ctx.getRequestState<MyState>()  // verified + decoded
+   * ```
+   *
+   * Left unset, handlers read the raw wire string and must verify it themselves.
+   *
+   * @default undefined (no verification — `getRequestState()` returns the raw string)
+   */
+  requestState?: McpRequestStateOptions;
+  /**
+   * Multi-round-trip serving knobs. On `2026-07-28` requests the client fulfils
+   * `input_required` returns itself. On 2025-era connections the SDK's legacy
+   * shim fulfils them server-side (real server→client requests, then handler
+   * re-entry), so a handler is written once and serves both eras.
+   *
+   * - `maxRounds` — handler re-entries per originating request before the shim
+   *   gives up (`isError` result for `tools/call`; JSON-RPC error for
+   *   `prompts/get` and `resources/read`). Default `8`.
+   * - `roundTimeoutMs` — per-leg timeout for the shim's server→client requests.
+   *   Human-paced; default `600_000`.
+   * - `legacyShim` — `false` makes an `input_required` return on a 2025-era
+   *   request fail loudly instead. Default `true`.
+   */
+  inputRequired?: McpInputRequiredOptions;
   /** Server instructions sent to clients on initialize. */
   instructions?: string;
   /** Mutate the SDK server right after creation (instrumentation, etc.). */

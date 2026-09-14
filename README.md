@@ -22,6 +22,7 @@ With `@rekog/mcp-nest` you define tools, resources, and prompts in a way that's 
 - 🕰️ **[Dual-Era Protocol Support](docs/protocol-revisions.md)**: One endpoint serves both the 2025-era protocol (`initialize` + sessions) and the stateless `2026-07-28` revision, concurrently — with **no change to your tool code**
 - 🔧 **[Tools](docs/tools.md)**: Expose NestJS methods as MCP tools with automatic discovery and Zod validation
   - 🛠️ **[Elicitation](docs/tools.md#interactive-tool-with-elicitation)**: Interactive tool calls with user input elicitation
+  - 🔁 **[Multi Round-Trip Requests](docs/mrtr.md)**: Elicitation, sampling and roots on protocol revision `2026-07-28` — one handler serves both eras
   - 🌐 **[HTTP Request Access](docs/tools.md#understanding-tool-method-parameters)**: Full access to request context within MCP handlers
   - 🔐 **[Per-Tool Authorization](docs/per-tool-authorization.md)**: Implement fine-grained authorization for tools
 - 📁 **[Resources](docs/resources.md)**: Serve content and data through MCP resource system

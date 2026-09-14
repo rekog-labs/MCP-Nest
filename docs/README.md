@@ -3,6 +3,7 @@
 - [Migration to the Strategy API](./migration-to-v2.md) — Moving from `McpModule.forRoot(options)` to `McpStrategy` + `@McpController`.
 - [Protocol Revisions & Dual-Era Serving](./protocol-revisions.md) — One endpoint serving both the 2025-era protocol and the stateless `2026-07-28` revision: what changes for tool authors (nothing), what breaks, and the new transport/context options.
 - [Tools Guide](./tools.md) — How to create and register tools.
+  - [Multi Round-Trip Requests (MRTR)](./mrtr.md) — Elicitation, sampling and roots on `2026-07-28`: return `inputRequired(...)`, read the answers back on retry, protect `requestState`. One handler serves both eras.
   - [Discovery and Registration of Tools](./tool-discovery-and-registration.md) — Automatic discovery via `@McpController` and runtime registration on the strategy.
   - [Dynamic Capabilities Guide](./dynamic-capabilities.md) — Register tools, resources, and prompts programmatically at runtime from databases or configuration.
   - [Per-Tool Authorization](./per-tool-authorization.md) — Concepts and mechanics of fine-grained authorization for individual tools.
