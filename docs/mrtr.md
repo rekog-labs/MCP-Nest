@@ -276,7 +276,15 @@ prompts get a JSON-RPC error.
 
 ## Driving it from a client
 
-The SDK client (`@modelcontextprotocol/client` ≥ 2.0) auto-fulfils by default:
+**MCP Inspector** (≥ 2.6, built on the SDK 2.0 client) drives MRTR on both
+eras: add the server, call the tool, and answer the elicitation dialogs. Its
+per-server *Settings → Protocol Era* switches between the legacy handshake
+(default) and `Modern (2026-07-28, sessionless)`; on the modern era the dialog
+carries an `INPUT_REQUIRED` badge and the answer is sent as a retry. The
+Inspector CLI cannot answer elicitation. `examples/mrtr/README.md` has the
+click-by-click steps.
+
+**The SDK client** (`@modelcontextprotocol/client` ≥ 2.0) auto-fulfils by default:
 
 ```typescript
 const client = new Client(

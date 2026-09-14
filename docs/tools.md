@@ -461,7 +461,7 @@ Expected output:
 
 **Interactive tool call:**
 
-Interactive tool calls, use elicitation to get additional input from users. The **MCP Inspector CLI currently doesn't support elicitation**, but as soon as this [GitHub issue](https://github.com/modelcontextprotocol/inspector/issues/524) is resolved, you can test it with the command below. **In the meantime, you can test it using the MCP Inspector UI.**
+Interactive tool calls use elicitation to get additional input from users. The **MCP Inspector CLI does not answer elicitation** (see this [GitHub issue](https://github.com/modelcontextprotocol/inspector/issues/524)); the **Inspector UI does**, on both protocol eras — see [`examples/mrtr`](../examples/mrtr/README.md) for the steps.
 
 ```bash
 npx @modelcontextprotocol/inspector@0.16.2 --cli http://localhost:3000/mcp --transport http --method tools/call --tool-name greet-user-interactive --tool-arg name=Bob
