@@ -8,6 +8,7 @@ import {
 import {
   McpServer,
   GetPromptResult,
+  isInputRequiredResult,
   ListToolsResult,
   ProtocolError,
   PromptArgument,
@@ -801,6 +802,9 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     result: any,
     outputSchema?: ToolInputSchema,
   ): Promise<any> {
+    if (isInputRequiredResult(result)) {
+      return result;
+    }
     if (result && typeof result === 'object' && Array.isArray(result.content)) {
       return result;
     }

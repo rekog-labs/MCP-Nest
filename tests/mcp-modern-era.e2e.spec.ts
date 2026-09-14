@@ -9,6 +9,7 @@ import { Controller, Injectable } from '@nestjs/common';
 import { Ctx, Payload } from '@nestjs/microservices';
 import { Client } from '@modelcontextprotocol/client';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { inputRequired } from '@modelcontextprotocol/server';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import {
@@ -77,6 +78,15 @@ class ModernCapabilities {
         },
       ],
     };
+  }
+
+  @Tool({
+    name: 'needs-input',
+    description: 'Asks the client for more input via MRTR',
+    parameters: z.object({}),
+  })
+  needsInput() {
+    return inputRequired({ requestState: 'pending' });
   }
 
   @Resource({
@@ -210,6 +220,7 @@ describe('modern era — capabilities', () => {
     const tools = await client.listTools();
     expect(tools.tools.map((t: any) => t.name).sort()).toEqual([
       'greet',
+      'needs-input',
       'talk',
       'whoami',
       'work',
@@ -221,6 +232,28 @@ describe('modern era — capabilities', () => {
     });
     expect(result.content[0].text).toBe('Hello, rinor!');
     await client.close();
+  });
+
+  it('returns an input_required result untouched (MRTR)', async () => {
+    const { status, json } = await rawPost(
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'needs-input', arguments: {}, _meta: envelope },
+      },
+      {
+        'MCP-Protocol-Version': MODERN,
+        'Mcp-Method': 'tools/call',
+        'Mcp-Name': 'needs-input',
+      },
+    );
+
+    expect(status).toBe(200);
+    // Must stay a structured input_required result, not stringified content.
+    expect(json.result.resultType).toBe('input_required');
+    expect(json.result.requestState).toBe('pending');
+    expect(json.result.content).toBeUndefined();
   });
 
   it('serves resources, resource templates and prompts', async () => {
