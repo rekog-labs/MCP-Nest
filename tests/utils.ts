@@ -51,6 +51,11 @@ export interface BootstrapMcpConfig {
    * NOT go here — mount the MCP route as an `McpHttpControllerFor` controller
    * and protect it with a `@UseGuards()` guard (passed via `controllers` /
    * `providers`) instead.
+   *
+   * The one exception is a suite whose subject *is* plain middleware on a
+   * self-mounted route, where no Nest guard can run — `resolveUser` reading the
+   * claims that middleware left behind (see `mcp-resolve-user.e2e.spec.ts`).
+   * There the middleware belongs here, deliberately.
    */
   configure?: (app: INestApplication) => void | Promise<void>;
 }

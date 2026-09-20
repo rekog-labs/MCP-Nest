@@ -14,30 +14,50 @@
  * middleware below leaves the claims nested under `req.auth.payload`, the Auth0
  * shape — the case a plain property name could not express. Left unset, the
  * strategy keeps reading `rawRequest.user`; the second block pins that.
+ *
+ * Because the option hands a hot, security-bearing path to user code, the later
+ * blocks pin the edges rather than the happy path: a resolver that throws must
+ * deny rather than escape as an unhandled rejection, a resolver that returns a
+ * promise must not pass for a principal (a truthy non-principal would read as
+ * "authenticated" under `allowUnauthenticatedAccess`), and stdio — which has no
+ * request — must never call the resolver at all.
  */
+import { join } from 'path';
 import { INestApplication } from '@nestjs/common';
 import { InsufficientScopeError } from '@modelcontextprotocol/client';
 import {
   McpController,
+  McpServerOptions,
+  PublicTool,
   StreamableHttpTransport,
   Tool,
   ToolRoles,
   ToolScopes,
 } from '@rekog/mcp-nest';
-import { bootstrapMcpApp, createEraClient, ERAS } from './utils';
+import {
+  bootstrapMcpApp,
+  createEraClient,
+  createStdioClient,
+  ERAS,
+} from './utils';
 
 const SCOPE_READ = 'reports:read';
 const SCOPE_WRITE = 'reports:write';
 const ROLE_ADMIN = 'admin';
 
-const CLAIMS_BY_TOKEN: Record<string, { scopes: string[]; roles: string[] }> =
-  {
-    'read-token': { scopes: [SCOPE_READ], roles: ['user'] },
-    'write-token': {
-      scopes: [SCOPE_READ, SCOPE_WRITE],
-      roles: ['user', ROLE_ADMIN],
-    },
-  };
+const CLAIMS_BY_TOKEN: Record<string, Record<string, unknown>> = {
+  'read-token': { scopes: [SCOPE_READ], roles: ['user'] },
+  'write-token': {
+    scopes: [SCOPE_READ, SCOPE_WRITE],
+    roles: ['user', ROLE_ADMIN],
+  },
+  // The OAuth 2.0 shape every real JWT uses: one space-delimited `scope` string
+  // rather than a `scopes` array.
+  'scope-string-token': {
+    sub: 'auth0|42',
+    scope: `${SCOPE_READ} ${SCOPE_WRITE}`,
+  },
+};
 
 /**
  * Authentication that never touches `req.user`: the claims land under
@@ -109,6 +129,18 @@ describe.each(ERAS)(
       const client = await createEraClient(era, port, bearer('read-token'));
       const names = (await client.listTools()).tools.map((t) => t.name);
       expect(names).toEqual(['read-reports']);
+      await client.close();
+    });
+
+    it('reads a space-delimited `scope` string, not only a `scopes` array', async () => {
+      const client = await createEraClient(
+        era,
+        port,
+        bearer('scope-string-token'),
+      );
+      const names = (await client.listTools()).tools.map((t) => t.name).sort();
+      // Both scopes, no roles — so the two scoped tools and not the role one.
+      expect(names).toEqual(['read-reports', 'write-reports']);
       await client.close();
     });
 
@@ -247,3 +279,207 @@ describe.each(ERAS)(
     });
   },
 );
+
+/**
+ * A resolver written the way a user writes one on the first try: no `?.`, because
+ * the middleware "always" runs. On a tokenless request it throws.
+ *
+ * It must not escape as an unhandled rejection. On the step-up route the call
+ * happens pre-dispatch, outside `handlePost`'s `try`, and the self-mounted route
+ * does not await the promise it returns — so a throw there would answer nothing
+ * at all and could take the process down. It has to read as "no principal".
+ */
+const throwingResolveUser = (rawRequest: unknown) =>
+  (rawRequest as { auth: { payload: Record<string, unknown> } }).auth.payload;
+
+describe.each(ERAS)(
+  'resolveUser that throws: the caller is anonymous, not a crash (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let port: number;
+    const unhandled: unknown[] = [];
+    const collectUnhandled = (reason: unknown) => unhandled.push(reason);
+
+    beforeAll(async () => {
+      process.on('unhandledRejection', collectUnhandled);
+      ({ app, port } = await bootstrapMcpApp({
+        name: 'test-resolve-user-throws',
+        controllers: [ReportTools],
+        resolveUser: throwingResolveUser,
+        // Step-up on purpose: its pre-dispatch check is the one call site that
+        // sits outside the transport's error handling.
+        transports: [
+          new StreamableHttpTransport({
+            statefulMode: true,
+            stepUpAuthorization: true,
+          }),
+        ],
+        configure: (nestApp) => {
+          nestApp.use(authPayloadMiddleware);
+        },
+      }));
+    });
+
+    afterAll(async () => {
+      process.off('unhandledRejection', collectUnhandled);
+      await app.close();
+    });
+
+    it('denies a tokenless tools/call instead of hanging', async () => {
+      const client = await createEraClient(era, port);
+
+      expect((await client.listTools()).tools).toEqual([]);
+      await expect(
+        client.callTool({ name: 'write-reports', arguments: {} }),
+      ).rejects.toThrow(/requires authentication/);
+      expect(unhandled).toEqual([]);
+
+      await client.close();
+    });
+
+    it('still serves the next caller', async () => {
+      const client = await createEraClient(era, port, bearer('write-token'));
+      const result: any = await client.callTool({
+        name: 'write-reports',
+        arguments: {},
+      });
+      expect(result.content[0].text).toBe('written');
+      await client.close();
+    });
+  },
+);
+
+@McpController()
+class FreemiumTools {
+  @Tool({ name: 'teaser', description: 'Free for anyone' })
+  @PublicTool()
+  async teaser() {
+    return { content: [{ type: 'text', text: 'teaser' }] };
+  }
+
+  @Tool({ name: 'plain-report', description: 'Any authenticated caller' })
+  async plainReport() {
+    return { content: [{ type: 'text', text: 'plain' }] };
+  }
+}
+
+describe.each(ERAS)(
+  'resolveUser with allowUnauthenticatedAccess (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let port: number;
+
+    beforeAll(async () => {
+      ({ app, port } = await bootstrapMcpApp({
+        name: 'test-resolve-user-freemium',
+        controllers: [FreemiumTools],
+        allowUnauthenticatedAccess: true,
+        resolveUser,
+        configure: (nestApp) => {
+          nestApp.use(authPayloadMiddleware);
+        },
+      }));
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('gives an anonymous caller the public tool only', async () => {
+      const client = await createEraClient(era, port);
+      expect((await client.listTools()).tools.map((t) => t.name)).toEqual([
+        'teaser',
+      ]);
+      await expect(
+        client.callTool({ name: 'plain-report', arguments: {} }),
+      ).rejects.toThrow(/requires authentication/);
+      await client.close();
+    });
+
+    it('opens the undecorated tool once the resolver yields a principal', async () => {
+      const client = await createEraClient(era, port, bearer('read-token'));
+      const names = (await client.listTools()).tools.map((t) => t.name).sort();
+      expect(names).toEqual(['plain-report', 'teaser']);
+      const result: any = await client.callTool({
+        name: 'plain-report',
+        arguments: {},
+      });
+      expect(result.content[0].text).toBe('plain');
+      await client.close();
+    });
+  },
+);
+
+/**
+ * An `async` resolver is a type error, so this one is cast past the types — the
+ * only way it can reach the strategy. It must not be mistaken for a principal:
+ * a promise is truthy, and freemium mode decides on `!user`, so a truthy
+ * non-principal would read as "authenticated" and open every undecorated tool.
+ */
+const promiseResolveUser = ((rawRequest: unknown) =>
+  Promise.resolve(
+    (rawRequest as { auth?: { payload?: Record<string, unknown> } }).auth
+      ?.payload,
+  )) as unknown as McpServerOptions['resolveUser'];
+
+describe.each(ERAS)(
+  'resolveUser that returns a promise: refused, not trusted (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let port: number;
+
+    beforeAll(async () => {
+      ({ app, port } = await bootstrapMcpApp({
+        name: 'test-resolve-user-promise',
+        controllers: [FreemiumTools],
+        allowUnauthenticatedAccess: true,
+        resolveUser: promiseResolveUser,
+        configure: (nestApp) => {
+          nestApp.use(authPayloadMiddleware);
+        },
+      }));
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('does not let a thenable authenticate the caller', async () => {
+      // The claims are there and the promise would resolve to them — but nothing
+      // may be judged on a value that has not settled.
+      const client = await createEraClient(era, port, bearer('write-token'));
+      expect((await client.listTools()).tools.map((t) => t.name)).toEqual([
+        'teaser',
+      ]);
+      await expect(
+        client.callTool({ name: 'plain-report', arguments: {} }),
+      ).rejects.toThrow(/requires authentication/);
+      await client.close();
+    });
+  },
+);
+
+describe('resolveUser on stdio: there is no request, so it is never called', () => {
+  it('leaves the resolver alone and yields no principal', async () => {
+    const client = await createStdioClient({
+      serverScriptPath: join(
+        __dirname,
+        'fixtures',
+        'stdio-resolve-user-server.ts',
+      ),
+    });
+
+    // The scoped tool stays hidden: no request means no principal, whatever the
+    // resolver would have returned.
+    const names = (await client.listTools()).tools.map((t) => t.name).sort();
+    expect(names).toEqual(['resolver-calls']);
+
+    const result = (await client.callTool({
+      name: 'resolver-calls',
+      arguments: {},
+    })) as { content: Array<{ text: string }> };
+    expect(JSON.parse(result.content[0].text)).toEqual({ resolverCalls: 0 });
+
+    await client.close();
+  });
+});

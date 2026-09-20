@@ -318,8 +318,9 @@ export class ToolAuthorizationService {
     const match = metadata.requiredScopesMatch ?? 'all';
 
     // Unauthenticated: 401 territory (or freemium's "requires authentication"),
-    // handled by whatever already denies it. Note this is also why the check is
-    // inert on a self-mounted route — no Nest guard ran, so there is no user.
+    // handled by whatever already denies it. A self-mounted route reaches this
+    // with a user too, whenever `McpServerOptions.resolveUser` reads the claims
+    // that plain middleware left behind — a Nest guard is not the only source.
     if (!user) return undefined;
 
     const missing = this.missingScopes(user, requiredScopes);

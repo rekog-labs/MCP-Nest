@@ -443,9 +443,11 @@ export class StreamableHttpTransport implements McpTransport {
    * inside the JSON-RPC pipeline — but by then the HTTP status is settled: the
    * 2025-era SDK transport has already committed to `200`, and on the modern era
    * `createMcpHandler` owns response writing outright, so once it begins there is
-   * no status left to change. `handlePost` already has the parsed body *and*, for
-   * a BYO-controller setup, a `req.user` populated by the Nest guard — everything
-   * the decision needs, at the last moment it can still choose a status. So the
+   * no status left to change. `handlePost` already has the parsed body *and* the
+   * caller — a `req.user` populated by the Nest guard in a BYO-controller setup, or
+   * whatever `McpServerOptions.resolveUser` reads on a self-mounted route —
+   * everything the decision needs, at the last moment it can still choose a
+   * status. So the
    * transport asks the strategy the question up front
    * ({@link McpTransportContext.toolCallScopeDeficiency}, which reads the same
    * `ToolAuthorizationService` the pipeline enforces with) and, on a shortfall,

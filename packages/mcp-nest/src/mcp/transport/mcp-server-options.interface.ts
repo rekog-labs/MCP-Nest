@@ -174,7 +174,7 @@ export interface McpServerOptions {
    * judge:
    *
    * - Scopes are read off `scope` (space-delimited) or `scopes` (array), roles
-   *   off `roles` — see {@link AuthenticatedUser}.
+   *   off `roles` or `user_data.roles` — see {@link AuthenticatedUser}.
    * - The same principal drives `tools/list` filtering, the `tools/call` denial
    *   and the step-up challenge, so the three cannot disagree.
    * - `undefined` means "no principal", exactly as a missing `req.user` does.
@@ -192,11 +192,32 @@ export interface McpServerOptions {
    *   (req as { auth?: { payload?: AuthenticatedUser } }).auth?.payload
    * ```
    *
+   * It must be **synchronous**: an authorization decision cannot wait, so an
+   * `async` resolver is a type error (that is what the `then?: never` is for) and
+   * a thenable returned past the types is refused at runtime. Do the token work
+   * in the middleware or guard that runs before the route, and read its result
+   * here.
+   *
+   * It should also be cheap and free of side effects. It runs on a hot path, and
+   * a resolver that answers differently for the same request would make the
+   * challenge and the denial contradict each other.
+   *
+   * Fails closed: a resolver that throws, or that returns anything other than an
+   * object or `undefined`, logs and counts as "no principal". A tool is never
+   * opened up by a broken resolver.
+   *
+   * **Fastify:** the argument is the raw Node `IncomingMessage`, not the Fastify
+   * request, so a claim that an `onRequest` hook put on the Fastify request is not
+   * visible here. Put it on `request.raw` instead. (The same limit applies to the
+   * default `req.user` read.)
+   *
    * Left unset, the strategy reads `rawRequest.user`.
    *
    * @default undefined (`rawRequest.user`)
    */
-  resolveUser?: (rawRequest: unknown) => AuthenticatedUser | undefined;
+  resolveUser?: (
+    rawRequest: unknown,
+  ) => (AuthenticatedUser & { then?: never }) | undefined;
 
   /**
    * Logging configuration.

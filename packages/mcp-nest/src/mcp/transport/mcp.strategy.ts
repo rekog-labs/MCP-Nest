@@ -531,13 +531,50 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
    * when configured, else `rawRequest.user`. The single place it is read, so
    * `tools/list`, `tools/call` and the step-up pre-check cannot disagree. No
    * request (STDIO) means no principal, and the resolver is not consulted.
+   *
+   * Fails closed. `resolveUser` is user code, and on the step-up route the call
+   * happens pre-dispatch, outside `handlePost`'s `try`, on a promise nothing
+   * awaits — so a throw there would escape as an unhandled rejection rather than
+   * as a denial, answering the client nothing at all. A throw, a thenable (an
+   * `async` resolver that got past the types) or any non-object is logged and
+   * treated as "no principal", which denies rather than grants:
+   * `allowUnauthenticatedAccess` decides on `!user`, and a truthy non-principal
+   * would read as authenticated.
    */
   private getUser(rawRequest?: unknown): AuthenticatedUser | undefined {
     if (!rawRequest) return undefined;
     const { resolveUser } = this.options;
-    return resolveUser
-      ? resolveUser(rawRequest)
-      : (rawRequest as { user?: AuthenticatedUser }).user;
+    if (!resolveUser) return (rawRequest as { user?: AuthenticatedUser }).user;
+    return this.resolveUserSafely(resolveUser, rawRequest);
+  }
+
+  /** {@link getUser}'s fail-closed call into the configured resolver. */
+  private resolveUserSafely(
+    resolveUser: NonNullable<McpServerOptions['resolveUser']>,
+    rawRequest: unknown,
+  ): AuthenticatedUser | undefined {
+    let resolved: unknown;
+    try {
+      resolved = resolveUser(rawRequest);
+    } catch (error) {
+      this.logger.error(
+        'resolveUser threw — treating the caller as unauthenticated',
+        error as Error,
+      );
+      return undefined;
+    }
+    if (resolved === undefined || resolved === null) return undefined;
+    if (
+      typeof resolved !== 'object' ||
+      typeof (resolved as { then?: unknown }).then === 'function'
+    ) {
+      this.logger.error(
+        'resolveUser must return an object or undefined, synchronously — ' +
+          'treating the caller as unauthenticated',
+      );
+      return undefined;
+    }
+    return resolved as AuthenticatedUser;
   }
 
   /**
