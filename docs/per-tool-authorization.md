@@ -13,8 +13,9 @@ concrete guides:
   `@rekog/mcp-nest-auth` authorization server.
 
 Both guides wire up the exact same decorators and authorization service described
-below — they differ only in how the caller's identity (`req.user`) gets
-populated.
+below — they differ only in how the user gets populated. By default that is
+`req.user`; see [Where the user is read from](#where-the-user-is-read-from)
+when your authentication keeps its claims elsewhere.
 
 ## Overview
 
@@ -52,14 +53,15 @@ Every request goes through two checks, and it helps to keep them separate:
 
 1. **Your guard — is this caller allowed in at all?** A NestJS guard on the MCP
    route reads the incoming token and either turns the request away or lets it in
-   and attaches the caller's identity as `req.user`. Because you mount the MCP
+   and attaches the user — as `req.user`, or anywhere else you point
+   [`resolveUser`](#where-the-user-is-read-from) at. Because you mount the MCP
    endpoint as an ordinary Nest controller (via `McpHttpControllerFor`), the guard
    runs at the HTTP layer on *every* transport request — the `initialize` POST, the
    `tools/list` POST, and each `tools/call` — before any tool logic runs.
 2. **The strategy — which tools may this caller see and use?** The built-in
-   `ToolAuthorizationService` reads `req.user` and the `@PublicTool()`,
-   `@ToolScopes()`, and `@ToolRoles()` decorators on each tool, filtering
-   `tools/list` and rejecting unauthorized `tools/call`.
+   `ToolAuthorizationService` reads the user (`req.user` by default) and the
+   `@PublicTool()`, `@ToolScopes()`, and `@ToolRoles()` decorators on each tool,
+   filtering `tools/list` and rejecting unauthorized `tools/call`.
 
 The guard does **authentication** (who you are, and whether you get in); the
 strategy does **authorization** (what you may do once you're in). The strategy
@@ -70,10 +72,73 @@ Notes:
 
 - There is **no module-level `guards` option** on `McpStrategy`. Put the auth
   guard on the MCP controller with `@UseGuards()` instead — that's what sets
-  `req.user`, which list-time filtering needs.
+  `req.user`, which list-time filtering needs. (Authentication that leaves its
+  claims somewhere other than `req.user` — including plain middleware on a
+  self-mounted route — points `resolveUser` at them instead; see below.)
 - `allowUnauthenticatedAccess` (freemium) and the per-tool decorators are passed
   to the `McpStrategy` constructor. See the
   [E2E test](../tests/mcp-per-tool-auth.e2e.spec.ts).
+
+### Where the user is read from
+
+By default the strategy reads the user off `req.user`. Authentication that
+keeps its claims elsewhere — `express-jwt` ≥ 7 writes them to `req.auth`,
+`express-oauth2-jwt-bearer` (Auth0) to `req.auth.payload`, and a
+client-credentials token has claims but no user at all — used to have to copy
+them onto `req.user`, even where that property already meant something else in
+the host app. Name the function that yields them instead:
+
+```typescript
+import { AuthenticatedUser, McpStrategy } from '@rekog/mcp-nest';
+
+new McpStrategy({
+  // ...
+  resolveUser: (req) =>
+    (req as { auth?: { payload?: AuthenticatedUser } }).auth?.payload,
+});
+```
+
+Whatever it returns is the user `@ToolScopes()` / `@ToolRoles()` judge —
+scopes off `scope` (space-delimited) or `scopes` (array), roles off `roles` (or
+`user_data.roles`) — for `tools/list` filtering, the `tools/call` denial and the
+step-up challenge alike. Returning `undefined` means "no user", exactly as a
+missing `req.user` does. The function is not called on STDIO, where there is no
+request. Left unset, the strategy reads `req.user` — through the very same
+path, so the rules below apply to it too.
+
+Because a guard is not the only way to supply the user, this also works with
+plain middleware on a self-mounted route, where no Nest guard can run.
+
+Three things to know:
+
+- **It must be synchronous.** An authorization decision cannot wait for a
+  promise, so an `async` resolver is a type error. Do the token work in the
+  middleware or guard that runs before the route, and read its result here.
+- **It fails closed.** A resolver that throws, or that returns anything other
+  than an object or `undefined`, is logged and counts as "no user". A broken
+  resolver hides tools; it never opens them.
+- **It runs once per request.** The result is cached on the request, so the
+  `tools/list` filter, the `tools/call` denial, the step-up challenge and
+  `McpContext.getUser()` all see the same answer.
+- **Fastify passes the raw Node request.** Under Fastify the argument is the
+  `IncomingMessage`, not the Fastify request, so a claim that an `onRequest` hook
+  set on the Fastify request is invisible. Put it on `request.raw` instead. (The
+  default `req.user` read has the same limit.)
+
+Your tool bodies can read the same user, so the claims need not be dug out
+of the request a second time:
+
+```typescript
+@Tool({ name: 'whoami', description: 'Who is calling' })
+@ToolScopes(['reports:read'])
+async whoami(_args: unknown, context: McpContext) {
+  const user = context.getUser();
+  return { content: [{ type: 'text', text: `${user?.sub ?? 'anonymous'}` }] };
+}
+```
+
+`McpContext.getUser()` returns exactly what the decorators were judged on, so a
+handler cannot disagree with the decision that let it run.
 
 ## Step-up authorization (`insufficient_scope`)
 
@@ -117,7 +182,7 @@ lie or actively harmful:
 | Case | Why |
 |---|---|
 | `@ToolRoles()` failure with scopes satisfied | A role deficiency has no scope to request; there is nothing the client could ask for. |
-| No resolved `req.user` | A self-mounted route has no guard and so no principal. mcp-nest does not invent authentication. |
+| No resolved `req.user` | A self-mounted route has no guard and so no user. mcp-nest does not invent authentication. |
 | `@PublicTool()`, or a tool with no `@ToolScopes()` | Nothing was required. |
 | JSON-RPC batches | A `403` fails the whole HTTP request, killing authorized siblings — and a status code cannot say "element 3 needs scopes". |
 

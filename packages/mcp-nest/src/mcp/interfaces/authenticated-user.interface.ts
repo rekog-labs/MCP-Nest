@@ -3,9 +3,12 @@
  * authorization logic is concerned.
  *
  * The core module never authenticates anyone itself — a guard or transport-level
- * auth middleware resolves the user and places it on `req.user`. Per-tool checks
- * (`@ToolScopes()`, `@ToolRoles()`) only read scopes and roles off that object, so
- * core depends on this structural type rather than on any concrete token payload.
+ * auth middleware does that, and the strategy then reads the result: off
+ * `req.user` by default, or from wherever `McpServerOptions.resolveUser` points
+ * when the claims live elsewhere (`req.auth`, `req.auth.payload`, ...). Per-tool
+ * checks (`@ToolScopes()`, `@ToolRoles()`) only read scopes and roles off that
+ * object, so core depends on this structural type rather than on any concrete
+ * token payload.
  *
  * The auth package's richer `JwtPayload` is structurally compatible with this
  * interface, so no coupling back to `@rekog/mcp-nest-auth` is required.

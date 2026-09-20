@@ -46,6 +46,7 @@ import {
 } from '../services/tool-authorization.service';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 import type { McpRequest } from '../interfaces/mcp-tool.interface';
+import type { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 import type {
   DynamicPromptDefinition,
   DynamicPromptHandler,
@@ -92,6 +93,14 @@ interface PromptCapability {
 let strategyIdCounter = 0;
 
 /**
+ * The default `McpServerOptions.resolveUser`: the user a Nest guard (or
+ * Passport) left on `req.user`. Runs through the same cached, fail-closed path
+ * as a custom resolver, so the two cannot behave differently.
+ */
+const readUserProperty = (rawRequest: unknown): AuthenticatedUser | undefined =>
+  (rawRequest as { user?: AuthenticatedUser }).user;
+
+/**
  * NestJS microservice transport strategy for the Model Context Protocol.
  *
  * Construct one, declare your `@McpController` classes in a module's
@@ -113,6 +122,15 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   private readonly authService = new ToolAuthorizationService();
   private httpAdapter?: HttpServer;
   private built = false;
+
+  /**
+   * One resolved user per raw request — see {@link getUser}. Weak, so the
+   * entry dies with the request object and nothing has to clear it.
+   */
+  private readonly resolvedUsers = new WeakMap<
+    object,
+    AuthenticatedUser | undefined
+  >();
 
   private readonly tools: ToolCapability[] = [];
   private readonly resources: ResourceCapability[] = [];
@@ -241,7 +259,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         `tools/list per caller (@ToolScopes / @ToolRoles / ` +
         `allowUnauthenticatedAccess). A public result may be cached by a client ` +
         `and reused outside the requesting caller's authorization context, so one ` +
-        `principal's visible tool set can be served to another. Use ` +
+        `user's visible tool set can be served to another. Use ` +
         `cacheScope: 'private' unless the list is genuinely identical for every caller.`,
     );
   }
@@ -380,7 +398,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
    *
    * Used to judge a SEP-2549 `cacheScope: 'public'` hint on `tools/list`: a
    * public hint lets a client cache the result and reuse it across authorization
-   * contexts, which on a caller-dependent list means one principal's visible tool
+   * contexts, which on a caller-dependent list means one user's visible tool
    * set leaking to another.
    */
   private toolListVariesByCaller(): boolean {
@@ -522,11 +540,83 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     return new McpContext(
       [server, request, { ...session, era, sessionId }, rawRequest, sdkContext],
       this.logger,
+      // Lazily, so a handler that never asks who the user is does not pay for
+      // the resolver — and so a handler that does asks the same cached question
+      // `@ToolScopes()` was judged on.
+      () => this.getUser(rawRequest),
     );
   }
 
-  private getUser(rawRequest?: unknown): any {
-    return rawRequest ? (rawRequest as { user?: unknown }).user : undefined;
+  /**
+   * The user per-tool authorization judges: `options.resolveUser(rawRequest)`
+   * when configured, else `rawRequest.user`. The single place it is read, so
+   * `tools/list`, `tools/call`, the step-up pre-check and
+   * {@link McpContext.getUser} cannot disagree. No request (STDIO) means no
+   * user, and the resolver is not consulted.
+   *
+   * Resolved once per request and cached in {@link resolvedUsers}, on both the
+   * default and the custom path: a `tools/call` with step-up enabled asks three
+   * times (pre-dispatch, in the pipeline, and again if the handler reads
+   * {@link McpContext.getUser}), and a resolver that costs something — or that
+   * is not perfectly pure — must not be able to answer those questions
+   * differently.
+   *
+   * Fails closed. `resolveUser` is user code on a hot path that no longer sits
+   * inside a `try` on the step-up route, so a throw here would escape as an
+   * unhandled rejection rather than as a denial. A throw, a thenable (an `async`
+   * resolver that got past the types) or any non-object is logged and treated as
+   * "no user", which denies rather than grants: `allowUnauthenticatedAccess`
+   * decides on `!user`, and a truthy non-user would read as authenticated. The
+   * default `rawRequest.user` read goes through the same check, so a guard that
+   * leaves a non-object there is refused the same way.
+   */
+  private getUser(rawRequest?: unknown): AuthenticatedUser | undefined {
+    if (!rawRequest) return undefined;
+
+    const cacheable = typeof rawRequest === 'object';
+    if (cacheable && this.resolvedUsers.has(rawRequest as object)) {
+      return this.resolvedUsers.get(rawRequest as object);
+    }
+    const { resolveUser } = this.options;
+    const user = resolveUser
+      ? this.resolveUserSafely('resolveUser', resolveUser, rawRequest)
+      : this.resolveUserSafely('rawRequest.user', readUserProperty, rawRequest);
+    if (cacheable) this.resolvedUsers.set(rawRequest as object, user);
+    return user;
+  }
+
+  /**
+   * {@link getUser}'s fail-closed call into a resolver. `source` names it in the
+   * log line, so the operator can tell a broken `resolveUser` from a guard that
+   * left something other than an object on `req.user`.
+   */
+  private resolveUserSafely(
+    source: 'resolveUser' | 'rawRequest.user',
+    resolveUser: NonNullable<McpServerOptions['resolveUser']>,
+    rawRequest: unknown,
+  ): AuthenticatedUser | undefined {
+    let resolved: unknown;
+    try {
+      resolved = resolveUser(rawRequest);
+    } catch (error) {
+      this.logger.error(
+        `${source} threw — treating the request as unauthenticated`,
+        error as Error,
+      );
+      return undefined;
+    }
+    if (resolved === undefined || resolved === null) return undefined;
+    if (
+      typeof resolved !== 'object' ||
+      typeof (resolved as { then?: unknown }).then === 'function'
+    ) {
+      this.logger.error(
+        `${source} must yield an object or undefined, synchronously — ` +
+          'treating the request as unauthenticated',
+      );
+      return undefined;
+    }
+    return resolved as AuthenticatedUser;
   }
 
   /**

@@ -7,6 +7,7 @@ import { INestApplication, ModuleMetadata } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
   MCP_STRATEGY,
+  McpServerOptions,
   McpStrategy,
   McpTransport,
   StreamableHttpTransport,
@@ -41,6 +42,8 @@ export interface BootstrapMcpConfig {
     legacyShim?: boolean;
   };
   serverMutator?: (server: any) => any;
+  /** Where per-tool authorization reads the user from (`McpServerOptions.resolveUser`). */
+  resolveUser?: McpServerOptions['resolveUser'];
   /**
    * Hook to configure the app after the microservice is connected but BEFORE
    * `startAllMicroservices()` / `listen()`. Use it for app-level setup such as
@@ -48,6 +51,11 @@ export interface BootstrapMcpConfig {
    * NOT go here — mount the MCP route as an `McpHttpControllerFor` controller
    * and protect it with a `@UseGuards()` guard (passed via `controllers` /
    * `providers`) instead.
+   *
+   * The one exception is a suite whose subject *is* plain middleware on a
+   * self-mounted route, where no Nest guard can run — `resolveUser` reading the
+   * claims that middleware left behind (see `mcp-resolve-user.e2e.spec.ts`).
+   * There the middleware belongs here, deliberately.
    */
   configure?: (app: INestApplication) => void | Promise<void>;
 }
@@ -67,6 +75,7 @@ export async function bootstrapMcpApp(
     ...(config.cacheHints ? { cacheHints: config.cacheHints as any } : {}),
     ...(config.requestState ? { requestState: config.requestState } : {}),
     ...(config.inputRequired ? { inputRequired: config.inputRequired } : {}),
+    ...(config.resolveUser ? { resolveUser: config.resolveUser } : {}),
     serverMutator: config.serverMutator,
     transports: config.transports ?? [
       new StreamableHttpTransport({ statefulMode: true }),

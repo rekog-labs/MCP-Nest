@@ -6,6 +6,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { HttpServer } from '@nestjs/common';
 import { McpTransport } from './mcp-transport.interface';
+import type { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 
 /**
  * Per-operation cache hints for `2026-07-28` cacheable results (SEP-2549).
@@ -79,7 +80,7 @@ export interface McpServerOptions {
    * outside of the initial request's authorization context (i.e. different access
    * tokens can leverage the same cache)." mcp-nest filters `tools/list` per
    * caller (`@ToolScopes()` / `@ToolRoles()` / `allowUnauthenticatedAccess`),
-   * so a `public` hint there can hand one principal's visible tool set to
+   * so a `public` hint there can hand one user's visible tool set to
    * another. The same reasoning applies to any `resources/*` result whose
    * contents depend on who asked. Mark a result `public` only when it is
    * genuinely identical for every caller, authenticated or not — the strategy
@@ -164,6 +165,63 @@ export interface McpServerOptions {
    * @default false
    */
   allowUnauthenticatedAccess?: boolean;
+
+  /**
+   * Where per-tool authorization reads the user from.
+   *
+   * The function receives the raw transport request and returns the user
+   * that `@ToolScopes()`, `@ToolRoles()` and `allowUnauthenticatedAccess`
+   * judge:
+   *
+   * - Scopes are read off `scope` (space-delimited) or `scopes` (array), roles
+   *   off `roles` or `user_data.roles` — see {@link AuthenticatedUser}.
+   * - The same user drives `tools/list` filtering, the `tools/call` denial,
+   *   the step-up challenge and {@link McpContext.getUser}, so they cannot
+   *   disagree. It is resolved at most once per request and cached for it —
+   *   as is the default `req.user` read.
+   * - `undefined` means "no user", exactly as a missing `req.user` does.
+   * - Not called on STDIO, where there is no request.
+   *
+   * For authentication that keeps its claims somewhere other than `req.user`,
+   * so they need not be copied there:
+   *
+   * ```ts
+   * // express-jwt ≥ 7 writes the claims to `req.auth`
+   * resolveUser: (req) => (req as { auth?: AuthenticatedUser }).auth
+   *
+   * // express-oauth2-jwt-bearer (Auth0) nests them one level deeper
+   * resolveUser: (req) =>
+   *   (req as { auth?: { payload?: AuthenticatedUser } }).auth?.payload
+   * ```
+   *
+   * It must be **synchronous**: an authorization decision cannot wait, so an
+   * `async` resolver is a type error (that is what the `then?: never` is for) and
+   * a thenable returned past the types is refused at runtime. Do the token work
+   * in the middleware or guard that runs before the route, and read its result
+   * here.
+   *
+   * It should also be cheap and free of side effects. It runs on a hot path, and
+   * a resolver that answers differently for the same request would make the
+   * challenge and the denial contradict each other.
+   *
+   * Fails closed: a resolver that throws, or that returns anything other than an
+   * object or `undefined`, logs and counts as "no user". A tool is never
+   * opened up by a broken resolver.
+   *
+   * **Fastify:** the argument is the raw Node `IncomingMessage`, not the Fastify
+   * request, so a claim that an `onRequest` hook put on the Fastify request is not
+   * visible here. Put it on `request.raw` instead. (The same limit applies to the
+   * default `req.user` read.)
+   *
+   * Left unset, the strategy reads `rawRequest.user` — through the same cached,
+   * fail-closed path, so a non-object left there is refused the same way.
+   *
+   * @default undefined (`rawRequest.user`)
+   */
+  resolveUser?: (
+    rawRequest: unknown,
+  ) => (AuthenticatedUser & { then?: never }) | undefined;
+
   /**
    * Logging configuration.
    * - `false` to disable MCP logging
