@@ -177,7 +177,8 @@ export interface McpServerOptions {
    *   off `roles` or `user_data.roles` — see {@link AuthenticatedUser}.
    * - The same principal drives `tools/list` filtering, the `tools/call` denial,
    *   the step-up challenge and {@link McpContext.getUser}, so they cannot
-   *   disagree. It is resolved at most once per request and cached for it.
+   *   disagree. It is resolved at most once per request and cached for it —
+   *   as is the default `req.user` read.
    * - `undefined` means "no principal", exactly as a missing `req.user` does.
    * - Not called on STDIO, where there is no request.
    *
@@ -212,7 +213,8 @@ export interface McpServerOptions {
    * visible here. Put it on `request.raw` instead. (The same limit applies to the
    * default `req.user` read.)
    *
-   * Left unset, the strategy reads `rawRequest.user`.
+   * Left unset, the strategy reads `rawRequest.user` — through the same cached,
+   * fail-closed path, so a non-object left there is refused the same way.
    *
    * @default undefined (`rawRequest.user`)
    */

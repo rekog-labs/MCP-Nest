@@ -93,6 +93,14 @@ interface PromptCapability {
 let strategyIdCounter = 0;
 
 /**
+ * The default `McpServerOptions.resolveUser`: the caller a Nest guard (or
+ * Passport) left on `req.user`. Runs through the same cached, fail-closed path
+ * as a custom resolver, so the two cannot behave differently.
+ */
+const readUserProperty = (rawRequest: unknown): AuthenticatedUser | undefined =>
+  (rawRequest as { user?: AuthenticatedUser }).user;
+
+/**
  * NestJS microservice transport strategy for the Model Context Protocol.
  *
  * Construct one, declare your `@McpController` classes in a module's
@@ -540,41 +548,50 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   }
 
   /**
-   * The principal per-tool authorization judges: `options.resolveUser(rawRequest)`
+   * The user per-tool authorization judges: `options.resolveUser(rawRequest)`
    * when configured, else `rawRequest.user`. The single place it is read, so
    * `tools/list`, `tools/call`, the step-up pre-check and
    * {@link McpContext.getUser} cannot disagree. No request (STDIO) means no
-   * principal, and the resolver is not consulted.
+   * user, and the resolver is not consulted.
    *
-   * Resolved once per request and cached in {@link resolvedUsers}: a `tools/call`
-   * with step-up enabled asks three times (pre-dispatch, in the pipeline, and
-   * again if the handler reads {@link McpContext.getUser}), and a resolver that
-   * costs something — or that is not perfectly pure — must not be able to answer
-   * those questions differently.
+   * Resolved once per request and cached in {@link resolvedUsers}, on both the
+   * default and the custom path: a `tools/call` with step-up enabled asks three
+   * times (pre-dispatch, in the pipeline, and again if the handler reads
+   * {@link McpContext.getUser}), and a resolver that costs something — or that
+   * is not perfectly pure — must not be able to answer those questions
+   * differently.
    *
    * Fails closed. `resolveUser` is user code on a hot path that no longer sits
    * inside a `try` on the step-up route, so a throw here would escape as an
    * unhandled rejection rather than as a denial. A throw, a thenable (an `async`
    * resolver that got past the types) or any non-object is logged and treated as
-   * "no principal", which denies rather than grants: `allowUnauthenticatedAccess`
-   * decides on `!user`, and a truthy non-principal would read as authenticated.
+   * "no user", which denies rather than grants: `allowUnauthenticatedAccess`
+   * decides on `!user`, and a truthy non-user would read as authenticated. The
+   * default `rawRequest.user` read goes through the same check, so a guard that
+   * leaves a non-object there is refused the same way.
    */
   private getUser(rawRequest?: unknown): AuthenticatedUser | undefined {
     if (!rawRequest) return undefined;
-    const { resolveUser } = this.options;
-    if (!resolveUser) return (rawRequest as { user?: AuthenticatedUser }).user;
 
     const cacheable = typeof rawRequest === 'object';
     if (cacheable && this.resolvedUsers.has(rawRequest as object)) {
       return this.resolvedUsers.get(rawRequest as object);
     }
-    const user = this.resolveUserSafely(resolveUser, rawRequest);
+    const { resolveUser } = this.options;
+    const user = resolveUser
+      ? this.resolveUserSafely('resolveUser', resolveUser, rawRequest)
+      : this.resolveUserSafely('rawRequest.user', readUserProperty, rawRequest);
     if (cacheable) this.resolvedUsers.set(rawRequest as object, user);
     return user;
   }
 
-  /** {@link getUser}'s fail-closed call into the configured resolver. */
+  /**
+   * {@link getUser}'s fail-closed call into a resolver. `source` names it in the
+   * log line, so the operator can tell a broken `resolveUser` from a guard that
+   * left something other than an object on `req.user`.
+   */
   private resolveUserSafely(
+    source: 'resolveUser' | 'rawRequest.user',
     resolveUser: NonNullable<McpServerOptions['resolveUser']>,
     rawRequest: unknown,
   ): AuthenticatedUser | undefined {
@@ -583,7 +600,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       resolved = resolveUser(rawRequest);
     } catch (error) {
       this.logger.error(
-        'resolveUser threw — treating the caller as unauthenticated',
+        `${source} threw — treating the caller as unauthenticated`,
         error as Error,
       );
       return undefined;
@@ -594,7 +611,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       typeof (resolved as { then?: unknown }).then === 'function'
     ) {
       this.logger.error(
-        'resolveUser must return an object or undefined, synchronously — ' +
+        `${source} must yield an object or undefined, synchronously — ` +
           'treating the caller as unauthenticated',
       );
       return undefined;

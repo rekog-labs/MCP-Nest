@@ -104,7 +104,8 @@ scopes off `scope` (space-delimited) or `scopes` (array), roles off `roles` (or
 `user_data.roles`) — for `tools/list` filtering, the `tools/call` denial and the
 step-up challenge alike. Returning `undefined` means "no principal", exactly as a
 missing `req.user` does. The function is not called on STDIO, where there is no
-request. Left unset, the strategy reads `req.user`.
+request. Left unset, the strategy reads `req.user` — through the very same
+path, so the rules below apply to it too.
 
 Because a guard is not the only way to supply the caller, this also works with
 plain middleware on a self-mounted route, where no Nest guard can run.
@@ -117,6 +118,9 @@ Three things to know:
 - **It fails closed.** A resolver that throws, or that returns anything other
   than an object or `undefined`, is logged and counts as "no principal". A broken
   resolver hides tools; it never opens them.
+- **It runs once per request.** The result is cached on the request, so the
+  `tools/list` filter, the `tools/call` denial, the step-up challenge and
+  `McpContext.getUser()` all see the same answer.
 - **Fastify passes the raw Node request.** Under Fastify the argument is the
   `IncomingMessage`, not the Fastify request, so a claim that an `onRequest` hook
   set on the Fastify request is invisible. Put it on `request.raw` instead. (The

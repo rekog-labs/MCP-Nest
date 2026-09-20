@@ -107,6 +107,20 @@ class ReportTools {
   }
 }
 
+@McpController()
+class FreemiumTools {
+  @Tool({ name: 'teaser', description: 'Free for anyone' })
+  @PublicTool()
+  async teaser() {
+    return { content: [{ type: 'text', text: 'teaser' }] };
+  }
+
+  @Tool({ name: 'plain-report', description: 'Any authenticated caller' })
+  async plainReport() {
+    return { content: [{ type: 'text', text: 'plain' }] };
+  }
+}
+
 describe.each(ERAS)(
   'resolveUser: the principal is read off req.auth.payload (%s era)',
   (era) => {
@@ -220,6 +234,59 @@ describe.each(ERAS)(
       await expect(
         client.callTool({ name: 'write-reports', arguments: {} }),
       ).rejects.toThrow(/requires authentication/);
+      await client.close();
+    });
+  },
+);
+
+/**
+ * A guard that leaves something other than an object on `req.user` — a bare
+ * token string, say. Before the default read shared the resolver's path, that
+ * truthy value passed freemium's `!user` and counted as authenticated, which
+ * opened every undecorated tool to it.
+ */
+const stringUserMiddleware = (
+  req: { user?: unknown },
+  _res: unknown,
+  next: () => void,
+) => {
+  req.user = 'not-an-object';
+  next();
+};
+
+describe.each(ERAS)(
+  'resolveUser unset: the default req.user read fails closed too (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let port: number;
+
+    beforeAll(async () => {
+      ({ app, port } = await bootstrapMcpApp({
+        name: 'test-resolve-user-default-fail-closed',
+        controllers: [FreemiumTools],
+        allowUnauthenticatedAccess: true,
+        configure: (nestApp) => {
+          nestApp.use(stringUserMiddleware);
+        },
+      }));
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('does not let a non-object req.user authenticate the caller', async () => {
+      const client = await createEraClient(era, port);
+
+      // Only the public tool: the undecorated one needs an authenticated user,
+      // and a string is not one.
+      expect((await client.listTools()).tools.map((t) => t.name)).toEqual([
+        'teaser',
+      ]);
+      await expect(
+        client.callTool({ name: 'plain-report', arguments: {} }),
+      ).rejects.toThrow(/requires authentication/);
+
       await client.close();
     });
   },
@@ -351,20 +418,6 @@ describe.each(ERAS)(
     });
   },
 );
-
-@McpController()
-class FreemiumTools {
-  @Tool({ name: 'teaser', description: 'Free for anyone' })
-  @PublicTool()
-  async teaser() {
-    return { content: [{ type: 'text', text: 'teaser' }] };
-  }
-
-  @Tool({ name: 'plain-report', description: 'Any authenticated caller' })
-  async plainReport() {
-    return { content: [{ type: 'text', text: 'plain' }] };
-  }
-}
 
 describe.each(ERAS)(
   'resolveUser with allowUnauthenticatedAccess (%s era)',
