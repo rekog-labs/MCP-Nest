@@ -42,7 +42,7 @@ export interface BootstrapMcpConfig {
     legacyShim?: boolean;
   };
   serverMutator?: (server: any) => any;
-  /** Where per-tool authorization reads the caller from (`McpServerOptions.resolveUser`). */
+  /** Where per-tool authorization reads the user from (`McpServerOptions.resolveUser`). */
   resolveUser?: McpServerOptions['resolveUser'];
   /**
    * Hook to configure the app after the microservice is connected but BEFORE

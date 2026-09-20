@@ -13,9 +13,8 @@ concrete guides:
   `@rekog/mcp-nest-auth` authorization server.
 
 Both guides wire up the exact same decorators and authorization service described
-below — they differ only in how the caller's identity gets populated. By default
-that is `req.user`; see
-[Where the caller's identity is read from](#where-the-callers-identity-is-read-from)
+below — they differ only in how the user gets populated. By default that is
+`req.user`; see [Where the user is read from](#where-the-user-is-read-from)
 when your authentication keeps its claims elsewhere.
 
 ## Overview
@@ -54,13 +53,13 @@ Every request goes through two checks, and it helps to keep them separate:
 
 1. **Your guard — is this caller allowed in at all?** A NestJS guard on the MCP
    route reads the incoming token and either turns the request away or lets it in
-   and attaches the caller's identity — as `req.user`, or anywhere else you point
-   [`resolveUser`](#where-the-callers-identity-is-read-from) at. Because you mount the MCP
+   and attaches the user — as `req.user`, or anywhere else you point
+   [`resolveUser`](#where-the-user-is-read-from) at. Because you mount the MCP
    endpoint as an ordinary Nest controller (via `McpHttpControllerFor`), the guard
    runs at the HTTP layer on *every* transport request — the `initialize` POST, the
    `tools/list` POST, and each `tools/call` — before any tool logic runs.
 2. **The strategy — which tools may this caller see and use?** The built-in
-   `ToolAuthorizationService` reads the caller (`req.user` by default) and the
+   `ToolAuthorizationService` reads the user (`req.user` by default) and the
    `@PublicTool()`, `@ToolScopes()`, and `@ToolRoles()` decorators on each tool,
    filtering `tools/list` and rejecting unauthorized `tools/call`.
 
@@ -80,9 +79,9 @@ Notes:
   to the `McpStrategy` constructor. See the
   [E2E test](../tests/mcp-per-tool-auth.e2e.spec.ts).
 
-### Where the caller's identity is read from
+### Where the user is read from
 
-By default the strategy reads the caller off `req.user`. Authentication that
+By default the strategy reads the user off `req.user`. Authentication that
 keeps its claims elsewhere — `express-jwt` ≥ 7 writes them to `req.auth`,
 `express-oauth2-jwt-bearer` (Auth0) to `req.auth.payload`, and a
 client-credentials token has claims but no user at all — used to have to copy
@@ -99,15 +98,15 @@ new McpStrategy({
 });
 ```
 
-Whatever it returns is the principal `@ToolScopes()` / `@ToolRoles()` judge —
+Whatever it returns is the user `@ToolScopes()` / `@ToolRoles()` judge —
 scopes off `scope` (space-delimited) or `scopes` (array), roles off `roles` (or
 `user_data.roles`) — for `tools/list` filtering, the `tools/call` denial and the
-step-up challenge alike. Returning `undefined` means "no principal", exactly as a
+step-up challenge alike. Returning `undefined` means "no user", exactly as a
 missing `req.user` does. The function is not called on STDIO, where there is no
 request. Left unset, the strategy reads `req.user` — through the very same
 path, so the rules below apply to it too.
 
-Because a guard is not the only way to supply the caller, this also works with
+Because a guard is not the only way to supply the user, this also works with
 plain middleware on a self-mounted route, where no Nest guard can run.
 
 Three things to know:
@@ -116,7 +115,7 @@ Three things to know:
   promise, so an `async` resolver is a type error. Do the token work in the
   middleware or guard that runs before the route, and read its result here.
 - **It fails closed.** A resolver that throws, or that returns anything other
-  than an object or `undefined`, is logged and counts as "no principal". A broken
+  than an object or `undefined`, is logged and counts as "no user". A broken
   resolver hides tools; it never opens them.
 - **It runs once per request.** The result is cached on the request, so the
   `tools/list` filter, the `tools/call` denial, the step-up challenge and
@@ -126,7 +125,7 @@ Three things to know:
   set on the Fastify request is invisible. Put it on `request.raw` instead. (The
   default `req.user` read has the same limit.)
 
-Your tool bodies can read the same principal, so the claims need not be dug out
+Your tool bodies can read the same user, so the claims need not be dug out
 of the request a second time:
 
 ```typescript
@@ -183,7 +182,7 @@ lie or actively harmful:
 | Case | Why |
 |---|---|
 | `@ToolRoles()` failure with scopes satisfied | A role deficiency has no scope to request; there is nothing the client could ask for. |
-| No resolved `req.user` | A self-mounted route has no guard and so no principal. mcp-nest does not invent authentication. |
+| No resolved `req.user` | A self-mounted route has no guard and so no user. mcp-nest does not invent authentication. |
 | `@PublicTool()`, or a tool with no `@ToolScopes()` | Nothing was required. |
 | JSON-RPC batches | A `403` fails the whole HTTP request, killing authorized siblings — and a status code cannot say "element 3 needs scopes". |
 

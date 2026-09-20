@@ -93,7 +93,7 @@ interface PromptCapability {
 let strategyIdCounter = 0;
 
 /**
- * The default `McpServerOptions.resolveUser`: the caller a Nest guard (or
+ * The default `McpServerOptions.resolveUser`: the user a Nest guard (or
  * Passport) left on `req.user`. Runs through the same cached, fail-closed path
  * as a custom resolver, so the two cannot behave differently.
  */
@@ -124,7 +124,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   private built = false;
 
   /**
-   * One resolved principal per raw request — see {@link getUser}. Weak, so the
+   * One resolved user per raw request — see {@link getUser}. Weak, so the
    * entry dies with the request object and nothing has to clear it.
    */
   private readonly resolvedUsers = new WeakMap<
@@ -259,7 +259,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         `tools/list per caller (@ToolScopes / @ToolRoles / ` +
         `allowUnauthenticatedAccess). A public result may be cached by a client ` +
         `and reused outside the requesting caller's authorization context, so one ` +
-        `principal's visible tool set can be served to another. Use ` +
+        `user's visible tool set can be served to another. Use ` +
         `cacheScope: 'private' unless the list is genuinely identical for every caller.`,
     );
   }
@@ -398,7 +398,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
    *
    * Used to judge a SEP-2549 `cacheScope: 'public'` hint on `tools/list`: a
    * public hint lets a client cache the result and reuse it across authorization
-   * contexts, which on a caller-dependent list means one principal's visible tool
+   * contexts, which on a caller-dependent list means one user's visible tool
    * set leaking to another.
    */
   private toolListVariesByCaller(): boolean {
@@ -540,7 +540,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     return new McpContext(
       [server, request, { ...session, era, sessionId }, rawRequest, sdkContext],
       this.logger,
-      // Lazily, so a handler that never asks who the caller is does not pay for
+      // Lazily, so a handler that never asks who the user is does not pay for
       // the resolver — and so a handler that does asks the same cached question
       // `@ToolScopes()` was judged on.
       () => this.getUser(rawRequest),
@@ -600,7 +600,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       resolved = resolveUser(rawRequest);
     } catch (error) {
       this.logger.error(
-        `${source} threw — treating the caller as unauthenticated`,
+        `${source} threw — treating the request as unauthenticated`,
         error as Error,
       );
       return undefined;
@@ -612,7 +612,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     ) {
       this.logger.error(
         `${source} must yield an object or undefined, synchronously — ` +
-          'treating the caller as unauthenticated',
+          'treating the request as unauthenticated',
       );
       return undefined;
     }

@@ -80,7 +80,7 @@ export interface McpServerOptions {
    * outside of the initial request's authorization context (i.e. different access
    * tokens can leverage the same cache)." mcp-nest filters `tools/list` per
    * caller (`@ToolScopes()` / `@ToolRoles()` / `allowUnauthenticatedAccess`),
-   * so a `public` hint there can hand one principal's visible tool set to
+   * so a `public` hint there can hand one user's visible tool set to
    * another. The same reasoning applies to any `resources/*` result whose
    * contents depend on who asked. Mark a result `public` only when it is
    * genuinely identical for every caller, authenticated or not — the strategy
@@ -167,19 +167,19 @@ export interface McpServerOptions {
   allowUnauthenticatedAccess?: boolean;
 
   /**
-   * Where per-tool authorization reads the caller from.
+   * Where per-tool authorization reads the user from.
    *
-   * The function receives the raw transport request and returns the principal
+   * The function receives the raw transport request and returns the user
    * that `@ToolScopes()`, `@ToolRoles()` and `allowUnauthenticatedAccess`
    * judge:
    *
    * - Scopes are read off `scope` (space-delimited) or `scopes` (array), roles
    *   off `roles` or `user_data.roles` — see {@link AuthenticatedUser}.
-   * - The same principal drives `tools/list` filtering, the `tools/call` denial,
+   * - The same user drives `tools/list` filtering, the `tools/call` denial,
    *   the step-up challenge and {@link McpContext.getUser}, so they cannot
    *   disagree. It is resolved at most once per request and cached for it —
    *   as is the default `req.user` read.
-   * - `undefined` means "no principal", exactly as a missing `req.user` does.
+   * - `undefined` means "no user", exactly as a missing `req.user` does.
    * - Not called on STDIO, where there is no request.
    *
    * For authentication that keeps its claims somewhere other than `req.user`,
@@ -205,7 +205,7 @@ export interface McpServerOptions {
    * challenge and the denial contradict each other.
    *
    * Fails closed: a resolver that throws, or that returns anything other than an
-   * object or `undefined`, logs and counts as "no principal". A tool is never
+   * object or `undefined`, logs and counts as "no user". A tool is never
    * opened up by a broken resolver.
    *
    * **Fastify:** the argument is the raw Node `IncomingMessage`, not the Fastify

@@ -1,16 +1,16 @@
 /**
  * `McpServerOptions.resolveUser` — where per-tool authorization reads the
- * caller from.
+ * user from.
  *
  * `tools/list` filtering, the `tools/call` denial and the step-up `403` all
- * judge the principal `McpStrategy.getUser()` yields, which used to be
+ * judge the user `McpStrategy.getUser()` yields, which used to be
  * `rawRequest.user` and nothing else. Authentication that keeps its claims
  * elsewhere — `express-jwt` ≥ 7 (`req.auth`), `express-oauth2-jwt-bearer`
  * (`req.auth.payload`), a client-credentials token with claims but no user at
  * all — had to copy them onto `req.user`, even where that property already
  * meant something else to the host app.
  *
- * `resolveUser` names the function that yields the principal instead. The
+ * `resolveUser` names the function that yields the user instead. The
  * middleware below leaves the claims nested under `req.auth.payload`, the Auth0
  * shape — the case a plain property name could not express. Left unset, the
  * strategy keeps reading `rawRequest.user`; the second block pins that.
@@ -18,9 +18,9 @@
  * Because the option hands a hot, security-bearing path to user code, the later
  * blocks pin the edges rather than the happy path: a resolver that throws must
  * deny rather than escape as an unhandled rejection, a resolver that returns a
- * promise must not pass for a principal (a truthy non-principal would read as
+ * promise must not pass for a user (a truthy non-user would read as
  * "authenticated" under `allowUnauthenticatedAccess`), one request must resolve
- * the caller exactly once, and stdio — which has no request — must never call the
+ * the user exactly once, and stdio — which has no request — must never call the
  * resolver at all.
  */
 import { join } from 'path';
@@ -122,7 +122,7 @@ class FreemiumTools {
 }
 
 describe.each(ERAS)(
-  'resolveUser: the principal is read off req.auth.payload (%s era)',
+  'resolveUser: the user is read off req.auth.payload (%s era)',
   (era) => {
     let app: INestApplication;
     let port: number;
@@ -161,7 +161,7 @@ describe.each(ERAS)(
       await client.close();
     });
 
-    it('lists every tool once the resolved principal covers it', async () => {
+    it('lists every tool once the resolved user covers it', async () => {
       const client = await createEraClient(era, port, bearer('write-token'));
       const names = (await client.listTools()).tools
         .map((t) => t.name)
@@ -170,7 +170,7 @@ describe.each(ERAS)(
       await client.close();
     });
 
-    it('hides every gated tool when the resolver yields no principal', async () => {
+    it('hides every gated tool when the resolver yields no user', async () => {
       const client = await createEraClient(era, port);
       expect((await client.listTools()).tools).toEqual([]);
       await client.close();
@@ -192,7 +192,7 @@ describe.each(ERAS)(
       await client.close();
     });
 
-    it('allows a tools/call the resolved principal covers', async () => {
+    it('allows a tools/call the resolved user covers', async () => {
       const client = await createEraClient(era, port, bearer('write-token'));
       const result: any = await client.callTool({
         name: 'write-reports',
@@ -293,7 +293,7 @@ describe.each(ERAS)(
 );
 
 describe.each(ERAS)(
-  'resolveUser: the step-up 403 judges the resolved principal (%s era)',
+  'resolveUser: the step-up 403 judges the resolved user (%s era)',
   (era) => {
     let app: INestApplication;
     let port: number;
@@ -321,7 +321,7 @@ describe.each(ERAS)(
 
     it('challenges a scope-deficient tools/call with insufficient_scope', async () => {
       // The pre-dispatch check asks the strategy through the same `getUser()`,
-      // so it sees the resolved principal too — here on a self-mounted route
+      // so it sees the resolved user too — here on a self-mounted route
       // with plain middleware, where no Nest guard could have set `req.user`.
       const client = await createEraClient(era, port, bearer('read-token'));
 
@@ -357,7 +357,7 @@ describe.each(ERAS)(
  * It must not escape as an unhandled rejection. On the step-up route the call
  * happens pre-dispatch, outside `handlePost`'s `try`, and the self-mounted route
  * does not await the promise it returns — so a throw there would answer nothing
- * at all and could take the process down. It has to read as "no principal".
+ * at all and could take the process down. It has to read as "no user".
  */
 const throwingResolveUser = (rawRequest: unknown) =>
   (rawRequest as { auth: { payload: Record<string, unknown> } }).auth.payload;
@@ -452,7 +452,7 @@ describe.each(ERAS)(
       await client.close();
     });
 
-    it('opens the undecorated tool once the resolver yields a principal', async () => {
+    it('opens the undecorated tool once the resolver yields a user', async () => {
       const client = await createEraClient(era, port, bearer('read-token'));
       const names = (await client.listTools()).tools.map((t) => t.name).sort();
       expect(names).toEqual(['plain-report', 'teaser']);
@@ -468,9 +468,9 @@ describe.each(ERAS)(
 
 /**
  * An `async` resolver is a type error, so this one is cast past the types — the
- * only way it can reach the strategy. It must not be mistaken for a principal:
+ * only way it can reach the strategy. It must not be mistaken for a user:
  * a promise is truthy, and freemium mode decides on `!user`, so a truthy
- * non-principal would read as "authenticated" and open every undecorated tool.
+ * non-user would read as "authenticated" and open every undecorated tool.
  */
 const promiseResolveUser = ((rawRequest: unknown) =>
   Promise.resolve(
@@ -551,7 +551,7 @@ describe.each(ERAS)(
         name: 'test-resolve-user-once',
         controllers: [WhoAmITools],
         resolveUser: countingResolveUser,
-        // With step-up on, one `tools/call` asks who the caller is three times:
+        // With step-up on, one `tools/call` asks who the user is three times:
         // the pre-dispatch check, the pipeline denial and the handler itself.
         transports: [
           new StreamableHttpTransport({
@@ -569,7 +569,7 @@ describe.each(ERAS)(
       await app.close();
     });
 
-    it('calls the resolver once and hands the handler the same principal', async () => {
+    it('calls the resolver once and hands the handler the same user', async () => {
       const client = await createEraClient(
         era,
         port,
@@ -582,7 +582,7 @@ describe.each(ERAS)(
         arguments: {},
       });
 
-      // `sub` proves the handler read the principal the decorators were judged
+      // `sub` proves the handler read the user the decorators were judged
       // on; `resolverCalls` proves all three reads shared one resolution.
       expect(JSON.parse(result.content[0].text)).toEqual({
         sub: 'auth0|42',
@@ -595,7 +595,7 @@ describe.each(ERAS)(
 );
 
 describe('resolveUser on stdio: there is no request, so it is never called', () => {
-  it('leaves the resolver alone and yields no principal', async () => {
+  it('leaves the resolver alone and yields no user', async () => {
     const client = await createStdioClient({
       serverScriptPath: join(
         __dirname,
@@ -604,7 +604,7 @@ describe('resolveUser on stdio: there is no request, so it is never called', () 
       ),
     });
 
-    // The scoped tool stays hidden: no request means no principal, whatever the
+    // The scoped tool stays hidden: no request means no user, whatever the
     // resolver would have returned.
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(['resolver-calls']);

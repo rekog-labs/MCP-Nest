@@ -444,7 +444,7 @@ export class StreamableHttpTransport implements McpTransport {
    * 2025-era SDK transport has already committed to `200`, and on the modern era
    * `createMcpHandler` owns response writing outright, so once it begins there is
    * no status left to change. `handlePost` already has the parsed body *and* the
-   * caller — a `req.user` populated by the Nest guard in a BYO-controller setup, or
+   * user — a `req.user` populated by the Nest guard in a BYO-controller setup, or
    * whatever `McpServerOptions.resolveUser` reads on a self-mounted route —
    * everything the decision needs, at the last moment it can still choose a
    * status. So the

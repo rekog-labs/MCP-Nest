@@ -1,9 +1,9 @@
 /**
  * A stdio server with a `resolveUser` that must never run.
  *
- * `resolveUser` answers "where does per-tool authorization read the caller
+ * `resolveUser` answers "where does per-tool authorization read the user
  * from", and stdio has no request to read one off. The resolver here counts its
- * own calls and would return a principal holding `reports:read`, so the test can
+ * own calls and would return a user holding `reports:read`, so the test can
  * tell the two failure modes apart: a resolver invoked with no request at all
  * (`resolverCalls > 0`), and a scoped tool wrongly opened by it.
  */

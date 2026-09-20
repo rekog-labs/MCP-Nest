@@ -257,7 +257,7 @@ ctx.mcpServer;                             // the MCP SDK server
 ctx.mcpRequest;                            // the parsed JSON-RPC request
 ctx.getSession();                          // { transport, stateless, era, sessionId }
 ctx.getRawRequest();                       // the Express/Fastify request (undefined for stdio)
-ctx.getUser();                             // the caller per-tool authorization judged
+ctx.getUser();                             // the user per-tool authorization judged (undefined for stdio)
 ctx.getProtocolVersion();                  // modern era only — undefined on legacy
 ctx.getClientCapabilities();               // modern era only — undefined on legacy
 ctx.getClientInfo();                       // modern era only — undefined on legacy
@@ -267,7 +267,7 @@ ctx.getClientInfo();                       // modern era only — undefined on l
 (`statefulMode` HTTP, stdio) **and** on every `2026-07-28` request, where they
 flow on that request's own response stream. They are no-ops only on the legacy
 per-request stateless mode. The three era accessors are new — see
-[Protocol Revisions](protocol-revisions.md). `getUser()` is the caller
+[Protocol Revisions](protocol-revisions.md). `getUser()` is the user that
 `@ToolScopes()` and `@ToolRoles()` were judged on, wherever the claims live — see
 [Per-Tool Authorization](per-tool-authorization.md).
 

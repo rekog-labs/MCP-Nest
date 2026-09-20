@@ -127,7 +127,7 @@ export class McpContext
     args: McpContextArgs,
     private readonly logger?: Logger,
     /**
-     * Yields the caller the strategy resolved for this request. Lazy and cached
+     * Yields the user the strategy resolved for this request. Lazy and cached
      * by the strategy, so calling {@link getUser} costs nothing extra.
      */
     private readonly userResolver?: () => AuthenticatedUser | undefined,
@@ -186,13 +186,13 @@ export class McpContext
   }
 
   /**
-   * The caller, as per-tool authorization sees them: whatever
+   * The user, as per-tool authorization sees it: whatever
    * {@link McpServerOptions.resolveUser} yields, else `rawRequest.user`.
    *
    * Read this rather than digging the claims out of {@link getRawRequest}
-   * again. It is the same principal `@ToolScopes()` and `@ToolRoles()` were
+   * again. It is the same user `@ToolScopes()` and `@ToolRoles()` were
    * judged on, so a handler cannot disagree with the decision that let it run.
-   * `undefined` means there is no principal — always the case on stdio.
+   * `undefined` means there is no user — always the case on stdio.
    */
   getUser<T extends AuthenticatedUser = AuthenticatedUser>(): T | undefined {
     return this.userResolver?.() as T | undefined;
