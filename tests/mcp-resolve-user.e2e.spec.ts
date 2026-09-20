@@ -19,13 +19,16 @@
  * blocks pin the edges rather than the happy path: a resolver that throws must
  * deny rather than escape as an unhandled rejection, a resolver that returns a
  * promise must not pass for a principal (a truthy non-principal would read as
- * "authenticated" under `allowUnauthenticatedAccess`), and stdio — which has no
- * request — must never call the resolver at all.
+ * "authenticated" under `allowUnauthenticatedAccess`), one request must resolve
+ * the caller exactly once, and stdio — which has no request — must never call the
+ * resolver at all.
  */
 import { join } from 'path';
 import { INestApplication } from '@nestjs/common';
+import { Ctx, Payload } from '@nestjs/microservices';
 import { InsufficientScopeError } from '@modelcontextprotocol/client';
 import {
+  McpContext,
   McpController,
   McpServerOptions,
   PublicTool,
@@ -459,6 +462,85 @@ describe.each(ERAS)(
   },
 );
 
+let resolverCalls = 0;
+
+const countingResolveUser = (rawRequest: unknown) => {
+  resolverCalls += 1;
+  return (rawRequest as { auth?: { payload?: Record<string, unknown> } }).auth
+    ?.payload;
+};
+
+@McpController()
+class WhoAmITools {
+  @Tool({ name: 'whoami', description: 'Report the caller' })
+  @ToolScopes([SCOPE_WRITE])
+  async whoami(@Payload() _args: unknown, @Ctx() context: McpContext) {
+    const user = context.getUser<{ sub?: string }>();
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ sub: user?.sub ?? null, resolverCalls }),
+        },
+      ],
+    };
+  }
+}
+
+describe.each(ERAS)(
+  'resolveUser: resolved once per request, and readable in the handler (%s era)',
+  (era) => {
+    let app: INestApplication;
+    let port: number;
+
+    beforeAll(async () => {
+      ({ app, port } = await bootstrapMcpApp({
+        name: 'test-resolve-user-once',
+        controllers: [WhoAmITools],
+        resolveUser: countingResolveUser,
+        // With step-up on, one `tools/call` asks who the caller is three times:
+        // the pre-dispatch check, the pipeline denial and the handler itself.
+        transports: [
+          new StreamableHttpTransport({
+            statefulMode: true,
+            stepUpAuthorization: true,
+          }),
+        ],
+        configure: (nestApp) => {
+          nestApp.use(authPayloadMiddleware);
+        },
+      }));
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('calls the resolver once and hands the handler the same principal', async () => {
+      const client = await createEraClient(
+        era,
+        port,
+        bearer('scope-string-token'),
+      );
+      resolverCalls = 0;
+
+      const result: any = await client.callTool({
+        name: 'whoami',
+        arguments: {},
+      });
+
+      // `sub` proves the handler read the principal the decorators were judged
+      // on; `resolverCalls` proves all three reads shared one resolution.
+      expect(JSON.parse(result.content[0].text)).toEqual({
+        sub: 'auth0|42',
+        resolverCalls: 1,
+      });
+
+      await client.close();
+    });
+  },
+);
+
 describe('resolveUser on stdio: there is no request, so it is never called', () => {
   it('leaves the resolver alone and yields no principal', async () => {
     const client = await createStdioClient({
@@ -478,7 +560,10 @@ describe('resolveUser on stdio: there is no request, so it is never called', () 
       name: 'resolver-calls',
       arguments: {},
     })) as { content: Array<{ text: string }> };
-    expect(JSON.parse(result.content[0].text)).toEqual({ resolverCalls: 0 });
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      resolverCalls: 0,
+      user: null,
+    });
 
     await client.close();
   });

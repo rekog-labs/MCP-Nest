@@ -17,7 +17,12 @@ import {
   TRACEPARENT_META_KEY,
   TRACESTATE_META_KEY,
 } from '@modelcontextprotocol/server';
-import { Context, McpRequest, SerializableValue } from '../interfaces';
+import {
+  AuthenticatedUser,
+  Context,
+  McpRequest,
+  SerializableValue,
+} from '../interfaces';
 
 export type McpTransportKind = 'stdio' | 'streamable-http';
 
@@ -121,6 +126,11 @@ export class McpContext
   constructor(
     args: McpContextArgs,
     private readonly logger?: Logger,
+    /**
+     * Yields the caller the strategy resolved for this request. Lazy and cached
+     * by the strategy, so calling {@link getUser} costs nothing extra.
+     */
+    private readonly userResolver?: () => AuthenticatedUser | undefined,
   ) {
     super(args);
     // On the modern era there is no connection to push down: server-initiated
@@ -167,9 +177,25 @@ export class McpContext
     return this.args[2];
   }
 
-  /** The raw transport request (Express/Fastify request for HTTP; `undefined` for stdio). */
+  /**
+   * The raw transport request (Express request for HTTP; the raw Node
+   * `IncomingMessage` under Fastify; `undefined` for stdio).
+   */
   getRawRequest<T = unknown>(): T | undefined {
     return this.args[3] as T | undefined;
+  }
+
+  /**
+   * The caller, as per-tool authorization sees them: whatever
+   * {@link McpServerOptions.resolveUser} yields, else `rawRequest.user`.
+   *
+   * Read this rather than digging the claims out of {@link getRawRequest}
+   * again. It is the same principal `@ToolScopes()` and `@ToolRoles()` were
+   * judged on, so a handler cannot disagree with the decision that let it run.
+   * `undefined` means there is no principal — always the case on stdio.
+   */
+  getUser<T extends AuthenticatedUser = AuthenticatedUser>(): T | undefined {
+    return this.userResolver?.() as T | undefined;
   }
 
   /**

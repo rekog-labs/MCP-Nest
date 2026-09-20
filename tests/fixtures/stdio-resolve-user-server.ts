@@ -9,8 +9,10 @@
  */
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { Ctx, Payload } from '@nestjs/microservices';
 import { z } from 'zod';
 import {
+  McpContext,
   McpController,
   McpStrategy,
   StdioTransport,
@@ -24,12 +26,20 @@ let resolverCalls = 0;
 class StdioCaller {
   @Tool({
     name: 'resolver-calls',
-    description: 'How often resolveUser ran',
+    description: 'How often resolveUser ran, and who the context reports',
     parameters: z.object({}),
   })
-  calls() {
+  calls(@Payload() _args: unknown, @Ctx() context: McpContext) {
     return {
-      content: [{ type: 'text', text: JSON.stringify({ resolverCalls }) }],
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            resolverCalls,
+            user: context.getUser() ?? null,
+          }),
+        },
+      ],
     };
   }
 

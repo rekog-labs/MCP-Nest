@@ -115,6 +115,15 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   private httpAdapter?: HttpServer;
   private built = false;
 
+  /**
+   * One resolved principal per raw request — see {@link getUser}. Weak, so the
+   * entry dies with the request object and nothing has to clear it.
+   */
+  private readonly resolvedUsers = new WeakMap<
+    object,
+    AuthenticatedUser | undefined
+  >();
+
   private readonly tools: ToolCapability[] = [];
   private readonly resources: ResourceCapability[] = [];
   private readonly templates: TemplateCapability[] = [];
@@ -523,29 +532,45 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     return new McpContext(
       [server, request, { ...session, era, sessionId }, rawRequest, sdkContext],
       this.logger,
+      // Lazily, so a handler that never asks who the caller is does not pay for
+      // the resolver — and so a handler that does asks the same cached question
+      // `@ToolScopes()` was judged on.
+      () => this.getUser(rawRequest),
     );
   }
 
   /**
    * The principal per-tool authorization judges: `options.resolveUser(rawRequest)`
    * when configured, else `rawRequest.user`. The single place it is read, so
-   * `tools/list`, `tools/call` and the step-up pre-check cannot disagree. No
-   * request (STDIO) means no principal, and the resolver is not consulted.
+   * `tools/list`, `tools/call`, the step-up pre-check and
+   * {@link McpContext.getUser} cannot disagree. No request (STDIO) means no
+   * principal, and the resolver is not consulted.
    *
-   * Fails closed. `resolveUser` is user code, and on the step-up route the call
-   * happens pre-dispatch, outside `handlePost`'s `try`, on a promise nothing
-   * awaits — so a throw there would escape as an unhandled rejection rather than
-   * as a denial, answering the client nothing at all. A throw, a thenable (an
-   * `async` resolver that got past the types) or any non-object is logged and
-   * treated as "no principal", which denies rather than grants:
-   * `allowUnauthenticatedAccess` decides on `!user`, and a truthy non-principal
-   * would read as authenticated.
+   * Resolved once per request and cached in {@link resolvedUsers}: a `tools/call`
+   * with step-up enabled asks three times (pre-dispatch, in the pipeline, and
+   * again if the handler reads {@link McpContext.getUser}), and a resolver that
+   * costs something — or that is not perfectly pure — must not be able to answer
+   * those questions differently.
+   *
+   * Fails closed. `resolveUser` is user code on a hot path that no longer sits
+   * inside a `try` on the step-up route, so a throw here would escape as an
+   * unhandled rejection rather than as a denial. A throw, a thenable (an `async`
+   * resolver that got past the types) or any non-object is logged and treated as
+   * "no principal", which denies rather than grants: `allowUnauthenticatedAccess`
+   * decides on `!user`, and a truthy non-principal would read as authenticated.
    */
   private getUser(rawRequest?: unknown): AuthenticatedUser | undefined {
     if (!rawRequest) return undefined;
     const { resolveUser } = this.options;
     if (!resolveUser) return (rawRequest as { user?: AuthenticatedUser }).user;
-    return this.resolveUserSafely(resolveUser, rawRequest);
+
+    const cacheable = typeof rawRequest === 'object';
+    if (cacheable && this.resolvedUsers.has(rawRequest as object)) {
+      return this.resolvedUsers.get(rawRequest as object);
+    }
+    const user = this.resolveUserSafely(resolveUser, rawRequest);
+    if (cacheable) this.resolvedUsers.set(rawRequest as object, user);
+    return user;
   }
 
   /** {@link getUser}'s fail-closed call into the configured resolver. */

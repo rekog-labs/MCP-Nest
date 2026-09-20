@@ -122,6 +122,21 @@ Three things to know:
   set on the Fastify request is invisible. Put it on `request.raw` instead. (The
   default `req.user` read has the same limit.)
 
+Your tool bodies can read the same principal, so the claims need not be dug out
+of the request a second time:
+
+```typescript
+@Tool({ name: 'whoami', description: 'Who is calling' })
+@ToolScopes(['reports:read'])
+async whoami(_args: unknown, context: McpContext) {
+  const user = context.getUser();
+  return { content: [{ type: 'text', text: `${user?.sub ?? 'anonymous'}` }] };
+}
+```
+
+`McpContext.getUser()` returns exactly what the decorators were judged on, so a
+handler cannot disagree with the decision that let it run.
+
 ## Step-up authorization (`insufficient_scope`)
 
 By default a caller who is authenticated but lacks a tool's `@ToolScopes()` gets a

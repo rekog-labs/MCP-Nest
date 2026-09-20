@@ -257,6 +257,7 @@ ctx.mcpServer;                             // the MCP SDK server
 ctx.mcpRequest;                            // the parsed JSON-RPC request
 ctx.getSession();                          // { transport, stateless, era, sessionId }
 ctx.getRawRequest();                       // the Express/Fastify request (undefined for stdio)
+ctx.getUser();                             // the caller per-tool authorization judged
 ctx.getProtocolVersion();                  // modern era only — undefined on legacy
 ctx.getClientCapabilities();               // modern era only — undefined on legacy
 ctx.getClientInfo();                       // modern era only — undefined on legacy
@@ -265,8 +266,10 @@ ctx.getClientInfo();                       // modern era only — undefined on l
 `reportProgress`/`log` reach the client on session-aware legacy transports
 (`statefulMode` HTTP, stdio) **and** on every `2026-07-28` request, where they
 flow on that request's own response stream. They are no-ops only on the legacy
-per-request stateless mode. The last four accessors are new — see
-[Protocol Revisions](protocol-revisions.md).
+per-request stateless mode. The three era accessors are new — see
+[Protocol Revisions](protocol-revisions.md). `getUser()` is the caller
+`@ToolScopes()` and `@ToolRoles()` were judged on, wherever the claims live — see
+[Per-Tool Authorization](per-tool-authorization.md).
 
 ## 3b. Validation & NestJS enhancers
 

@@ -175,8 +175,9 @@ export interface McpServerOptions {
    *
    * - Scopes are read off `scope` (space-delimited) or `scopes` (array), roles
    *   off `roles` or `user_data.roles` — see {@link AuthenticatedUser}.
-   * - The same principal drives `tools/list` filtering, the `tools/call` denial
-   *   and the step-up challenge, so the three cannot disagree.
+   * - The same principal drives `tools/list` filtering, the `tools/call` denial,
+   *   the step-up challenge and {@link McpContext.getUser}, so they cannot
+   *   disagree. It is resolved at most once per request and cached for it.
    * - `undefined` means "no principal", exactly as a missing `req.user` does.
    * - Not called on STDIO, where there is no request.
    *
