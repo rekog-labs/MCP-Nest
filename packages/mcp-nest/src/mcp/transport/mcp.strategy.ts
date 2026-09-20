@@ -46,6 +46,7 @@ import {
 } from '../services/tool-authorization.service';
 import { createMcpLogger } from '../utils/mcp-logger.factory';
 import type { McpRequest } from '../interfaces/mcp-tool.interface';
+import type { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 import type {
   DynamicPromptDefinition,
   DynamicPromptHandler,
@@ -525,8 +526,18 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     );
   }
 
-  private getUser(rawRequest?: unknown): any {
-    return rawRequest ? (rawRequest as { user?: unknown }).user : undefined;
+  /**
+   * The principal per-tool authorization judges: `options.resolveUser(rawRequest)`
+   * when configured, else `rawRequest.user`. The single place it is read, so
+   * `tools/list`, `tools/call` and the step-up pre-check cannot disagree. No
+   * request (STDIO) means no principal, and the resolver is not consulted.
+   */
+  private getUser(rawRequest?: unknown): AuthenticatedUser | undefined {
+    if (!rawRequest) return undefined;
+    const { resolveUser } = this.options;
+    return resolveUser
+      ? resolveUser(rawRequest)
+      : (rawRequest as { user?: AuthenticatedUser }).user;
   }
 
   /**

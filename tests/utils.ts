@@ -7,6 +7,7 @@ import { INestApplication, ModuleMetadata } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
   MCP_STRATEGY,
+  McpServerOptions,
   McpStrategy,
   McpTransport,
   StreamableHttpTransport,
@@ -41,6 +42,8 @@ export interface BootstrapMcpConfig {
     legacyShim?: boolean;
   };
   serverMutator?: (server: any) => any;
+  /** Where per-tool authorization reads the caller from (`McpServerOptions.resolveUser`). */
+  resolveUser?: McpServerOptions['resolveUser'];
   /**
    * Hook to configure the app after the microservice is connected but BEFORE
    * `startAllMicroservices()` / `listen()`. Use it for app-level setup such as
@@ -67,6 +70,7 @@ export async function bootstrapMcpApp(
     ...(config.cacheHints ? { cacheHints: config.cacheHints as any } : {}),
     ...(config.requestState ? { requestState: config.requestState } : {}),
     ...(config.inputRequired ? { inputRequired: config.inputRequired } : {}),
+    ...(config.resolveUser ? { resolveUser: config.resolveUser } : {}),
     serverMutator: config.serverMutator,
     transports: config.transports ?? [
       new StreamableHttpTransport({ statefulMode: true }),

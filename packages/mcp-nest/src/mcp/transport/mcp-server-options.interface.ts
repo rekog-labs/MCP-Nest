@@ -6,6 +6,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { HttpServer } from '@nestjs/common';
 import { McpTransport } from './mcp-transport.interface';
+import type { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 
 /**
  * Per-operation cache hints for `2026-07-28` cacheable results (SEP-2549).
@@ -164,6 +165,39 @@ export interface McpServerOptions {
    * @default false
    */
   allowUnauthenticatedAccess?: boolean;
+
+  /**
+   * Where per-tool authorization reads the caller from.
+   *
+   * The function receives the raw transport request and returns the principal
+   * that `@ToolScopes()`, `@ToolRoles()` and `allowUnauthenticatedAccess`
+   * judge:
+   *
+   * - Scopes are read off `scope` (space-delimited) or `scopes` (array), roles
+   *   off `roles` — see {@link AuthenticatedUser}.
+   * - The same principal drives `tools/list` filtering, the `tools/call` denial
+   *   and the step-up challenge, so the three cannot disagree.
+   * - `undefined` means "no principal", exactly as a missing `req.user` does.
+   * - Not called on STDIO, where there is no request.
+   *
+   * For authentication that keeps its claims somewhere other than `req.user`,
+   * so they need not be copied there:
+   *
+   * ```ts
+   * // express-jwt ≥ 7 writes the claims to `req.auth`
+   * resolveUser: (req) => (req as { auth?: AuthenticatedUser }).auth
+   *
+   * // express-oauth2-jwt-bearer (Auth0) nests them one level deeper
+   * resolveUser: (req) =>
+   *   (req as { auth?: { payload?: AuthenticatedUser } }).auth?.payload
+   * ```
+   *
+   * Left unset, the strategy reads `rawRequest.user`.
+   *
+   * @default undefined (`rawRequest.user`)
+   */
+  resolveUser?: (rawRequest: unknown) => AuthenticatedUser | undefined;
+
   /**
    * Logging configuration.
    * - `false` to disable MCP logging

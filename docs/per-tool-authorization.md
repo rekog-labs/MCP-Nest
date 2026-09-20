@@ -75,6 +75,30 @@ Notes:
   to the `McpStrategy` constructor. See the
   [E2E test](../tests/mcp-per-tool-auth.e2e.spec.ts).
 
+### Where the caller's identity is read from
+
+By default the strategy reads the caller off `req.user`. Authentication that
+keeps its claims elsewhere — `express-jwt` ≥ 7 writes them to `req.auth`,
+`express-oauth2-jwt-bearer` (Auth0) to `req.auth.payload`, and a
+client-credentials token has claims but no user at all — used to have to copy
+them onto `req.user`, even where that property already meant something else in
+the host app. Name the function that yields them instead:
+
+```typescript
+new McpStrategy({
+  // ...
+  resolveUser: (req) =>
+    (req as { auth?: { payload?: AuthenticatedUser } }).auth?.payload,
+});
+```
+
+Whatever it returns is the principal `@ToolScopes()` / `@ToolRoles()` judge —
+scopes off `scope` (space-delimited) or `scopes` (array), roles off `roles` —
+for `tools/list` filtering, the `tools/call` denial and the step-up challenge
+alike. Returning `undefined` means "no principal", exactly as a missing
+`req.user` does. The function is not called on STDIO, where there is no request.
+Left unset, the strategy reads `req.user`.
+
 ## Step-up authorization (`insufficient_scope`)
 
 By default a caller who is authenticated but lacks a tool's `@ToolScopes()` gets a
