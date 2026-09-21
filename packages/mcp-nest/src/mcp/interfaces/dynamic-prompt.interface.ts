@@ -1,10 +1,10 @@
 import { ZodObject } from 'zod';
-import { Context } from './mcp-tool.interface';
+import type { McpContext } from '../transport/mcp-context';
 import type { PromptArgsRawShape } from '../decorators/prompt.decorator';
 
 export type DynamicPromptHandler = (
   args: Record<string, string> | undefined,
-  context: Context,
+  context: McpContext,
   request: any,
 ) => any;
 
