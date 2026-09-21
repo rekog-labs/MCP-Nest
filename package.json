@@ -82,6 +82,8 @@
     "jws": "^3.2.3",
     "hono": "^4.13.7",
     "brace-expansion@^1": "^1.1.18",
-    "minimatch@^3": "^3.1.5"
+    "minimatch@^3": "^3.1.5",
+    "multer": "^2.3.0",
+    "fastify": "^5.12.4"
   }
 }
