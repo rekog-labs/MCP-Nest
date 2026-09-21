@@ -1,8 +1,8 @@
-import { Context } from './mcp-tool.interface';
+import type { McpContext } from '../transport/mcp-context';
 
 export type DynamicResourceHandler = (
   params: Record<string, unknown>,
-  context: Context,
+  context: McpContext,
   request: any,
 ) => any;
 

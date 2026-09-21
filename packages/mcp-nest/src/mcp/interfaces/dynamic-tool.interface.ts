@@ -1,4 +1,4 @@
-import { Context } from './mcp-tool.interface';
+import type { McpContext } from '../transport/mcp-context';
 import {
   AccessMatchMode,
   ToolAnnotations,
@@ -11,7 +11,7 @@ import {
  */
 export type DynamicToolHandler = (
   args: Record<string, unknown>,
-  context: Context,
+  context: McpContext,
   request: any,
 ) => any;
 
