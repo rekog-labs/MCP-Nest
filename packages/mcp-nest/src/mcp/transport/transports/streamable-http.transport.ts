@@ -693,10 +693,16 @@ export class StreamableHttpTransport implements McpTransport {
       req.raw,
     );
 
-    res.raw.on('finish', () => {
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
       void transport.close();
       void server.close();
-    });
+    };
+
+    res.raw.once('finish', cleanup);
+    res.raw.once('close', cleanup);
 
     await transport.handleRequest(req.raw, res.raw, body);
   }
