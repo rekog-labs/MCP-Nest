@@ -32,7 +32,7 @@
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.1.14",
     "@nestjs/jwt": "^11.0.0",
-    "@nestjs/microservices": "^11.1.14",
+    "@nestjs/microservices": "^11.2.7",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.28",
     "@nestjs/platform-fastify": "^11.1.28",
