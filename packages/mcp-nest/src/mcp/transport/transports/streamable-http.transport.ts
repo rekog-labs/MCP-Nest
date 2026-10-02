@@ -685,7 +685,7 @@ export class StreamableHttpTransport implements McpTransport {
       sessionIdGenerator: undefined,
       enableJsonResponse: this.enableJsonResponse,
     });
-    const server = this.ctx!.createServer();
+    const server = this.ctx!.createServer(req.raw);
     await server.connect(transport);
     this.ctx!.bindRequestHandlers(
       server,
@@ -717,7 +717,7 @@ export class StreamableHttpTransport implements McpTransport {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
     if (!sessionId && isInitializeRequest(body)) {
-      const server = this.ctx!.createServer();
+      const server = this.ctx!.createServer(req.raw);
       const transport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: this.sessionIdGenerator,
         enableJsonResponse: this.enableJsonResponse,

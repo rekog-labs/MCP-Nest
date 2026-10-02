@@ -13,9 +13,11 @@ export interface McpTransportContext {
   /**
    * Create a bare SDK `McpServer` (capabilities derived from discovery + any
    * `serverMutator` applied). The caller is responsible for connecting it to an
-   * SDK transport and for calling {@link bindRequestHandlers}.
+   * SDK transport and for calling {@link bindRequestHandlers}. `rawRequest` is
+   * the request that caused the server to be created, used to resolve
+   * per-request `instructions`.
    */
-  createServer(): McpServer;
+  createServer(rawRequest?: unknown): McpServer;
 
   /**
    * (Re)register the MCP request handlers (tools/resources/prompts) on a server,

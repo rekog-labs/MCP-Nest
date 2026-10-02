@@ -135,8 +135,23 @@ export interface McpServerOptions {
    *   request fail loudly instead. Default `true`.
    */
   inputRequired?: McpInputRequiredOptions;
-  /** Server instructions sent to clients on initialize. */
-  instructions?: string;
+  /**
+   * Server instructions sent to clients on initialize.
+   *
+   * Pass a function to choose them per client, e.g. from a header or JWT
+   * claim. It receives the raw transport request and runs whenever an SDK
+   * server is created: once per session on stateful 2025-era HTTP, once per
+   * request on stateless and `2026-07-28` traffic. On STDIO it receives
+   * `undefined`.
+   *
+   * ```ts
+   * instructions: (req) =>
+   *   (req as IncomingMessage | undefined)?.headers['x-experience'] === 'foo'
+   *     ? fooInstructions
+   *     : defaultInstructions
+   * ```
+   */
+  instructions?: string | ((rawRequest: unknown) => string | undefined);
   /** Mutate the SDK server right after creation (instrumentation, etc.). */
   serverMutator?: (server: McpServer) => McpServer;
 

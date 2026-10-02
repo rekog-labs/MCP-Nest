@@ -425,7 +425,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private createTransportContext(): McpTransportContext {
     return {
-      createServer: () => this.createServer(),
+      createServer: (rawRequest) => this.createServer(rawRequest),
       bindRequestHandlers: (server, session, rawRequest) =>
         this.bindRequestHandlers(server, session, rawRequest),
       createBoundServer: (session, rawRequest) =>
@@ -438,7 +438,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     };
   }
 
-  private createServer(): McpServer {
+  private createServer(rawRequest?: unknown): McpServer {
     const capabilities: ServerCapabilities = {
       ...(this.options.capabilities ?? {}),
     };
@@ -473,7 +473,10 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       },
       {
         capabilities,
-        instructions: this.options.instructions ?? '',
+        instructions:
+          (typeof this.options.instructions === 'function'
+            ? this.options.instructions(rawRequest)
+            : this.options.instructions) ?? '',
         // Era-blind by design: the SDK carries the hint to the wire codec on a
         // symbol-keyed property that is never serialized, so it fills the
         // required `ttlMs`/`cacheScope` fields on 2026-era results and leaves
@@ -516,7 +519,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
    * no separate `connect()` step for the caller.
    */
   createBoundServer(session: McpSessionSeed, rawRequest?: unknown): McpServer {
-    const server = this.createServer();
+    const server = this.createServer(rawRequest);
     this.bindRequestHandlers(server, session, rawRequest);
     return server;
   }
