@@ -1,6 +1,10 @@
 import { INestApplication, Logger } from '@nestjs/common';
 import type { IncomingMessage } from 'http';
-import { McpController, Tool } from '@rekog/mcp-nest';
+import {
+  McpController,
+  McpInstructionsContext,
+  Tool,
+} from '@rekog/mcp-nest';
 import {
   bootstrapMcpApp,
   createEraClient,
@@ -16,8 +20,8 @@ class Tools {
   }
 }
 
-const instructionsFor = (req: unknown) =>
-  (req as IncomingMessage | undefined)?.headers['x-experience'] === 'foo'
+const instructionsFor = ({ request }: McpInstructionsContext) =>
+  (request as IncomingMessage | undefined)?.headers['x-experience'] === 'foo'
     ? 'foo instructions'
     : 'default instructions';
 
@@ -73,6 +77,81 @@ describe.each(ERAS)('MCP server instructions (%s era)', (era) => {
       await client.close();
       await app.close();
     }
+  });
+});
+
+describe.each(ERAS)('MCP server instructions resolver context (%s era)', (era) => {
+  jest.setTimeout(15000);
+
+  it('passes the caller as per-tool authorization sees it, and the era', async () => {
+    const seen: McpInstructionsContext[] = [];
+    const { app, port } = await bootstrapMcpApp({
+      controllers: [Tools],
+      resolveUser: (req) => {
+        const sub = (req as IncomingMessage).headers['x-user'];
+        return typeof sub === 'string' ? { sub, roles: [sub] } : undefined;
+      },
+      instructions: (ctx) => {
+        seen.push(ctx);
+        return ctx.user?.roles?.includes('admin')
+          ? 'admin instructions'
+          : 'default instructions';
+      },
+    });
+    try {
+      const admin = await createEraClient(era, port, {
+        requestInit: { headers: { 'x-user': 'admin' } },
+      });
+      const anon = await createEraClient(era, port);
+      try {
+        expect(admin.getInstructions()).toBe('admin instructions');
+        expect(anon.getInstructions()).toBe('default instructions');
+      } finally {
+        await admin.close();
+        await anon.close();
+      }
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((c) => c.era === (era === 'modern' ? 'modern' : 'legacy'))).toBe(true);
+      expect(seen.every((c) => c.transport === 'streamable-http')).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  describe.each([
+    ['throws', () => {
+      throw new Error('boom');
+    }],
+    ['returns a promise', (() => Promise.resolve('late')) as unknown as () => string],
+  ])('a resolver that %s', (_label, resolver) => {
+    let errorSpy: jest.SpyInstance;
+    beforeEach(() => {
+      errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+    });
+    afterEach(() => errorSpy.mockRestore());
+
+    it('is logged, sends no instructions, and still serves the request', async () => {
+      const { app, port } = await bootstrapMcpApp({
+        controllers: [Tools],
+        instructions: resolver,
+      });
+      const client = await createEraClient(era, port);
+      try {
+        expect(client.getInstructions() ?? '').toBe('');
+        const result: any = await client.callTool({ name: 'ping', arguments: {} });
+        expect(result.content[0].text).toContain('pong');
+        expect(
+          errorSpy.mock.calls.some((c) =>
+            String(c[0]).includes('instructions resolver'),
+          ),
+        ).toBe(true);
+      } finally {
+        await client.close();
+        await app.close();
+      }
+    });
   });
 });
 

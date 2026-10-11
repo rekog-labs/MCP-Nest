@@ -446,7 +446,8 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   private createTransportContext(): McpTransportContext {
     return {
-      createServer: (rawRequest) => this.createServer(rawRequest),
+      createServer: (session, rawRequest) =>
+        this.createServer(session, rawRequest),
       bindRequestHandlers: (server, session, rawRequest) =>
         this.bindRequestHandlers(server, session, rawRequest),
       createBoundServer: (session, rawRequest) =>
@@ -459,7 +460,10 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     };
   }
 
-  private createServer(rawRequest?: unknown): McpServer {
+  private createServer(
+    session?: McpSessionSeed,
+    rawRequest?: unknown,
+  ): McpServer {
     const capabilities: ServerCapabilities = {
       ...(this.options.capabilities ?? {}),
     };
@@ -494,10 +498,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       },
       {
         capabilities,
-        instructions:
-          (typeof this.options.instructions === 'function'
-            ? this.options.instructions(rawRequest)
-            : this.options.instructions) ?? '',
+        instructions: this.resolveInstructions(session, rawRequest),
         // Era-blind by design: the SDK carries the hint to the wire codec on a
         // symbol-keyed property that is never serialized, so it fills the
         // required `ttlMs`/`cacheScope` fields on 2026-era results and leaves
@@ -520,6 +521,49 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       : server;
   }
 
+  /**
+   * {@link McpServerOptions.instructions}, resolved for the request creating
+   * the server. Fails soft: instructions are guidance, not access control, so a
+   * resolver that throws or returns a non-string (an `async` resolver that got
+   * past the types) is logged and the server goes out with none, rather than
+   * failing every request on the endpoint.
+   */
+  private resolveInstructions(
+    session: McpSessionSeed | undefined,
+    rawRequest: unknown,
+  ): string {
+    const { instructions } = this.options;
+    if (typeof instructions !== 'function') return instructions ?? '';
+    let resolved: unknown;
+    try {
+      resolved = instructions({
+        request: rawRequest,
+        user: this.getUser(rawRequest),
+        era: session?.era ?? 'legacy',
+        transport: session?.transport ?? 'streamable-http',
+      });
+    } catch (error) {
+      this.logger.error(
+        `instructions resolver threw; sending no instructions: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return '';
+    }
+    if (resolved === undefined) return '';
+    if (typeof resolved !== 'string') {
+      this.logger.error(
+        `instructions resolver returned ${
+          typeof (resolved as { then?: unknown } | null)?.then === 'function'
+            ? 'a promise (it must be synchronous)'
+            : `a ${typeof resolved}`
+        }; sending no instructions.`,
+      );
+      return '';
+    }
+    return resolved;
+  }
+
   bindRequestHandlers(
     server: McpServer,
     session: McpSessionSeed,
@@ -540,7 +584,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
    * no separate `connect()` step for the caller.
    */
   createBoundServer(session: McpSessionSeed, rawRequest?: unknown): McpServer {
-    const server = this.createServer(rawRequest);
+    const server = this.createServer(session, rawRequest);
     this.bindRequestHandlers(server, session, rawRequest);
     return server;
   }

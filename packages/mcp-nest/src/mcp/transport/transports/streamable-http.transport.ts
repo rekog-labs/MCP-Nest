@@ -21,6 +21,7 @@ import {
   HttpResponse,
 } from '../../interfaces/http-adapter.interface';
 import { McpTransport, McpTransportContext } from '../mcp-transport.interface';
+import type { McpSessionSeed } from '../mcp-context';
 import { MCP_RESOURCE_METADATA_URL } from '../mcp-transport.constants';
 import type { McpHttpHandler } from '../mcp-http-handler';
 import { readJsonBody } from './read-body';
@@ -685,13 +686,14 @@ export class StreamableHttpTransport implements McpTransport {
       sessionIdGenerator: undefined,
       enableJsonResponse: this.enableJsonResponse,
     });
-    const server = this.ctx!.createServer(req.raw);
+    const session: McpSessionSeed = {
+      transport: this.kind,
+      stateless: true,
+      era: 'legacy',
+    };
+    const server = this.ctx!.createServer(session, req.raw);
     await server.connect(transport);
-    this.ctx!.bindRequestHandlers(
-      server,
-      { transport: this.kind, stateless: true, era: 'legacy' },
-      req.raw,
-    );
+    this.ctx!.bindRequestHandlers(server, session, req.raw);
 
     let cleanedUp = false;
     const cleanup = () => {
@@ -717,7 +719,12 @@ export class StreamableHttpTransport implements McpTransport {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
     if (!sessionId && isInitializeRequest(body)) {
-      const server = this.ctx!.createServer(req.raw);
+      const session: McpSessionSeed = {
+        transport: this.kind,
+        stateless: false,
+        era: 'legacy',
+      };
+      const server = this.ctx!.createServer(session, req.raw);
       const transport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: this.sessionIdGenerator,
         enableJsonResponse: this.enableJsonResponse,
@@ -730,11 +737,7 @@ export class StreamableHttpTransport implements McpTransport {
         },
       });
       await server.connect(transport);
-      this.ctx!.bindRequestHandlers(
-        server,
-        { transport: this.kind, stateless: false, era: 'legacy' },
-        req.raw,
-      );
+      this.ctx!.bindRequestHandlers(server, session, req.raw);
       await transport.handleRequest(req.raw, res.raw, body);
       return;
     }
