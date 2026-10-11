@@ -171,6 +171,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       this.buildCapabilities();
       this.warnIfNamedServerHasNoDecoratorCapabilities();
       this.warnIfToolListCacheHintIsPublic();
+      this.warnIfDiscoverCacheHintIsPublic();
       const ctx = this.createTransportContext();
       for (const transport of this.options.transports) {
         await transport.start(ctx);
@@ -261,6 +262,26 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         `and reused outside the requesting caller's authorization context, so one ` +
         `user's visible tool set can be served to another. Use ` +
         `cacheScope: 'private' unless the list is genuinely identical for every caller.`,
+    );
+  }
+
+  /**
+   * Same reasoning as {@link warnIfToolListCacheHintIsPublic}, for
+   * `server/discover`: its result carries `instructions`, so when those are
+   * resolved per request a `public` hint lets a shared cache serve one
+   * caller's instructions to another.
+   */
+  private warnIfDiscoverCacheHintIsPublic(): void {
+    if (this.options.cacheHints?.['server/discover']?.cacheScope !== 'public')
+      return;
+    if (typeof this.options.instructions !== 'function') return;
+    this.logger.warn(
+      `cacheHints['server/discover'].cacheScope is 'public', but instructions ` +
+        `are resolved per request. A public discover result may be cached by a ` +
+        `client or shared gateway and reused outside the requesting caller's ` +
+        `authorization context, so one caller's instructions can be served to ` +
+        `another. Use cacheScope: 'private' unless the resolver returns the same ` +
+        `instructions for every caller.`,
     );
   }
 

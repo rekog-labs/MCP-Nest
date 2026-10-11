@@ -142,7 +142,12 @@ export interface McpServerOptions {
    * claim. It receives the raw transport request and runs whenever an SDK
    * server is created: once per session on stateful 2025-era HTTP, once per
    * request on stateless and `2026-07-28` traffic. On STDIO it receives
-   * `undefined`.
+   * `undefined`. The resolver is synchronous.
+   *
+   * Instructions that vary per caller are user-specific data in the
+   * `server/discover` result, so do not hint `server/discover` as
+   * `cacheScope: 'public'` (see {@link cacheHints}); the strategy logs a
+   * warning at startup if you do.
    *
    * ```ts
    * instructions: (req) =>

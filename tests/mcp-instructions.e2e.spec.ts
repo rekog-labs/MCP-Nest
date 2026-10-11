@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import type { IncomingMessage } from 'http';
 import { McpController, Tool } from '@rekog/mcp-nest';
 import {
@@ -73,5 +73,55 @@ describe.each(ERAS)('MCP server instructions (%s era)', (era) => {
       await client.close();
       await app.close();
     }
+  });
+});
+
+describe("instructions resolver with cacheScope: 'public' on server/discover", () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    // Spy BEFORE bootstrap — the warning fires during startAllMicroservices().
+    warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    warnSpy?.mockRestore();
+  });
+
+  function warned(): boolean {
+    return warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .some((m) => m.includes("cacheHints['server/discover'].cacheScope"));
+  }
+
+  it('warns when instructions are resolved per request', async () => {
+    const { app } = await bootstrapMcpApp({
+      controllers: [Tools],
+      instructions: instructionsFor,
+      cacheHints: { 'server/discover': { cacheScope: 'public' } },
+    });
+    expect(warned()).toBe(true);
+    await app.close();
+  });
+
+  it('stays quiet for static instructions', async () => {
+    const { app } = await bootstrapMcpApp({
+      controllers: [Tools],
+      instructions: 'static instructions',
+      cacheHints: { 'server/discover': { cacheScope: 'public' } },
+    });
+    expect(warned()).toBe(false);
+    await app.close();
+  });
+
+  it("stays quiet for a 'private' hint", async () => {
+    const { app } = await bootstrapMcpApp({
+      controllers: [Tools],
+      instructions: instructionsFor,
+      cacheHints: { 'server/discover': { ttlMs: 30_000, cacheScope: 'private' } },
+    });
+    expect(warned()).toBe(false);
+    await app.close();
   });
 });
