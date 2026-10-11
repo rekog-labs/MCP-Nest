@@ -559,6 +559,22 @@ GET /auth/authorize
 }
 ```
 
+`redirect_uri` is matched **exactly** against `redirect_uris`, with one exception:
+a **loopback** redirect (`localhost`, `127.0.0.1`, `[::1]`) may use **any port**
+(OAuth 2.1 §2.3.1 and §8.4.2, from RFC 8252 §7.3). Everything else — scheme,
+userinfo, host, path, query — must still match, the requested URI must be in
+canonical form, and `localhost` never stands in for `127.0.0.1`. This exists
+because a metadata document is static and cannot list the ephemeral port a
+desktop client will bind — Claude Code, for example, declares
+`http://localhost/callback` and sends `http://localhost:<port>/callback`.
+Non-loopback hosts stay byte-exact, port included. The same rule applies to
+Dynamic Client Registration clients.
+
+At `/auth/token` the leniency is gone: a `redirect_uri` in the token request is
+optional (OAuth 2.1 removed it), but when a client sends one it must equal the
+`redirect_uri` of the authorization request byte for byte, as RFC 6749 §4.1.3
+requires. The code is bound to the port the client actually used.
+
 `client_id`, `client_name` and `redirect_uris` are required. DCR and CIMD coexist:
 registered ids are always `${normalizedName}_${suffix}` with the name reduced to
 `[a-z0-9]`, so they can never contain `://` and the two keyspaces cannot collide.
@@ -609,7 +625,7 @@ On the response and the document:
   default port or host case is rejected.
 - `client_name` non-empty; `redirect_uris` a non-empty array of strings.
 - The **authorization request's `redirect_uri` must be one of them**, matched
-  exactly.
+  exactly — except the port of a loopback URI (see above).
 - No `client_secret` / `client_secret_expires_at`, and not
   `client_secret_post` / `client_secret_basic` / `client_secret_jwt` — a shared
   secret cannot be established with an identity that is a public URL.
@@ -710,6 +726,19 @@ features — consent screen, loopback warning, a metadata document served locall
 and the rejection cases — behind the opt-in `MCP_CONSENT`, `MCP_CIMD` and
 `MCP_FAKE_IDP` flags. See its
 [README](../examples/built-in-authorization-server/README.md).
+
+To try it with a **real client**, use Claude Code: it publishes its own metadata
+document at `https://claude.ai/oauth/claude-code-client-metadata` and chooses
+CIMD over Dynamic Client Registration as soon as it sees the flag. Start the
+example with `MCP_FAKE_IDP=1 MCP_CIMD=1`, then:
+
+```bash
+claude mcp add --transport http cimd-demo http://localhost:3014/mcp
+```
+
+Run `/mcp` in Claude Code and authenticate. The consent screen names "Claude
+Code" and shows the document URL as the client identifier; no registration call
+is made. Section E of the example README walks through each step.
 
 ## Storage Backends
 

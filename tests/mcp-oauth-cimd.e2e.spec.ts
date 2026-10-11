@@ -448,6 +448,46 @@ describe('E2E: OAuth Client ID Metadata Documents', () => {
       }).expect(302);
     });
 
+    it('lets a loopback redirect_uri use any port (RFC 8252 §7.3)', async () => {
+      // Shaped like Claude Code's published document: loopback redirect URIs
+      // with no port, while the running client binds an ephemeral one.
+      const clientId = docs.serveDocument(
+        '/loopback-any-port/client.json',
+        validDocument({
+          redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
+        }),
+      );
+
+      await authorize(harness.app, clientId, {
+        redirect_uri: 'http://localhost:3118/callback',
+      }).expect(302);
+      await authorize(harness.app, clientId, {
+        redirect_uri: 'http://127.0.0.1:41234/callback',
+      }).expect(302);
+
+      // Only the port is free: host, path and scheme are still exact.
+      await authorize(harness.app, clientId, {
+        redirect_uri: 'http://localhost:3118/other',
+      }).expect(400);
+      await authorize(harness.app, clientId, {
+        redirect_uri: 'https://localhost:3118/callback',
+      }).expect(400);
+    });
+
+    it('keeps non-loopback redirect_uris exact, port included', async () => {
+      const clientId = docs.serveDocument(
+        '/public-exact-port/client.json',
+        validDocument({ redirect_uris: ['https://app.example.com/cb'] }),
+      );
+
+      await authorize(harness.app, clientId, {
+        redirect_uri: 'https://app.example.com:8443/cb',
+      }).expect(400);
+      await authorize(harness.app, clientId, {
+        redirect_uri: 'https://app.example.com/cb',
+      }).expect(302);
+    });
+
     it.each(['client_secret_basic', 'client_secret_post', 'client_secret_jwt'])(
       'rejects token_endpoint_auth_method=%s',
       async (method) => {
@@ -804,6 +844,124 @@ describe('E2E: OAuth Client ID Metadata Documents', () => {
       expect(tokenResponse.body.access_token).toBeTruthy();
       // Redemption used the snapshot, not a fresh fetch.
       expect(docs.hits('/full/client.json')).toBe(hitsBeforeRedemption);
+    });
+
+    it('completes a login on an ephemeral loopback port and binds the code to that port', async () => {
+      // Claude Code's real shape: portless loopback URIs in the document, an
+      // OS-assigned port at run time (issue #272).
+      const clientId = docs.serveDocument(
+        '/ephemeral/client.json',
+        validDocument({
+          redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
+        }),
+      );
+      const redirectUri = 'http://localhost:46578/callback';
+      const { verifier, challenge } = pkcePair();
+
+      const authorizeResponse = await request(harness.app.getHttpServer())
+        .get('/auth/authorize')
+        .query({
+          response_type: 'code',
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          code_challenge: challenge,
+          code_challenge_method: 'S256',
+          state: 'state-ephemeral',
+        })
+        .expect(302);
+
+      const cookies = cookieHeader(authorizeResponse);
+      const consentPage = await request(harness.app.getHttpServer())
+        .get('/auth/callback')
+        .set('Cookie', cookies)
+        .query({ code: 'idp-code', state: 'ignored' })
+        .expect(200);
+      expect(consentPage.text).toContain(redirectUri);
+
+      const approved = await request(harness.app.getHttpServer())
+        .post('/auth/consent')
+        .set('Cookie', cookies)
+        .type('form')
+        .send({
+          consent_token: /name="consent_token" value="([^"]+)"/.exec(
+            consentPage.text,
+          )![1],
+          approve: 'true',
+        })
+        .expect(302);
+
+      // The code goes back to the port the client asked for.
+      const location = new URL(approved.headers.location);
+      expect(`${location.origin}${location.pathname}`).toBe(redirectUri);
+      const code = location.searchParams.get('code')!;
+
+      const redeem = (redirect_uri?: string) =>
+        request(harness.app.getHttpServer())
+          .post('/auth/token')
+          .send({
+            grant_type: 'authorization_code',
+            code,
+            code_verifier: verifier,
+            client_id: clientId,
+            ...(redirect_uri === undefined ? {} : { redirect_uri }),
+          });
+
+      // At the token endpoint the code is bound to the exact URI it was issued
+      // for: neither another port nor the portless registered form will do.
+      // A rejected attempt does not burn the code.
+      await redeem('http://localhost:46579/callback').expect(400);
+      await redeem('http://localhost/callback').expect(400);
+      const tokenResponse = await redeem(redirectUri).expect(200);
+      expect(tokenResponse.body.access_token).toBeTruthy();
+    });
+
+    it('accepts a token request that omits redirect_uri (OAuth 2.1)', async () => {
+      const clientId = docs.serveDocument(
+        '/no-token-redirect/client.json',
+        validDocument(),
+      );
+      const { verifier, challenge } = pkcePair();
+
+      const authorizeResponse = await request(harness.app.getHttpServer())
+        .get('/auth/authorize')
+        .query({
+          response_type: 'code',
+          client_id: clientId,
+          redirect_uri: CLIENT_REDIRECT,
+          code_challenge: challenge,
+          code_challenge_method: 'S256',
+          state: 'state-no-token-redirect',
+        })
+        .expect(302);
+
+      const cookies = cookieHeader(authorizeResponse);
+      const consentPage = await request(harness.app.getHttpServer())
+        .get('/auth/callback')
+        .set('Cookie', cookies)
+        .query({ code: 'idp-code', state: 'ignored' })
+        .expect(200);
+      const approved = await request(harness.app.getHttpServer())
+        .post('/auth/consent')
+        .set('Cookie', cookies)
+        .type('form')
+        .send({
+          consent_token: /name="consent_token" value="([^"]+)"/.exec(
+            consentPage.text,
+          )![1],
+          approve: 'true',
+        })
+        .expect(302);
+      const code = new URL(approved.headers.location).searchParams.get('code')!;
+
+      await request(harness.app.getHttpServer())
+        .post('/auth/token')
+        .send({
+          grant_type: 'authorization_code',
+          code,
+          code_verifier: verifier,
+          client_id: clientId,
+        })
+        .expect(200);
     });
 
     it('rejects a client_secret from a CIMD client at the token endpoint', async () => {

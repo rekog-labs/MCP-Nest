@@ -656,6 +656,17 @@ Authorization-package half ✅ (commit `280a89c`, +27 tests):
         omitted otherwise): clients prefer CIMD whenever they see the flag, so advertising it
         on a server that rejects every URL id would push them past the working
         `registration_endpoint` into a dead end.
+      - `redirect_uri` is exact-matched, except that a **loopback** redirect (`localhost`,
+        `127.0.0.1`, `[::1]`) may use **any port** (OAuth 2.1 §2.3.1/§8.4.2, from RFC 8252
+        §7.3) — scheme, userinfo, host, path and query still exact, and the requested URI
+        must be canonical. Without this every CIMD client with an
+        ephemeral callback port failed: Claude Code's document declares
+        `http://localhost/callback` and sends `http://localhost:<port>/callback`.
+        `matchesRegisteredRedirectUri` in `services/redirect-uri.ts`, shared by
+        `/authorize` and `ClientService.validateRedirectUri`.
+        The token endpoint now enforces RFC 6749 §4.1.3 as OAuth 2.1 §10.2 requires: an
+        optional `redirect_uri` in the token request must equal the code's, byte for byte
+        (it was accepted and ignored before).
       - Validated: `https` scheme, path component present, no `.`/`..` segments (checked on
         the **raw string** — WHATWG parsing collapses them), no fragment, no userinfo, port
         allowed, query warns; `200` only (a `3xx` fails — **redirects are not followed**);

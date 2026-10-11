@@ -7,6 +7,7 @@ import type {
 import { randomBytes } from 'crypto';
 import type { OAuthModuleOptions } from '../providers/oauth-provider.interface';
 import { ClientIdMetadataService } from './client-id-metadata.service';
+import { matchesRegisteredRedirectUri } from './redirect-uri';
 
 @Injectable()
 export class ClientService {
@@ -160,6 +161,8 @@ export class ClientService {
     redirectUri: string,
   ): Promise<boolean> {
     const client = await this.getClient(clientId);
-    return client ? client.redirect_uris.includes(redirectUri) : false;
+    return client
+      ? matchesRegisteredRedirectUri(client.redirect_uris, redirectUri)
+      : false;
   }
 }

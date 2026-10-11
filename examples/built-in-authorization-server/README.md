@@ -273,9 +273,96 @@ attempted. `tests/mcp-oauth-cimd.e2e.spec.ts` covers that posture.
 PORT=3014 MCP_FAKE_IDP=1 MCP_CONSENT=1 MCP_CIMD=1 npm start
 ```
 
+### E. A real MCP client: Claude Code
+
+Sections B–D drive the flow by hand. This one uses a real client. Claude Code
+publishes its own Client ID Metadata Document at
+`https://claude.ai/oauth/claude-code-client-metadata`, and picks CIMD over
+Dynamic Client Registration whenever the authorization server advertises
+`client_id_metadata_document_supported: true` together with `none` in
+`token_endpoint_auth_methods_supported` — which is exactly what `MCP_CIMD=1`
+makes this server do. Nothing on this side names Claude Code; the server learns
+who the client is by fetching that document.
+
+Look at the document first, so you know what the server will fetch:
+
+```bash
+curl -s https://claude.ai/oauth/claude-code-client-metadata
+```
+
+```jsonc
+{
+  "client_id": "https://claude.ai/oauth/claude-code-client-metadata",
+  "client_name": "Claude Code",
+  "client_uri": "https://claude.ai",
+  "redirect_uris": ["http://localhost/callback", "http://127.0.0.1/callback"],  // no port
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
+```
+
+The `redirect_uris` carry **no port**, because the document is static and Claude
+Code binds an ephemeral port per login. The server therefore matches loopback
+redirect URIs on any port (RFC 8252 §7.3); everything else — scheme, host, path
+— is still exact.
+
+1. Start the server. The fake IdP keeps GitHub out of the picture:
+
+   ```bash
+   PORT=3014 MCP_FAKE_IDP=1 MCP_CIMD=1 npm start
+   ```
+
+2. Register the server in Claude Code, from any directory:
+
+   ```bash
+   claude mcp add --transport http cimd-demo http://localhost:3014/mcp
+   ```
+
+3. In a Claude Code session run `/mcp`, pick `cimd-demo`, and choose
+   **Authenticate**. Claude Code:
+   - gets a `401` from `/mcp`, follows `resource_metadata` to
+     `/.well-known/oauth-protected-resource`, then reads
+     `/.well-known/oauth-authorization-server`,
+   - sees the CIMD flag and skips `POST /auth/register` entirely,
+   - opens your browser at `/auth/authorize` with
+     `client_id=https://claude.ai/oauth/claude-code-client-metadata` and
+     `redirect_uri=http://localhost:<ephemeral port>/callback`.
+
+4. The server fetches the document from `claude.ai`, validates it, and the fake
+   IdP signs you in as "Ada Lovelace". The **consent screen** shows
+   `Claude Code` as the client name, `localhost` as the redirect host, the
+   loopback warning, and `https://claude.ai/oauth/claude-code-client-metadata`
+   as the client identifier. Click **Approve**.
+
+5. Claude Code redeems the code at `/auth/token` with the document URL as
+   `client_id` and no secret, then lists the tools. Ask it to call `whoami`; the
+   answer is "Hello, Ada Lovelace!".
+
+To see the difference, remove the server (`claude mcp remove cimd-demo`),
+restart **without** `MCP_CIMD=1`, and add it again: the flag is gone from the
+metadata, so Claude Code falls back to `POST /auth/register` and you will see a
+`clientname_xxx` id in the log instead of the URL.
+
+Two things to know:
+
+- `allowInsecureClientIdScheme: true` is on under `MCP_CIMD=1` (see the note at
+  the top of this walkthrough). Claude Code's document is on a public `https`
+  origin, so it would pass the SSRF guard with the hatch **off** as well — the
+  hatch is only needed for the locally hosted demo document in section B.
+- Claude Code remembers the tokens it obtained. To run the login again, remove
+  and re-add the server, or pick **Clear authentication** in `/mcp`.
+
 > **Running against the workspace build?** When this example is installed with a
 > `file:` dependency (`scripts/use-examples.sh local`) the symlinked packages
 > resolve a second `@nestjs/core` from the workspace root, which Nest's injector
-> rejects. Add `NODE_OPTIONS=--preserve-symlinks` — this is a linking artifact,
-> not a product issue, and is what `e2e/harness.ts` does. A normal `npm install`
-> of the published packages needs nothing.
+> rejects, and a second `@nestjs/common` whose types ts-node's checker rejects.
+> Build the workspace first (`npm run build` at the repo root), then start with
+> both hatches — this is a linking artifact, not a product issue, and is what
+> `e2e/harness.ts` does:
+>
+> ```bash
+> NODE_OPTIONS=--preserve-symlinks npx ts-node-dev --transpile-only src/main.ts
+> ```
+>
+> A normal `npm install` of the published packages needs nothing.
