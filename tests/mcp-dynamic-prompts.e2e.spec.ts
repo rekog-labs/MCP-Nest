@@ -52,6 +52,7 @@ class DynamicPromptsService implements OnModuleInit {
 
     this.strategy.registerPrompt({
       name: 'translate',
+      title: 'Translate Text',
       description: 'Translate text to another language',
       handler: async () => {
         return {
@@ -130,6 +131,14 @@ describe.each(ERAS)(
           expect(
             result.prompts.find((p) => p.name === 'translate'),
           ).toBeDefined();
+
+          // `title` is emitted at the top level only when it is set
+          expect(
+            result.prompts.find((p) => p.name === 'translate')?.title,
+          ).toBe('Translate Text');
+          expect(
+            result.prompts.find((p) => p.name === 'summarize')?.title,
+          ).toBeUndefined();
         } finally {
           await client.close();
         }

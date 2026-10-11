@@ -44,6 +44,7 @@ class DynamicResourcesService implements OnModuleInit {
     this.strategy.registerResource({
       uri: 'mcp://dynamic-status',
       name: 'dynamic-status',
+      title: 'Service Status',
       description: 'Service status',
       handler: async () => {
         return {
@@ -115,6 +116,14 @@ describe.each(ERAS)(
           expect(
             result.resources.find((r) => r.name === 'dynamic-status'),
           ).toBeDefined();
+
+          // `title` is emitted at the top level only when it is set
+          expect(
+            result.resources.find((r) => r.name === 'dynamic-status')?.title,
+          ).toBe('Service Status');
+          expect(
+            result.resources.find((r) => r.name === 'dynamic-config')?.title,
+          ).toBeUndefined();
         } finally {
           await client.close();
         }

@@ -74,6 +74,7 @@ class DynamicToolsService implements OnModuleInit {
 
     this.strategy.registerTool({
       name: 'get-collections',
+      title: 'Get Collections',
       description: 'Get available collections',
       handler: async () => {
         return {
@@ -222,6 +223,12 @@ describe.each(ERAS)(
           expect(searchTool?.description).toContain(
             'documents, knowledge, faq',
           );
+
+          // `title` is emitted at the top level only when it is set
+          expect(
+            tools.tools.find((t) => t.name === 'get-collections')?.title,
+          ).toBe('Get Collections');
+          expect(searchTool?.title).toBeUndefined();
         } finally {
           await client.close();
         }

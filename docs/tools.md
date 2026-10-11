@@ -124,7 +124,7 @@ The `@Tool()` decorator accepts a configuration object with the following proper
 
 - **`name`** (required): Unique identifier for the tool within your MCP server
 - **`description`** (required): Human-readable description explaining what the tool does
-- **`title`** (optional): Human-readable display name returned as the top-level `title` in `tools/list`. Clients show it instead of `name`
+- **`title`** (optional): Human-readable display name returned as the top-level `title` in `tools/list`. Clients can show it instead of `name`. It is separate from `annotations.title`
 - **`parameters`** (required): Zod schema defining the expected input parameters and their validation rules
 - **`outputSchema`** (optional): Zod schema for validating and structuring the tool's return value
 - **`annotations`** (optional): Metadata hints for AI agents, including:

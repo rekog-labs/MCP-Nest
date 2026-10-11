@@ -47,6 +47,24 @@ export class GreetingToolResource {
     };
   }
 
+  @Resource({
+    name: 'hello-world-with-title',
+    title: 'Say Hello Resource',
+    uri: 'mcp://hello-world-with-title',
+  })
+  sayHelloWithTitle(@Payload() { uri }: { uri: string }) {
+    return { contents: [{ uri, text: 'Hello With Title' }] };
+  }
+
+  @ResourceTemplate({
+    name: 'hello-world-template-with-title',
+    title: 'Say Hello Template',
+    uriTemplate: 'mcp://hello-world-titled/{userName}',
+  })
+  sayHelloTemplateWithTitle(@Payload() { uri }: { uri: string }) {
+    return { contents: [{ uri, text: 'Hello With Title' }] };
+  }
+
   @ResourceTemplate({
     name: 'hello-world-dynamic',
     description: 'A simple greeting dynamic resource',
@@ -197,6 +215,32 @@ describe.each(ERAS)('E2E: MCP Resource Server (%s era)', (era) => {
     expect(metaTemplate!._meta?.title).toBe('Template With Meta');
 
     await client.close();
+  });
+
+  it('should list resources and templates with a top-level title', async () => {
+    const client = await createEraClient(era, testPort);
+    try {
+      const { resources } = await client.listResources();
+      const { resourceTemplates } = await client.listResourceTemplates();
+
+      expect(
+        resources.find((r) => r.name === 'hello-world-with-title')?.title,
+      ).toBe('Say Hello Resource');
+      expect(
+        resources.find((r) => r.name === 'hello-world')?.title,
+      ).toBeUndefined();
+      expect(
+        resourceTemplates.find(
+          (r) => r.name === 'hello-world-template-with-title',
+        )?.title,
+      ).toBe('Say Hello Template');
+      expect(
+        resourceTemplates.find((r) => r.name === 'hello-world-dynamic')
+          ?.title,
+      ).toBeUndefined();
+    } finally {
+      await client.close();
+    }
   });
 
   it('should call the static resource', async () => {

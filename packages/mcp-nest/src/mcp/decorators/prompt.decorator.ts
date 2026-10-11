@@ -35,12 +35,15 @@ export type PromptArgsRawShape = {
 
 export interface PromptMetadata {
   name: string;
+  title?: string;
   description: string;
   parameters?: ZodObject<PromptArgsRawShape>;
 }
 
 export interface PromptOptions {
   name?: string;
+  /** Human-readable display name, shown instead of `name` */
+  title?: string;
   description: string;
   parameters?: ZodObject<PromptArgsRawShape>;
 }

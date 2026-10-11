@@ -44,6 +44,8 @@ export class GreetingResource {
 }
 ```
 
+`@ResourceTemplate()` takes the same `name`, `title` (optional display name), `description`, `mimeType` and `_meta` options as [`@Resource()`](resources.md#key-properties), with `uriTemplate` in place of `uri`.
+
 ## URI Template Patterns
 
 Resource templates use `path-to-regexp` style patterns:

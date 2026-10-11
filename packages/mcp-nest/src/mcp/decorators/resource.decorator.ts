@@ -7,6 +7,7 @@ export type ResourceOptions =
   {
     uri: string; // Unique identifier for the resource
     name?: string; // Human-readable name
+    title?: string; // Optional display name, shown instead of name
     description?: string; // Optional description
     mimeType?: string; // Optional MIME type
     _meta?: Record<string, any>;
@@ -15,6 +16,7 @@ export type ResourceOptions =
 export interface ResourceMetadata {
   uri: string; // Unique identifier for the resource
   name: string; // Human-readable name
+  title?: string; // Optional display name, shown instead of name
   description?: string; // Optional description
   mimeType?: string; // Optional MIME type
   _meta?: Record<string, any>;

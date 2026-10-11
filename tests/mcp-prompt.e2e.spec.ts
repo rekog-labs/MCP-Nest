@@ -27,6 +27,19 @@ export class GreetingPrompt {
       ],
     };
   }
+
+  @Prompt({
+    name: 'hello-world-with-title',
+    title: 'Say Hello',
+    description: 'A greeting prompt with a top-level title',
+  })
+  sayHelloWithTitle() {
+    return {
+      messages: [
+        { role: 'user', content: { type: 'text', text: 'Hello' } },
+      ],
+    };
+  }
 }
 
 describe.each(ERAS)('E2E: MCP Prompt Server (%s era)', (era) => {
@@ -63,6 +76,22 @@ describe.each(ERAS)('E2E: MCP Prompt Server (%s era)', (era) => {
     });
 
     await client.close();
+  });
+
+  it('should list prompts with a top-level title', async () => {
+    const client = await createEraClient(era, testPort);
+    try {
+      const prompts = await client.listPrompts();
+      expect(
+        prompts.prompts.find((p) => p.name === 'hello-world-with-title')
+          ?.title,
+      ).toBe('Say Hello');
+      expect(
+        prompts.prompts.find((p) => p.name === 'hello-world')?.title,
+      ).toBeUndefined();
+    } finally {
+      await client.close();
+    }
   });
 
   it('should call the dynamic resource', async () => {
