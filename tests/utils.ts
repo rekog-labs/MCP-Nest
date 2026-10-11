@@ -44,6 +44,8 @@ export interface BootstrapMcpConfig {
   serverMutator?: (server: any) => any;
   /** Where per-tool authorization reads the user from (`McpServerOptions.resolveUser`). */
   resolveUser?: McpServerOptions['resolveUser'];
+  /** Server instructions, static or resolved per request (`McpServerOptions.instructions`). */
+  instructions?: McpServerOptions['instructions'];
   /**
    * Hook to configure the app after the microservice is connected but BEFORE
    * `startAllMicroservices()` / `listen()`. Use it for app-level setup such as
@@ -76,6 +78,7 @@ export async function bootstrapMcpApp(
     ...(config.requestState ? { requestState: config.requestState } : {}),
     ...(config.inputRequired ? { inputRequired: config.inputRequired } : {}),
     ...(config.resolveUser ? { resolveUser: config.resolveUser } : {}),
+    ...(config.instructions ? { instructions: config.instructions } : {}),
     serverMutator: config.serverMutator,
     transports: config.transports ?? [
       new StreamableHttpTransport({ statefulMode: true }),

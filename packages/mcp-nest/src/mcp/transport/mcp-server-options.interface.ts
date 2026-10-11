@@ -7,6 +7,7 @@ import {
 import { HttpServer } from '@nestjs/common';
 import { McpTransport } from './mcp-transport.interface';
 import type { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
+import type { McpProtocolEra, McpTransportKind } from './mcp-context';
 
 /**
  * Per-operation cache hints for `2026-07-28` cacheable results (SEP-2549).
@@ -40,6 +41,28 @@ export type McpInputRequiredOptions = NonNullable<
  * adapter for HTTP transports, and declare your `@McpController` classes in a
  * module's `controllers` array. No `McpModule` is required.
  */
+/**
+ * What a per-caller {@link McpServerOptions.instructions} resolver is given.
+ */
+export interface McpInstructionsContext {
+  /**
+   * The raw Node `IncomingMessage` that caused the server to be created, or
+   * `undefined` on STDIO. On Fastify this is `request.raw`, not the Fastify
+   * request.
+   */
+  request: unknown;
+  /**
+   * The caller, read the same way per-tool authorization reads it
+   * ({@link McpServerOptions.resolveUser}, else `request.user`). `undefined`
+   * when there is no authenticated user, and always on STDIO.
+   */
+  user?: AuthenticatedUser;
+  /** The protocol era of the request that created the server. */
+  era: McpProtocolEra;
+  /** The transport kind serving the request. */
+  transport: McpTransportKind;
+}
+
 export interface McpServerOptions {
   /** Server name (MCP `Implementation.name`). */
   name: string;
@@ -135,8 +158,41 @@ export interface McpServerOptions {
    *   request fail loudly instead. Default `true`.
    */
   inputRequired?: McpInputRequiredOptions;
-  /** Server instructions sent to clients on initialize. */
-  instructions?: string;
+  /**
+   * Server instructions, sent in the `initialize` result (2025 era) and the
+   * `server/discover` result (`2026-07-28`).
+   *
+   * Pass a function to choose them per caller. It receives an
+   * {@link McpInstructionsContext} and runs whenever an SDK server is created:
+   * once per session on stateful 2025-era HTTP (the `initialize` request), once
+   * per request on stateless and `2026-07-28` traffic, and once per connection
+   * on STDIO (no request, no user).
+   *
+   * ```ts
+   * instructions: ({ user, request }) =>
+   *   user?.roles?.includes('admin')
+   *     ? adminInstructions
+   *     : (request as IncomingMessage | undefined)?.headers['x-experience'] === 'foo'
+   *       ? fooInstructions
+   *       : defaultInstructions
+   * ```
+   *
+   * It must be **synchronous**, and it should be cheap: on `2026-07-28` traffic
+   * it runs for every request, not only for `server/discover`.
+   *
+   * Fails soft. Instructions are guidance for the model, not access control, so
+   * a resolver that throws, or that returns anything other than a string or
+   * `undefined` (e.g. a promise), is logged and the server is sent with no
+   * instructions. The request itself is still served.
+   *
+   * Instructions that vary per caller are user-specific data in the
+   * `server/discover` result, so do not hint `server/discover` as
+   * `cacheScope: 'public'` (see {@link cacheHints}); the strategy logs a
+   * warning at startup if you do.
+   */
+  instructions?:
+    | string
+    | ((ctx: McpInstructionsContext) => string | undefined);
   /** Mutate the SDK server right after creation (instrumentation, etc.). */
   serverMutator?: (server: McpServer) => McpServer;
 

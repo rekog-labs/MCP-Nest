@@ -482,7 +482,7 @@ Beyond the required `name` and `version`, the `McpStrategy` constructor accepts 
 | `description` | `string` | Short description of what the server does. |
 | `websiteUrl` | `string` | URL of the website associated with the server. |
 | `icons` | `Icon[]` | Icons representing the server (MCP SDK `Icon`: `{ src, mimeType?, sizes?, theme? }`). |
-| `instructions` | `string` | Server instructions sent to clients on discovery. |
+| `instructions` | `string \| ((ctx: McpInstructionsContext) => string \| undefined)` | Server instructions sent to clients on discovery. Pass a function to choose them per caller: it receives `{ request, user, era, transport }`, where `user` is the caller as per-tool authorization sees it (`resolveUser`, else `req.user`) and `request` is the raw Node request (`undefined` on STDIO). The function is synchronous. If it throws or returns a non-string, the error is logged and no instructions are sent. Do not combine it with `cacheHints['server/discover'].cacheScope: 'public'`. |
 | `capabilities` | `ServerCapabilities` | Extra MCP capabilities, merged with the auto-derived ones. |
 | `server` | `string` | Logical server name for multi-server isolation — binds only `@McpController({ server })` classes. Omit for the default server. |
 
