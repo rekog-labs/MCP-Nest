@@ -34,6 +34,7 @@ import { ConsentService } from './services/consent.service';
 import { JwtTokenService, TokenPair } from './services/jwt-token.service';
 import { OAuthStrategyService } from './services/oauth-strategy.service';
 import { ScopePolicyService } from './services/scope-policy.service';
+import { matchesRegisteredRedirectUri } from './services/redirect-uri';
 import type { IOAuthStore, OAuthClient } from './stores/oauth-store.interface';
 
 interface OAuthCallbackRequest extends ExpressRequest {
@@ -433,12 +434,16 @@ export function createMcpOAuthController(
       }
 
       // Was `clientService.validateRedirectUri(client_id, redirect_uri)`, which
-      // re-resolved the client. Identical comparison, but done against the record
+      // re-resolved the client. Same comparison, but done against the record
       // already in hand so a CIMD document is not fetched twice per authorization
       // request. This is the "MUST validate redirect URIs presented in an
       // authorization request against those in the metadata document" check —
-      // exact match, no prefix or wildcard matching.
-      if (!redirect_uri || !client.redirect_uris.includes(redirect_uri)) {
+      // exact match, except that a loopback redirect may use any port
+      // (OAuth 2.1 §2.3.1 and §8.4.2, from RFC 8252 §7.3). A CIMD document is
+      // static and cannot list the ephemeral port the client will bind; Claude
+      // Code, for one, declares `http://localhost/callback` and then sends
+      // `http://localhost:<port>/callback`.
+      if (!matchesRegisteredRedirectUri(client.redirect_uris, redirect_uri)) {
         throw new BadRequestException('Invalid redirect_uri');
       }
 
@@ -1075,7 +1080,7 @@ export function createMcpOAuthController(
     async handleAuthorizationCodeGrant(
       code: string,
       code_verifier: string,
-      _redirect_uri: string,
+      redirect_uri: string,
       clientCredentials: { client_id: string; client_secret?: string },
     ): Promise<TokenPair> {
       this.logger.debug('handleAuthorizationCodeGrant - Params:', {
@@ -1106,6 +1111,19 @@ export function createMcpOAuthController(
           { expected: authCode.client_id, got: clientCredentials.client_id },
         );
         throw new BadRequestException('Client ID mismatch');
+      }
+      // OAuth 2.1 dropped `redirect_uri` from the token request (PKCE does its
+      // job), but §10.2 says a server that also serves OAuth 2.0 clients MUST
+      // accept it and enforce it as RFC 6749 §4.1.3 does: identical to the value
+      // the code was issued for. Absent is fine; different is not. Byte-exact,
+      // with no loopback port leniency — that applies at /authorize only, and
+      // the code is bound to the one port the client actually used there.
+      if (redirect_uri && redirect_uri !== authCode.redirect_uri) {
+        this.logger.error('handleAuthorizationCodeGrant - redirect_uri mismatch:', {
+          expected: authCode.redirect_uri,
+          got: redirect_uri,
+        });
+        throw new BadRequestException('redirect_uri mismatch');
       }
 
       // Get client and validate authentication.
