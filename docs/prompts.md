@@ -38,6 +38,8 @@ export class GreetingPrompt {
 
 Register the class in a module's `controllers` array (not `providers`) so NestJS scans it when the strategy is connected. See [Server Examples](server-examples.md) for the full bootstrap. The validated arguments arrive as the `@Payload()`; add `@Ctx() ctx: McpContext` if you need the execution context.
 
+Set the optional `title` option to give the prompt a display name. `prompts/list` returns it as the top-level `title`, and clients can show it instead of `name`.
+
 ## Prompt Structure
 
 A prompt returns an object with:

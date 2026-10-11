@@ -502,6 +502,7 @@ class McpStrategy {
 ```typescript
 interface DynamicToolDefinition {
   name: string;
+  title?: string; // display name, separate from annotations.title
   description: string;
   parameters?: z.ZodType;
   outputSchema?: z.ZodType;
@@ -524,6 +525,7 @@ type DynamicToolHandler = (
 interface DynamicResourceDefinition {
   uri: string;
   name?: string;
+  title?: string;
   description?: string;
   mimeType?: string;
   _meta?: Record<string, any>;
@@ -538,6 +540,7 @@ type DynamicResourceHandler = (
 
 interface DynamicPromptDefinition {
   name: string;
+  title?: string;
   description: string;
   parameters?: ZodObject<PromptArgsRawShape>;
   handler: DynamicPromptHandler;

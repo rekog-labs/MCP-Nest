@@ -35,6 +35,8 @@ export type DynamicToolHandler = (
 export interface DynamicToolDefinition {
   /** Unique name for the tool */
   name: string;
+  /** Human-readable display name */
+  title?: string;
   /** Description shown to the LLM */
   description: string;
   /** Input schema (Zod, any Standard Schema validator, or raw JSON Schema) */

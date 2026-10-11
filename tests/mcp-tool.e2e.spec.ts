@@ -94,6 +94,19 @@ export class GreetingTool {
   }
 
   @Tool({
+    name: 'hello-world-with-title',
+    title: 'Say Hello With Title',
+    description: 'A sample tool with a top-level title',
+    parameters: z.object({ name: z.string().default('World') }),
+  })
+  async sayHelloWithTitle(@Payload() { name }: { name: string }) {
+    const user = await this.userRepository.findByName(name);
+    return {
+      content: [{ type: 'text', text: `Hello with title, ${user.name}!` }],
+    };
+  }
+
+  @Tool({
     name: 'hello-world-with-meta',
     description: 'A sample tool with meta',
     parameters: z.object({ name: z.string().default('World') }),
@@ -408,6 +421,21 @@ describe('E2E: MCP ToolServer', () => {
           expect(annotatedTool?.annotations?.title).toBe('Say Hello');
           expect(annotatedTool?.annotations?.readOnlyHint).toBe(true);
           expect(annotatedTool?.annotations?.openWorldHint).toBe(false);
+        } finally {
+          await client.close();
+        }
+      });
+
+      it('should list tools with a top-level title', async () => {
+        const client = await clientCreator(port);
+        try {
+          const tools = await client.listTools();
+          const titledTool = tools.tools.find(
+            (t) => t.name === 'hello-world-with-title',
+          );
+          expect(titledTool?.title).toBe('Say Hello With Title');
+          const untitledTool = tools.tools.find((t) => t.name === 'hello-world');
+          expect(untitledTool?.title).toBeUndefined();
         } finally {
           await client.close();
         }

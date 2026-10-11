@@ -11,6 +11,8 @@ export type DynamicPromptHandler = (
 export interface DynamicPromptDefinition {
   /** Unique name for the prompt */
   name: string;
+  /** Human-readable display name */
+  title?: string;
   /** Description shown to the LLM */
   description: string;
   /** Zod schema describing the prompt arguments */

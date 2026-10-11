@@ -47,6 +47,7 @@ export class GreetingResource {
 ## Key Properties
 
 - **name**: Human-readable name for the resource
+- **title** (optional): Display name returned as the top-level `title` in `resources/list`. Clients can show it instead of `name`
 - **description**: What this resource contains
 - **mimeType**: Content type (e.g., `application/json`, `text/plain`, `text/markdown`)
 - **uri**: Unique identifier using `mcp://` scheme

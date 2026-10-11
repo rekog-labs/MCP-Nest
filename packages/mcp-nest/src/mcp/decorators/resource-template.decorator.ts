@@ -7,6 +7,7 @@ export type ResourceTemplateOptions =
   {
     uriTemplate: string; // URI template following RFC 6570
     name?: string; // Human-readable name
+    title?: string; // Optional display name, shown instead of name
     description?: string; // Optional description
     mimeType?: string; // Optional MIME type
     _meta?: Record<string, any>;
@@ -15,6 +16,7 @@ export type ResourceTemplateOptions =
 export interface ResourceTemplateMetadata {
   uriTemplate: string; // URI template following RFC 6570
   name: string; // Human-readable name
+  title?: string; // Optional display name, shown instead of name
   description?: string; // Optional description
   mimeType?: string; // Optional MIME type
   _meta?: Record<string, any>;

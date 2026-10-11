@@ -11,6 +11,8 @@ export interface DynamicResourceDefinition {
   uri: string;
   /** Human-readable name (defaults to uri if omitted) */
   name?: string;
+  /** Human-readable display name */
+  title?: string;
   /** Optional description shown to the LLM */
   description?: string;
   /** Optional MIME type of the resource content */

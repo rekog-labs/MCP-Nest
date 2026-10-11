@@ -731,6 +731,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         .map((tool) => {
           const schema: Record<string, unknown> = {
             name: tool.metadata.name,
+            title: tool.metadata.title,
             description: tool.metadata.description,
             annotations: tool.metadata.annotations,
             _meta: tool.metadata._meta,
@@ -898,6 +899,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     server.server.setRequestHandler('prompts/list', () => ({
       prompts: this.getPrompts().map((prompt) => ({
         name: prompt.metadata.name,
+        title: prompt.metadata.title,
         description: prompt.metadata.description,
         arguments: prompt.metadata.parameters
           ? Object.entries(prompt.metadata.parameters.shape).map(
@@ -1058,6 +1060,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     this.dynamicTools.set(definition.name, {
       metadata: {
         name: definition.name,
+        title: definition.title,
         description: definition.description,
         parameters: definition.parameters ?? z.object({}),
         outputSchema: definition.outputSchema,
@@ -1083,6 +1086,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       metadata: {
         uri: definition.uri,
         name: definition.name ?? definition.uri,
+        title: definition.title,
         description: definition.description,
         mimeType: definition.mimeType,
         _meta: definition._meta,
@@ -1100,6 +1104,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     this.dynamicPrompts.set(definition.name, {
       metadata: {
         name: definition.name,
+        title: definition.title,
         description: definition.description,
         parameters: definition.parameters,
       },

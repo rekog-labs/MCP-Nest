@@ -36,6 +36,7 @@ export type AccessMatchMode = 'all' | 'any';
 
 export interface ToolMetadata {
   name: string;
+  title?: string;
   description: string;
   parameters?: ToolInputSchema;
   outputSchema?: ToolInputSchema;
@@ -55,6 +56,7 @@ export interface ToolAnnotations extends SdkToolAnnotations {}
 
 export interface ToolOptions {
   name?: string;
+  title?: string;
   description?: string;
   parameters?: ToolInputSchema;
   outputSchema?: ToolInputSchema;
@@ -66,6 +68,7 @@ export interface ToolOptions {
  * Decorator that marks a controller method as an MCP tool.
  * @param {Object} options - The options for the decorator
  * @param {string} options.name - The name of the tool
+ * @param {string} [options.title] - Human-readable display name of the tool
  * @param {string} options.description - The description of the tool
  * @param {z.ZodType} [options.parameters] - The parameters of the tool
  * @param {z.ZodType} [options.outputSchema] - The output schema of the tool
