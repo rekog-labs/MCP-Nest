@@ -172,6 +172,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       this.warnIfNamedServerHasNoDecoratorCapabilities();
       this.warnIfToolListCacheHintIsPublic();
       this.warnIfDiscoverCacheHintIsPublic();
+      this.warnIfServerInfoCacheHintIsPublic();
       const ctx = this.createTransportContext();
       for (const transport of this.options.transports) {
         await transport.start(ctx);
@@ -267,25 +268,48 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   /**
    * Same reasoning as {@link warnIfToolListCacheHintIsPublic}, for
-   * `server/discover`: its result carries `instructions` and the server info,
-   * so when any of them is resolved per request a `public` hint lets a shared
-   * cache serve one caller's instructions or title to another.
+   * `server/discover`: its result carries `instructions`, so when those are
+   * resolved per request a `public` hint lets a shared cache serve one
+   * caller's instructions to another.
    */
   private warnIfDiscoverCacheHintIsPublic(): void {
     if (this.options.cacheHints?.['server/discover']?.cacheScope !== 'public')
       return;
-    const perCaller = (
-      ['instructions', 'title', 'description'] as const
-    ).filter((field) => typeof this.options[field] === 'function');
-    if (perCaller.length === 0) return;
+    if (typeof this.options.instructions !== 'function') return;
     this.logger.warn(
-      `cacheHints['server/discover'].cacheScope is 'public', but ` +
-        `${perCaller.join(', ')} ${perCaller.length === 1 ? 'is' : 'are'} ` +
-        `resolved per request. A public discover result may be cached by a ` +
+      `cacheHints['server/discover'].cacheScope is 'public', but instructions ` +
+        `are resolved per request. A public discover result may be cached by a ` +
         `client or shared gateway and reused outside the requesting caller's ` +
-        `authorization context, so one caller's values can be served to ` +
+        `authorization context, so one caller's instructions can be served to ` +
         `another. Use cacheScope: 'private' unless the resolver returns the same ` +
-        `value for every caller.`,
+        `instructions for every caller.`,
+    );
+  }
+
+  /**
+   * Same reasoning, for a per-request `title` or `description`. On
+   * `2026-07-28` traffic the SDK stamps the server info into the `_meta` of
+   * every result, not only `server/discover`, so any `public` hint lets a
+   * shared cache serve one caller's server info to another.
+   */
+  private warnIfServerInfoCacheHintIsPublic(): void {
+    const perCaller = (['title', 'description'] as const).filter(
+      (field) => typeof this.options[field] === 'function',
+    );
+    if (perCaller.length === 0) return;
+    const publicMethods = Object.entries(this.options.cacheHints ?? {})
+      .filter(([, hint]) => hint?.cacheScope === 'public')
+      .map(([method]) => method);
+    if (publicMethods.length === 0) return;
+    this.logger.warn(
+      `cacheHints for ${publicMethods.join(', ')} ` +
+        `${publicMethods.length === 1 ? 'has' : 'have'} cacheScope 'public', but ` +
+        `${perCaller.join(' and ')} ${perCaller.length === 1 ? 'is' : 'are'} ` +
+        `resolved per request. Every 2026-07-28 result carries the server info ` +
+        `in its _meta, so a public result may be cached by a client or shared ` +
+        `gateway and serve one caller's ${perCaller.join(' and ')} to another. ` +
+        `Use cacheScope: 'private' unless the resolver returns the same value ` +
+        `for every caller.`,
     );
   }
 

@@ -132,21 +132,39 @@ describe("server info resolver with cacheScope: 'public' on server/discover", ()
     warnSpy?.mockRestore();
   });
 
-  it('warns and names the per-request field', async () => {
-    const { app } = await bootstrapMcpApp({
+  function serverInfoWarning(): string | undefined {
+    return warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .find((m) => m.includes('resolved per request. Every 2026-07-28 result'));
+  }
+
+  it.each(['server/discover', 'tools/list'] as const)(
+    'warns on a public %s hint and names the method and the field',
+    async (method) => {
+      const { app } = await bootstrapMcpApp({
+        controllers: [Tools],
+        title: (ctx) => `${brandOf(ctx)} Assistant`,
+        cacheHints: { [method]: { cacheScope: 'public' } },
+      });
+      expect(serverInfoWarning()).toContain(`cacheHints for ${method} has`);
+      expect(serverInfoWarning()).toContain('but title is resolved');
+      await app.close();
+    },
+  );
+
+  it('stays quiet for a static title or private hints', async () => {
+    const staticTitle = await bootstrapMcpApp({
+      controllers: [Tools],
+      title: 'Static Assistant',
+      cacheHints: { 'tools/list': { cacheScope: 'public' } },
+    });
+    await staticTitle.app.close();
+    const privateHint = await bootstrapMcpApp({
       controllers: [Tools],
       title: (ctx) => `${brandOf(ctx)} Assistant`,
-      cacheHints: { 'server/discover': { cacheScope: 'public' } },
+      cacheHints: { 'tools/list': { ttlMs: 30_000, cacheScope: 'private' } },
     });
-    expect(
-      warnSpy.mock.calls
-        .map((c) => String(c[0]))
-        .some(
-          (m) =>
-            m.includes("cacheHints['server/discover'].cacheScope") &&
-            m.includes('title is resolved per request'),
-        ),
-    ).toBe(true);
-    await app.close();
+    await privateHint.app.close();
+    expect(serverInfoWarning()).toBeUndefined();
   });
 });

@@ -478,7 +478,7 @@ Beyond the required `name` and `version`, the `McpStrategy` constructor accepts 
 | --- | --- | --- |
 | `name` (required) | `string` | Server name (MCP `Implementation.name`). |
 | `version` (required) | `string` | Server version (MCP `Implementation.version`). |
-| `title` | `string \| ((ctx: McpInstructionsContext) => string \| undefined)` | Human-readable display name. Accepts a per-caller function exactly like `instructions` (e.g. a white-labelled product name); if it throws or returns a non-string, the error is logged and no title is sent. |
+| `title` | `string \| ((ctx: McpInstructionsContext) => string \| undefined)` | Human-readable display name. Accepts a per-caller function exactly like `instructions` (e.g. a white-labelled product name); if it throws or returns a non-string, the error is logged and no title is sent. Every `2026-07-28` result carries the server info in its `_meta`, so do not combine a function with any `cacheScope: 'public'` hint. |
 | `description` | `string \| ((ctx: McpInstructionsContext) => string \| undefined)` | Short description of what the server does. Accepts a per-caller function, like `title`. |
 | `websiteUrl` | `string` | URL of the website associated with the server. |
 | `icons` | `Icon[]` | Icons representing the server (MCP SDK `Icon`: `{ src, mimeType?, sizes?, theme? }`). |

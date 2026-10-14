@@ -84,6 +84,11 @@ export interface McpServerOptions {
    * {@link McpInstructionsContext}, run whenever an SDK server is created, and
    * failing soft (a resolver that throws or returns a non-string is logged and
    * the server goes out without a title).
+   *
+   * On `2026-07-28` traffic every result carries the server info in its
+   * `_meta`, so a per-caller title is user-specific data in every result: do
+   * not hint any method as `cacheScope: 'public'` (see {@link cacheHints}); the
+   * strategy logs a warning at startup if you do.
    */
   title?: string | ((ctx: McpInstructionsContext) => string | undefined);
   /**
