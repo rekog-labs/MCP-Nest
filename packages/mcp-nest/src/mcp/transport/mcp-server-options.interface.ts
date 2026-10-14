@@ -42,7 +42,9 @@ export type McpInputRequiredOptions = NonNullable<
  * module's `controllers` array. No `McpModule` is required.
  */
 /**
- * What a per-caller {@link McpServerOptions.instructions} resolver is given.
+ * What a per-caller {@link McpServerOptions.instructions},
+ * {@link McpServerOptions.title} or {@link McpServerOptions.description}
+ * resolver is given.
  */
 export interface McpInstructionsContext {
   /**
@@ -74,10 +76,22 @@ export interface McpServerOptions {
    * the default server (binds to plain `@McpController()` classes).
    */
   server?: string;
-  /** Human-readable display name. */
-  title?: string;
-  /** Short description of what this server does. */
-  description?: string;
+  /**
+   * Human-readable display name (MCP `Implementation.title`).
+   *
+   * Pass a function to choose it per caller, e.g. a white-labelled product
+   * name. It works exactly like {@link instructions}: synchronous, given an
+   * {@link McpInstructionsContext}, run whenever an SDK server is created, and
+   * failing soft (a resolver that throws or returns a non-string is logged and
+   * the server goes out without a title).
+   */
+  title?: string | ((ctx: McpInstructionsContext) => string | undefined);
+  /**
+   * Short description of what this server does (MCP
+   * `Implementation.description`). Accepts a per-caller function, like
+   * {@link title}.
+   */
+  description?: string | ((ctx: McpInstructionsContext) => string | undefined);
   /** URL of the website associated with this server. */
   websiteUrl?: string;
   /** Icons representing this server. */
@@ -190,9 +204,7 @@ export interface McpServerOptions {
    * `cacheScope: 'public'` (see {@link cacheHints}); the strategy logs a
    * warning at startup if you do.
    */
-  instructions?:
-    | string
-    | ((ctx: McpInstructionsContext) => string | undefined);
+  instructions?: string | ((ctx: McpInstructionsContext) => string | undefined);
   /** Mutate the SDK server right after creation (instrumentation, etc.). */
   serverMutator?: (server: McpServer) => McpServer;
 

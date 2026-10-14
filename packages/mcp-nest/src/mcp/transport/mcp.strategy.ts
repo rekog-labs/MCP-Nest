@@ -267,21 +267,25 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
 
   /**
    * Same reasoning as {@link warnIfToolListCacheHintIsPublic}, for
-   * `server/discover`: its result carries `instructions`, so when those are
-   * resolved per request a `public` hint lets a shared cache serve one
-   * caller's instructions to another.
+   * `server/discover`: its result carries `instructions` and the server info,
+   * so when any of them is resolved per request a `public` hint lets a shared
+   * cache serve one caller's instructions or title to another.
    */
   private warnIfDiscoverCacheHintIsPublic(): void {
     if (this.options.cacheHints?.['server/discover']?.cacheScope !== 'public')
       return;
-    if (typeof this.options.instructions !== 'function') return;
+    const perCaller = (
+      ['instructions', 'title', 'description'] as const
+    ).filter((field) => typeof this.options[field] === 'function');
+    if (perCaller.length === 0) return;
     this.logger.warn(
-      `cacheHints['server/discover'].cacheScope is 'public', but instructions ` +
-        `are resolved per request. A public discover result may be cached by a ` +
+      `cacheHints['server/discover'].cacheScope is 'public', but ` +
+        `${perCaller.join(', ')} ${perCaller.length === 1 ? 'is' : 'are'} ` +
+        `resolved per request. A public discover result may be cached by a ` +
         `client or shared gateway and reused outside the requesting caller's ` +
-        `authorization context, so one caller's instructions can be served to ` +
+        `authorization context, so one caller's values can be served to ` +
         `another. Use cacheScope: 'private' unless the resolver returns the same ` +
-        `instructions for every caller.`,
+        `value for every caller.`,
     );
   }
 
@@ -485,20 +489,25 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       capabilities.logging = {};
     }
 
+    const title = this.resolvePerCaller('title', session, rawRequest);
+    const description = this.resolvePerCaller(
+      'description',
+      session,
+      rawRequest,
+    );
     const server = new McpServer(
       {
         name: this.options.name,
         version: this.options.version,
-        ...(this.options.title && { title: this.options.title }),
-        ...(this.options.description && {
-          description: this.options.description,
-        }),
+        ...(title && { title }),
+        ...(description && { description }),
         ...(this.options.websiteUrl && { websiteUrl: this.options.websiteUrl }),
         ...(this.options.icons && { icons: this.options.icons }),
       },
       {
         capabilities,
-        instructions: this.resolveInstructions(session, rawRequest),
+        instructions:
+          this.resolvePerCaller('instructions', session, rawRequest) ?? '',
         // Era-blind by design: the SDK carries the hint to the wire codec on a
         // symbol-keyed property that is never serialized, so it fills the
         // required `ttlMs`/`cacheScope` fields on 2026-era results and leaves
@@ -522,21 +531,23 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   }
 
   /**
-   * {@link McpServerOptions.instructions}, resolved for the request creating
-   * the server. Fails soft: instructions are guidance, not access control, so a
-   * resolver that throws or returns a non-string (an `async` resolver that got
-   * past the types) is logged and the server goes out with none, rather than
-   * failing every request on the endpoint.
+   * {@link McpServerOptions.instructions}, {@link McpServerOptions.title} or
+   * {@link McpServerOptions.description}, resolved for the request creating the
+   * server. Fails soft: these are presentation and guidance, not access
+   * control, so a resolver that throws or returns a non-string (an `async`
+   * resolver that got past the types) is logged and the server goes out
+   * without that field, rather than failing every request on the endpoint.
    */
-  private resolveInstructions(
+  private resolvePerCaller(
+    field: 'instructions' | 'title' | 'description',
     session: McpSessionSeed | undefined,
     rawRequest: unknown,
-  ): string {
-    const { instructions } = this.options;
-    if (typeof instructions !== 'function') return instructions ?? '';
+  ): string | undefined {
+    const option = this.options[field];
+    if (typeof option !== 'function') return option;
     let resolved: unknown;
     try {
-      resolved = instructions({
+      resolved = option({
         request: rawRequest,
         user: this.getUser(rawRequest),
         era: session?.era ?? 'legacy',
@@ -544,22 +555,22 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       });
     } catch (error) {
       this.logger.error(
-        `instructions resolver threw; sending no instructions: ${
+        `${field} resolver threw; sending no ${field}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return '';
+      return undefined;
     }
-    if (resolved === undefined) return '';
+    if (resolved === undefined) return undefined;
     if (typeof resolved !== 'string') {
       this.logger.error(
-        `instructions resolver returned ${
+        `${field} resolver returned ${
           typeof (resolved as { then?: unknown } | null)?.then === 'function'
             ? 'a promise (it must be synchronous)'
             : `a ${typeof resolved}`
-        }; sending no instructions.`,
+        }; sending no ${field}.`,
       );
-      return '';
+      return undefined;
     }
     return resolved;
   }
