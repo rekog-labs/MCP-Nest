@@ -305,7 +305,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       `cacheHints for ${publicMethods.join(', ')} ` +
         `${publicMethods.length === 1 ? 'has' : 'have'} cacheScope 'public', but ` +
         `${perCaller.join(' and ')} ${perCaller.length === 1 ? 'is' : 'are'} ` +
-        `resolved per request. Every 2026-07-28 result carries the server info ` +
+        `resolved per caller. Every 2026-07-28 result carries the server info ` +
         `in its _meta, so a public result may be cached by a client or shared ` +
         `gateway and serve one caller's ${perCaller.join(' and ')} to another. ` +
         `Use cacheScope: 'private' unless the resolver returns the same value ` +

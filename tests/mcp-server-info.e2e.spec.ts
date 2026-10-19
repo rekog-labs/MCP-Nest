@@ -63,6 +63,40 @@ describe.each(ERAS)('MCP server info (%s era)', (era) => {
         }
       },
     );
+
+    if (era === 'modern') {
+      // The premise of the public-cache warning: every 2026-07-28 result, not
+      // only server/discover, carries the caller's server info in its _meta.
+      it('stamps the per-caller server info into every result', async () => {
+        const acme = await createEraClient(era, port, {
+          requestInit: { headers: { 'x-brand': 'acme' } },
+        });
+        const other = await createEraClient(era, port, {
+          requestInit: { headers: { 'x-brand': 'other' } },
+        });
+        try {
+          const results: any[] = await Promise.all([
+            acme.callTool({ name: 'ping', arguments: {} }),
+            other.callTool({ name: 'ping', arguments: {} }),
+          ]);
+          expect(
+            results.map((r) => r._meta?.['io.modelcontextprotocol/serverInfo']),
+          ).toEqual([
+            expect.objectContaining({
+              title: 'Acme Assistant',
+              description: 'Ask Acme about your fleet',
+            }),
+            expect.objectContaining({
+              title: 'Default Assistant',
+              description: 'Ask Default about your fleet',
+            }),
+          ]);
+        } finally {
+          await acme.close();
+          await other.close();
+        }
+      });
+    }
   });
 
   it('still accepts static strings', async () => {
@@ -138,7 +172,7 @@ describe("server info resolver with a cacheScope: 'public' hint", () => {
   function serverInfoWarning(): string | undefined {
     return warnSpy.mock.calls
       .map((c) => String(c[0]))
-      .find((m) => m.includes('resolved per request. Every 2026-07-28 result'));
+      .find((m) => m.includes('resolved per caller. Every 2026-07-28 result'));
   }
 
   it.each(['server/discover', 'tools/list'] as const)(
