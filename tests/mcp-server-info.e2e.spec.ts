@@ -83,44 +83,47 @@ describe.each(ERAS)('MCP server info (%s era)', (era) => {
     }
   });
 
-  describe('a title resolver that throws', () => {
-    let errorSpy: jest.SpyInstance;
-    beforeEach(() => {
-      errorSpy = jest
-        .spyOn(Logger.prototype, 'error')
-        .mockImplementation(() => undefined);
-    });
-    afterEach(() => errorSpy.mockRestore());
-
-    it('is logged, sends no title, and still serves the request', async () => {
-      const { app, port } = await bootstrapMcpApp({
-        controllers: [Tools],
-        title: () => {
-          throw new Error('boom');
-        },
+  describe.each(['title', 'description'] as const)(
+    'a %s resolver that throws',
+    (field) => {
+      let errorSpy: jest.SpyInstance;
+      beforeEach(() => {
+        errorSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation(() => undefined);
       });
-      const client = await createEraClient(era, port);
-      try {
-        expect(client.getServerVersion()?.title).toBeUndefined();
-        const result: any = await client.callTool({
-          name: 'ping',
-          arguments: {},
+      afterEach(() => errorSpy.mockRestore());
+
+      it(`is logged, sends no ${field}, and still serves the request`, async () => {
+        const { app, port } = await bootstrapMcpApp({
+          controllers: [Tools],
+          [field]: () => {
+            throw new Error('boom');
+          },
         });
-        expect(result.content[0].text).toContain('pong');
-        expect(
-          errorSpy.mock.calls.some((c) =>
-            String(c[0]).includes('title resolver'),
-          ),
-        ).toBe(true);
-      } finally {
-        await client.close();
-        await app.close();
-      }
-    });
-  });
+        const client = await createEraClient(era, port);
+        try {
+          expect(client.getServerVersion()?.[field]).toBeUndefined();
+          const result: any = await client.callTool({
+            name: 'ping',
+            arguments: {},
+          });
+          expect(result.content[0].text).toContain('pong');
+          expect(
+            errorSpy.mock.calls.some((c) =>
+              String(c[0]).includes(`${field} resolver`),
+            ),
+          ).toBe(true);
+        } finally {
+          await client.close();
+          await app.close();
+        }
+      });
+    },
+  );
 });
 
-describe("server info resolver with cacheScope: 'public' on server/discover", () => {
+describe("server info resolver with a cacheScope: 'public' hint", () => {
   let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -151,6 +154,26 @@ describe("server info resolver with cacheScope: 'public' on server/discover", ()
       await app.close();
     },
   );
+
+  it('names every public method and every per-request field', async () => {
+    const { app } = await bootstrapMcpApp({
+      controllers: [Tools],
+      title: (ctx) => `${brandOf(ctx)} Assistant`,
+      description: (ctx) => `Ask ${brandOf(ctx)} about your fleet`,
+      cacheHints: {
+        'tools/list': { cacheScope: 'public' },
+        'prompts/list': { cacheScope: 'public' },
+        'resources/read': { cacheScope: 'private' },
+      },
+    });
+    expect(serverInfoWarning()).toContain(
+      'cacheHints for tools/list, prompts/list have',
+    );
+    expect(serverInfoWarning()).toContain(
+      'but title and description are resolved',
+    );
+    await app.close();
+  });
 
   it('stays quiet for a static title or private hints', async () => {
     const staticTitle = await bootstrapMcpApp({
