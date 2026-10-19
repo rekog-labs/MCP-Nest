@@ -306,6 +306,13 @@ cache fields.
 > combination, but it does not refuse: the operator may legitimately front the
 > endpoint with a token-keyed cache. Leave it `private` unless the list is
 > genuinely identical for every caller.
+>
+> Per-caller server options count too. A function `instructions` only reaches
+> `server/discover`, but the SDK stamps the server info into the `_meta` of
+> every modern result, so a function `title` or `description` makes **every**
+> result caller-specific: do not hint any method `public` then. mcp-nest warns
+> at startup for these as well. The warnings only see `cacheHints`; a
+> `cacheScope: 'public'` returned by a handler is your own call.
 
 ---
 

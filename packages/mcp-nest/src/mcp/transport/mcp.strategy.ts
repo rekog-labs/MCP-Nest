@@ -172,6 +172,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       this.warnIfNamedServerHasNoDecoratorCapabilities();
       this.warnIfToolListCacheHintIsPublic();
       this.warnIfDiscoverCacheHintIsPublic();
+      this.warnIfServerInfoCacheHintIsPublic();
       const ctx = this.createTransportContext();
       for (const transport of this.options.transports) {
         await transport.start(ctx);
@@ -282,6 +283,33 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         `authorization context, so one caller's instructions can be served to ` +
         `another. Use cacheScope: 'private' unless the resolver returns the same ` +
         `instructions for every caller.`,
+    );
+  }
+
+  /**
+   * Same reasoning, for a per-request `title` or `description`. On
+   * `2026-07-28` traffic the SDK stamps the server info into the `_meta` of
+   * every result, not only `server/discover`, so any `public` hint lets a
+   * shared cache serve one caller's server info to another.
+   */
+  private warnIfServerInfoCacheHintIsPublic(): void {
+    const perCaller = (['title', 'description'] as const).filter(
+      (field) => typeof this.options[field] === 'function',
+    );
+    if (perCaller.length === 0) return;
+    const publicMethods = Object.entries(this.options.cacheHints ?? {})
+      .filter(([, hint]) => hint?.cacheScope === 'public')
+      .map(([method]) => method);
+    if (publicMethods.length === 0) return;
+    this.logger.warn(
+      `cacheHints for ${publicMethods.join(', ')} ` +
+        `${publicMethods.length === 1 ? 'has' : 'have'} cacheScope 'public', but ` +
+        `${perCaller.join(' and ')} ${perCaller.length === 1 ? 'is' : 'are'} ` +
+        `resolved per caller. Every 2026-07-28 result carries the server info ` +
+        `in its _meta, so a public result may be cached by a client or shared ` +
+        `gateway and serve one caller's ${perCaller.join(' and ')} to another. ` +
+        `Use cacheScope: 'private' unless the resolver returns the same value ` +
+        `for every caller.`,
     );
   }
 
@@ -485,20 +513,25 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       capabilities.logging = {};
     }
 
+    const title = this.resolvePerCaller('title', session, rawRequest);
+    const description = this.resolvePerCaller(
+      'description',
+      session,
+      rawRequest,
+    );
     const server = new McpServer(
       {
         name: this.options.name,
         version: this.options.version,
-        ...(this.options.title && { title: this.options.title }),
-        ...(this.options.description && {
-          description: this.options.description,
-        }),
+        ...(title && { title }),
+        ...(description && { description }),
         ...(this.options.websiteUrl && { websiteUrl: this.options.websiteUrl }),
         ...(this.options.icons && { icons: this.options.icons }),
       },
       {
         capabilities,
-        instructions: this.resolveInstructions(session, rawRequest),
+        instructions:
+          this.resolvePerCaller('instructions', session, rawRequest) ?? '',
         // Era-blind by design: the SDK carries the hint to the wire codec on a
         // symbol-keyed property that is never serialized, so it fills the
         // required `ttlMs`/`cacheScope` fields on 2026-era results and leaves
@@ -522,21 +555,23 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   }
 
   /**
-   * {@link McpServerOptions.instructions}, resolved for the request creating
-   * the server. Fails soft: instructions are guidance, not access control, so a
-   * resolver that throws or returns a non-string (an `async` resolver that got
-   * past the types) is logged and the server goes out with none, rather than
-   * failing every request on the endpoint.
+   * {@link McpServerOptions.instructions}, {@link McpServerOptions.title} or
+   * {@link McpServerOptions.description}, resolved for the request creating the
+   * server. Fails soft: these are presentation and guidance, not access
+   * control, so a resolver that throws or returns a non-string (an `async`
+   * resolver that got past the types) is logged and the server goes out
+   * without that field, rather than failing every request on the endpoint.
    */
-  private resolveInstructions(
+  private resolvePerCaller(
+    field: 'instructions' | 'title' | 'description',
     session: McpSessionSeed | undefined,
     rawRequest: unknown,
-  ): string {
-    const { instructions } = this.options;
-    if (typeof instructions !== 'function') return instructions ?? '';
+  ): string | undefined {
+    const option = this.options[field];
+    if (typeof option !== 'function') return option;
     let resolved: unknown;
     try {
-      resolved = instructions({
+      resolved = option({
         request: rawRequest,
         user: this.getUser(rawRequest),
         era: session?.era ?? 'legacy',
@@ -544,22 +579,22 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       });
     } catch (error) {
       this.logger.error(
-        `instructions resolver threw; sending no instructions: ${
+        `${field} resolver threw; sending no ${field}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return '';
+      return undefined;
     }
-    if (resolved === undefined) return '';
+    if (resolved === undefined) return undefined;
     if (typeof resolved !== 'string') {
       this.logger.error(
-        `instructions resolver returned ${
+        `${field} resolver returned ${
           typeof (resolved as { then?: unknown } | null)?.then === 'function'
             ? 'a promise (it must be synchronous)'
             : `a ${typeof resolved}`
-        }; sending no instructions.`,
+        }; sending no ${field}.`,
       );
-      return '';
+      return undefined;
     }
     return resolved;
   }
