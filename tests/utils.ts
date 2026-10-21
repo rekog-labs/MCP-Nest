@@ -48,6 +48,8 @@ export interface BootstrapMcpConfig {
   instructions?: McpServerOptions['instructions'];
   /** Server title, static or resolved per request (`McpServerOptions.title`). */
   title?: McpServerOptions['title'];
+  /** Disable validation of tool responses against their output schemas. */
+  disableResponseValidation?: McpServerOptions['disableResponseValidation'];
   /** Server description, static or resolved per request (`McpServerOptions.description`). */
   description?: McpServerOptions['description'];
   /**
@@ -85,6 +87,9 @@ export async function bootstrapMcpApp(
     ...(config.instructions ? { instructions: config.instructions } : {}),
     ...(config.title ? { title: config.title } : {}),
     ...(config.description ? { description: config.description } : {}),
+    ...(config.disableResponseValidation !== undefined
+      ? { disableResponseValidation: config.disableResponseValidation }
+      : {}),
     serverMutator: config.serverMutator,
     transports: config.transports ?? [
       new StreamableHttpTransport({ statefulMode: true }),

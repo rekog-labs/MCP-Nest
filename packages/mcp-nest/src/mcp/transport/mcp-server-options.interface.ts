@@ -306,4 +306,13 @@ export interface McpServerOptions {
     | {
         level: ('log' | 'error' | 'warn' | 'debug' | 'verbose')[];
       };
+
+  /**
+   * Disable validation of tool responses against their output schema. Defaults
+   * to false. When true, responses are returned without validation or parsing.
+   * Output schemas are still advertised to clients, which may validate them.
+   * Applies to decorated and dynamic tools across all transports and schemas.
+   * Already-formatted MCP results retain their existing pass-through behavior.
+   */
+  disableResponseValidation?: boolean;
 }

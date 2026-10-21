@@ -40,6 +40,7 @@ export interface ToolMetadata {
   description: string;
   parameters?: ToolInputSchema;
   outputSchema?: ToolInputSchema;
+  disableResponseValidation?: boolean;
   annotations?: SdkToolAnnotations;
   _meta?: Record<string, any>;
   // Security-related metadata
@@ -60,6 +61,7 @@ export interface ToolOptions {
   description?: string;
   parameters?: ToolInputSchema;
   outputSchema?: ToolInputSchema;
+  disableResponseValidation?: boolean;
   annotations?: ToolAnnotations;
   _meta?: Record<string, any>;
 }
