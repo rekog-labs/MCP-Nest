@@ -126,7 +126,8 @@ The `@Tool()` decorator accepts a configuration object with the following proper
 - **`description`** (required): Human-readable description explaining what the tool does
 - **`title`** (optional): Human-readable display name returned as the top-level `title` in `tools/list`. Clients can show it instead of `name`. It is separate from `annotations.title`
 - **`parameters`** (required): Zod schema defining the expected input parameters and their validation rules
-- **`outputSchema`** (optional): Zod schema for validating and structuring the tool's return value
+- **`outputSchema`** (optional): schema for validating and structuring the tool's return value
+- **`disableResponseValidation`** (optional): set to `true` to skip server-side response validation and parsing for this tool. The `outputSchema` is still advertised to clients.
 - **`annotations`** (optional): Metadata hints for AI agents, including:
   - `readOnlyHint`: Indicates if the tool only reads data without side effects
   - `destructiveHint`: Warns if the tool modifies or deletes data
@@ -209,6 +210,28 @@ async sayHelloStructured(@Payload() { name, language }: { name: string; language
   };
 }
 ```
+
+Response validation is enabled by default. To retain an output schema for
+clients while returning the handler's result without server-side validation or
+schema parsing, set `disableResponseValidation: true` on the tool:
+
+```typescript
+@Tool({
+  name: 'external-result',
+  description: 'Returns data validated by an external service',
+  outputSchema: z.object({ status: z.string() }),
+  disableResponseValidation: true,
+})
+async getExternalResult() {
+  return { status: 200 };
+}
+```
+
+You can also disable response validation globally with
+`new McpStrategy({ ..., disableResponseValidation: true })`. This applies to
+decorated and dynamically registered tools; their output schemas remain
+advertised. An already-formatted MCP result with a `content` array keeps its
+existing pass-through behavior.
 
 ## Interactive Tool with Elicitation
 

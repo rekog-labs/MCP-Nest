@@ -43,6 +43,8 @@ export interface DynamicToolDefinition {
   parameters?: ToolInputSchema;
   /** Output schema (Zod, any Standard Schema validator, or raw JSON Schema) */
   outputSchema?: ToolInputSchema;
+  /** Skip response validation while continuing to advertise `outputSchema` */
+  disableResponseValidation?: boolean;
   /** MCP tool annotations */
   annotations?: ToolAnnotations;
   /** Additional metadata */
