@@ -1,4 +1,11 @@
-import { ArgumentsHost, Catch, RpcExceptionFilter } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  Catch,
+  ExceptionFilter,
+  Inject,
+  Optional,
+} from '@nestjs/common';
+import { BaseExceptionFilter, HttpAdapterHost } from '@nestjs/core';
 import { RpcException } from '@nestjs/microservices';
 import { Observable, throwError } from 'rxjs';
 
@@ -34,8 +41,19 @@ import { Observable, throwError } from 'rxjs';
  * a NestJS exception — those are already surfaced without this filter.
  */
 @Catch()
-export class McpExceptionFilter implements RpcExceptionFilter {
-  catch(exception: unknown, _host: ArgumentsHost): Observable<never> {
+export class McpExceptionFilter implements ExceptionFilter {
+  @Optional()
+  @Inject(HttpAdapterHost)
+  private readonly httpAdapterHost?: HttpAdapterHost;
+
+  catch(exception: unknown, host: ArgumentsHost): Observable<never> | void {
+    if (host.getType() === 'http') {
+      new BaseExceptionFilter(this.httpAdapterHost!.httpAdapter).catch(
+        exception,
+        host,
+      );
+      return;
+    }
     // RpcException already carries an explicit, client-facing payload.
     if (exception instanceof RpcException) {
       return throwError(() => exception.getError());
