@@ -1009,7 +1009,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   private async formatToolResult(
     result: any,
     outputSchema?: ToolInputSchema,
-    disableResponseValidation = false,
+    disableResponseValidation?: boolean,
   ): Promise<any> {
     if (isInputRequiredResult(result)) {
       return result;
@@ -1019,10 +1019,12 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     }
     const defaultContent = [{ type: 'text', text: JSON.stringify(result) }];
     if (outputSchema) {
-      if (
-        disableResponseValidation ||
-        this.options.disableResponseValidation === true
-      ) {
+      // A tool's own setting wins over the server-wide one, in both directions.
+      const skipValidation =
+        disableResponseValidation ??
+        this.options.disableResponseValidation ??
+        false;
+      if (skipValidation) {
         return { structuredContent: result, content: defaultContent };
       }
 

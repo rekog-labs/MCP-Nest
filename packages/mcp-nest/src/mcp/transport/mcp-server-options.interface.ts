@@ -308,11 +308,18 @@ export interface McpServerOptions {
       };
 
   /**
-   * Disable validation of tool responses against their output schema. Defaults
-   * to false. When true, responses are returned without validation or parsing.
-   * Output schemas are still advertised to clients, which may validate them.
-   * Applies to decorated and dynamic tools across all transports and schemas.
-   * Already-formatted MCP results retain their existing pass-through behavior.
+   * Skip the server's own check of tool results against their `outputSchema`,
+   * for every decorated and dynamic tool. Output schemas are still advertised.
+   *
+   * The raw handler result is sent as `structuredContent` — no Zod defaults,
+   * transforms or unknown-key stripping — so it must already conform to the
+   * advertised schema: spec-compliant clients (including the MCP SDK client)
+   * validate it and reject non-conforming output. A tool's own
+   * `disableResponseValidation` overrides this value in either direction.
+   * Results that are already a formatted MCP result (`content` array) pass
+   * through unchanged, as before.
+   *
+   * @default false
    */
   disableResponseValidation?: boolean;
 }

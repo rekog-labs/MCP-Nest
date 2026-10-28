@@ -40,6 +40,7 @@ export interface ToolMetadata {
   description: string;
   parameters?: ToolInputSchema;
   outputSchema?: ToolInputSchema;
+  /** Skip the server's own `outputSchema` check; see `ToolOptions`. */
   disableResponseValidation?: boolean;
   annotations?: SdkToolAnnotations;
   _meta?: Record<string, any>;
@@ -61,6 +62,14 @@ export interface ToolOptions {
   description?: string;
   parameters?: ToolInputSchema;
   outputSchema?: ToolInputSchema;
+  /**
+   * Skip the server's own check of the result against `outputSchema`; the
+   * schema is still advertised. The raw handler result is sent as
+   * `structuredContent` (no Zod defaults, transforms or unknown-key
+   * stripping), so it must already conform: spec-compliant clients, including
+   * the MCP SDK client, validate it and reject non-conforming output.
+   * Overrides `McpServerOptions.disableResponseValidation` for this tool.
+   */
   disableResponseValidation?: boolean;
   annotations?: ToolAnnotations;
   _meta?: Record<string, any>;
@@ -74,6 +83,7 @@ export interface ToolOptions {
  * @param {string} options.description - The description of the tool
  * @param {z.ZodType} [options.parameters] - The parameters of the tool
  * @param {z.ZodType} [options.outputSchema] - The output schema of the tool
+ * @param {boolean} [options.disableResponseValidation] - Skip the server's check of the result against `outputSchema`
  * @returns {MethodDecorator} - The decorator
  */
 export const Tool = (options: ToolOptions) => {

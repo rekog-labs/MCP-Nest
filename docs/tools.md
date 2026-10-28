@@ -127,7 +127,7 @@ The `@Tool()` decorator accepts a configuration object with the following proper
 - **`title`** (optional): Human-readable display name returned as the top-level `title` in `tools/list`. Clients can show it instead of `name`. It is separate from `annotations.title`
 - **`parameters`** (required): Zod schema defining the expected input parameters and their validation rules
 - **`outputSchema`** (optional): schema for validating and structuring the tool's return value
-- **`disableResponseValidation`** (optional): set to `true` to skip server-side response validation and parsing for this tool. The `outputSchema` is still advertised to clients.
+- **`disableResponseValidation`** (optional): set to `true` to skip the server's check of the result against `outputSchema` for this tool (the schema is still advertised; the result must still conform). Overrides the server-wide `McpServerOptions.disableResponseValidation`. See [Skipping server-side response validation](#skipping-server-side-response-validation)
 - **`annotations`** (optional): Advisory tool behavior hints for MCP clients, as defined in the [MCP ToolAnnotations specification](https://modelcontextprotocol.io/specification/2026-07-28/schema#toolannotations). These hints do not enforce permissions:
   - `readOnlyHint`: Indicates if the tool does not modify its environment. Defaults to `false`.
   - `destructiveHint`: Indicates whether the tool may perform destructive updates to its environment; `false` means it performs only additive updates. Meaningful only when `readOnlyHint` is `false`. Defaults to `true`.
@@ -211,27 +211,46 @@ async sayHelloStructured(@Payload() { name, language }: { name: string; language
 }
 ```
 
-Response validation is enabled by default. To retain an output schema for
-clients while returning the handler's result without server-side validation or
-schema parsing, set `disableResponseValidation: true` on the tool:
+### Skipping server-side response validation
+
+By default the server checks every result against `outputSchema` and rejects a
+mismatch with a JSON-RPC error. When that check is redundant or too expensive —
+a large payload produced by a trusted, already-validated source, or a schema
+with costly refinements — set `disableResponseValidation: true`. The output
+schema is still advertised in `tools/list`:
 
 ```typescript
+const Report = z.object({
+  rows: z.array(z.object({ id: z.string(), total: z.number() })),
+});
+
 @Tool({
-  name: 'external-result',
-  description: 'Returns data validated by an external service',
-  outputSchema: z.object({ status: z.string() }),
+  name: 'monthly-report',
+  description: 'Returns the monthly report from the warehouse',
+  outputSchema: Report,
+  // The warehouse client already returns data in this exact shape.
   disableResponseValidation: true,
 })
-async getExternalResult() {
-  return { status: 200 };
+async monthlyReport() {
+  return this.warehouse.fetchMonthlyReport(); // { rows: [{ id, total }, ...] }
 }
 ```
 
-You can also disable response validation globally with
-`new McpStrategy({ ..., disableResponseValidation: true })`. This applies to
-decorated and dynamically registered tools; their output schemas remain
-advertised. An already-formatted MCP result with a `content` array keeps its
-existing pass-through behavior.
+The flag skips only the *server's* check. Keep these in mind:
+
+- The handler's raw result is sent as `structuredContent`. Zod defaults,
+  transforms and the stripping of unknown keys do not run.
+- The result must still conform to the advertised schema. Spec-compliant
+  clients — including the MCP SDK client — validate `structuredContent` and
+  reject output that does not match.
+- An already-formatted MCP result (an object with a `content` array) passes
+  through unchanged, as before.
+
+To skip the check for every decorated and dynamically registered tool, use
+`new McpStrategy({ ..., disableResponseValidation: true })`. A tool's own
+`disableResponseValidation` overrides the server-wide value in either
+direction, so `disableResponseValidation: false` on a tool turns the check back
+on for that tool.
 
 ## Interactive Tool with Elicitation
 
