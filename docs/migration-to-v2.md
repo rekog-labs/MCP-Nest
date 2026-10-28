@@ -540,7 +540,10 @@ That is session plumbing, not authentication.)
   - `throw new RpcException('…')` (its payload is passed through unmasked), or
   - register the library's `McpExceptionFilter` (exported from `@rekog/mcp-nest`)
     via `{ provide: APP_FILTER, useClass: McpExceptionFilter }` or `@UseFilters`,
-    which surfaces the original error message instead of masking it.
+    which surfaces the original error message instead of masking it. With
+    `APP_FILTER`, connect the strategy with
+    `app.connectMicroservice({ strategy }, { inheritAppConfig: true })`; errors
+    from plain HTTP routes go to Nest's own `BaseExceptionFilter`.
 - **Request scoping:** `@Inject(REQUEST)` in a request-scoped tool resolves to the
   RPC request context, not the raw HTTP request. Read headers/user via
   `ctx.getRawRequest()`.
