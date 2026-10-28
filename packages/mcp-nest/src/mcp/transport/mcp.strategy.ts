@@ -855,7 +855,11 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       try {
         const result = await tool.invoke(request.params.arguments ?? {}, ctx);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return await this.formatToolResult(result, tool.metadata.outputSchema);
+        return await this.formatToolResult(
+          result,
+          tool.metadata.outputSchema,
+          tool.metadata.disableResponseValidation,
+        );
       } catch (error) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return this.toErrorResult(error);
@@ -1005,6 +1009,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
   private async formatToolResult(
     result: any,
     outputSchema?: ToolInputSchema,
+    disableResponseValidation?: boolean,
   ): Promise<any> {
     if (isInputRequiredResult(result)) {
       return result;
@@ -1014,6 +1019,15 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     }
     const defaultContent = [{ type: 'text', text: JSON.stringify(result) }];
     if (outputSchema) {
+      // A tool's own setting wins over the server-wide one, in both directions.
+      const skipValidation =
+        disableResponseValidation ??
+        this.options.disableResponseValidation ??
+        false;
+      if (skipValidation) {
+        return { structuredContent: result, content: defaultContent };
+      }
+
       const validation = await resolveToolSchema(outputSchema).validate(result);
       if (!validation.success) {
         throw new ProtocolError(
@@ -1099,6 +1113,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         description: definition.description,
         parameters: definition.parameters ?? z.object({}),
         outputSchema: definition.outputSchema,
+        disableResponseValidation: definition.disableResponseValidation,
         annotations: definition.annotations,
         _meta: definition._meta,
         isPublic: definition.isPublic,

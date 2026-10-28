@@ -126,7 +126,8 @@ The `@Tool()` decorator accepts a configuration object with the following proper
 - **`description`** (required): Human-readable description explaining what the tool does
 - **`title`** (optional): Human-readable display name returned as the top-level `title` in `tools/list`. Clients can show it instead of `name`. It is separate from `annotations.title`
 - **`parameters`** (required): Zod schema defining the expected input parameters and their validation rules
-- **`outputSchema`** (optional): Zod schema for validating and structuring the tool's return value
+- **`outputSchema`** (optional): schema for validating and structuring the tool's return value
+- **`disableResponseValidation`** (optional): set to `true` to skip the server's check of the result against `outputSchema` for this tool (the schema is still advertised; the result must still conform). Overrides the server-wide `McpServerOptions.disableResponseValidation`. See [Skipping server-side response validation](#skipping-server-side-response-validation)
 - **`annotations`** (optional): Advisory tool behavior hints for MCP clients, as defined in the [MCP ToolAnnotations specification](https://modelcontextprotocol.io/specification/2026-07-28/schema#toolannotations). These hints do not enforce permissions:
   - `readOnlyHint`: Indicates if the tool does not modify its environment. Defaults to `false`.
   - `destructiveHint`: Indicates whether the tool may perform destructive updates to its environment; `false` means it performs only additive updates. Meaningful only when `readOnlyHint` is `false`. Defaults to `true`.
@@ -209,6 +210,47 @@ async sayHelloStructured(@Payload() { name, language }: { name: string; language
   };
 }
 ```
+
+### Skipping server-side response validation
+
+By default the server checks every result against `outputSchema` and rejects a
+mismatch with a JSON-RPC error. When that check is redundant or too expensive —
+a large payload produced by a trusted, already-validated source, or a schema
+with costly refinements — set `disableResponseValidation: true`. The output
+schema is still advertised in `tools/list`:
+
+```typescript
+const Report = z.object({
+  rows: z.array(z.object({ id: z.string(), total: z.number() })),
+});
+
+@Tool({
+  name: 'monthly-report',
+  description: 'Returns the monthly report from the warehouse',
+  outputSchema: Report,
+  // The warehouse client already returns data in this exact shape.
+  disableResponseValidation: true,
+})
+async monthlyReport() {
+  return this.warehouse.fetchMonthlyReport(); // { rows: [{ id, total }, ...] }
+}
+```
+
+The flag skips only the *server's* check. Keep these in mind:
+
+- The handler's raw result is sent as `structuredContent`. Zod defaults,
+  transforms and the stripping of unknown keys do not run.
+- The result must still conform to the advertised schema. Spec-compliant
+  clients — including the MCP SDK client — validate `structuredContent` and
+  reject output that does not match.
+- An already-formatted MCP result (an object with a `content` array) passes
+  through unchanged, as before.
+
+To skip the check for every decorated and dynamically registered tool, use
+`new McpStrategy({ ..., disableResponseValidation: true })`. A tool's own
+`disableResponseValidation` overrides the server-wide value in either
+direction, so `disableResponseValidation: false` on a tool turns the check back
+on for that tool.
 
 ## Interactive Tool with Elicitation
 

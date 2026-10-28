@@ -306,4 +306,20 @@ export interface McpServerOptions {
     | {
         level: ('log' | 'error' | 'warn' | 'debug' | 'verbose')[];
       };
+
+  /**
+   * Skip the server's own check of tool results against their `outputSchema`,
+   * for every decorated and dynamic tool. Output schemas are still advertised.
+   *
+   * The raw handler result is sent as `structuredContent` — no Zod defaults,
+   * transforms or unknown-key stripping — so it must already conform to the
+   * advertised schema: spec-compliant clients (including the MCP SDK client)
+   * validate it and reject non-conforming output. A tool's own
+   * `disableResponseValidation` overrides this value in either direction.
+   * Results that are already a formatted MCP result (`content` array) pass
+   * through unchanged, as before.
+   *
+   * @default false
+   */
+  disableResponseValidation?: boolean;
 }
