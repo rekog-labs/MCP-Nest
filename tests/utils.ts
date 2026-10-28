@@ -51,6 +51,11 @@ export interface BootstrapMcpConfig {
   /** Server description, static or resolved per request (`McpServerOptions.description`). */
   description?: McpServerOptions['description'];
   /**
+   * Passed to `connectMicroservice`. A hybrid app's microservice does not see
+   * global enhancers (`APP_FILTER`, `useGlobalFilters`, …) unless this is true.
+   */
+  inheritAppConfig?: boolean;
+  /**
    * Hook to configure the app after the microservice is connected but BEFORE
    * `startAllMicroservices()` / `listen()`. Use it for app-level setup such as
    * `app.enableCors(...)` or `app.use(cookieParser())`. Authentication should
@@ -102,7 +107,10 @@ export async function bootstrapMcpApp(
 
   const app = moduleFixture.createNestApplication();
   strategy.setHttpAdapter(app.getHttpAdapter());
-  app.connectMicroservice({ strategy });
+  app.connectMicroservice(
+    { strategy },
+    { inheritAppConfig: config.inheritAppConfig },
+  );
   if (config.configure) {
     await config.configure(app);
   }

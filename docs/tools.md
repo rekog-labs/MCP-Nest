@@ -292,7 +292,7 @@ async sayHelloInteractive(@Payload() { name }: { name: string }, @Ctx() ctx: Mcp
 
 NestJS's `@UseFilters` and `@Catch` decorators work out of the box for tools, resources, and prompts. This allows you to create custom exception filters to handle errors consistently across your MCP server.
 
-> **Behavioral note:** An unexpected error thrown inside a tool/resource/prompt handler is masked by NestJS's RPC pipeline to a generic "Internal server error", returned as `{ isError: true }`. To surface an actionable, client-facing message to the calling agent, throw `RpcException('...')` (from `@nestjs/microservices`) or register the library's `McpExceptionFilter` (exported from `@rekog/mcp-nest`) via `APP_FILTER` or `@UseFilters()`. Input/parameter validation errors are already returned as a clear `Invalid parameters: ...` tool result, so you don't need to handle those yourself.
+> **Behavioral note:** An unexpected error thrown inside a tool/resource/prompt handler is masked by NestJS's RPC pipeline to a generic "Internal server error", returned as `{ isError: true }`. To surface an actionable, client-facing message to the calling agent, throw `RpcException('...')` (from `@nestjs/microservices`) or register the library's `McpExceptionFilter` (exported from `@rekog/mcp-nest`) via `APP_FILTER` (pass `{ inheritAppConfig: true }` to `connectMicroservice` so the MCP microservice sees it) or `@UseFilters()`. Registered globally, it hands errors from plain HTTP routes to Nest's own `BaseExceptionFilter`. Input/parameter validation errors are already returned as a clear `Invalid parameters: ...` tool result, so you don't need to handle those yourself.
 
 ### Creating an Exception Filter
 

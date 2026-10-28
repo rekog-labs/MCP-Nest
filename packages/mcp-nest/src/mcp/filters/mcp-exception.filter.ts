@@ -1,11 +1,5 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  Inject,
-  Optional,
-} from '@nestjs/common';
-import { BaseExceptionFilter, HttpAdapterHost } from '@nestjs/core';
+import { ArgumentsHost, Catch } from '@nestjs/common';
+import { BaseExceptionFilter } from '@nestjs/core';
 import { RpcException } from '@nestjs/microservices';
 import { Observable, throwError } from 'rxjs';
 
@@ -25,6 +19,8 @@ import { Observable, throwError } from 'rxjs';
  * // Globally (recommended) — applies to every MCP handler, but never overrides
  * // a more specific `@UseFilters()` you put on a controller/method.
  * providers: [{ provide: APP_FILTER, useClass: McpExceptionFilter }]
+ * // In a hybrid app, the MCP microservice only sees global filters with:
+ * app.connectMicroservice({ strategy }, { inheritAppConfig: true });
  * ```
  *
  * ```typescript
@@ -39,20 +35,28 @@ import { Observable, throwError } from 'rxjs';
  * successful call. For input problems, prefer the built-in Zod validation
  * (a clear "Invalid parameters: …" result) or `throw new RpcException(...)` /
  * a NestJS exception — those are already surfaced without this filter.
+ *
+ * Because it is `@Catch()`-all, a global registration also sees errors from
+ * plain HTTP controllers (and guards on the MCP route itself). Those are handed
+ * to Nest's own `BaseExceptionFilter`, so HTTP clients get the usual status and
+ * body (unknown errors stay masked as a 500). Registered via `APP_FILTER`, the
+ * HTTP adapter is injected; registered by hand, pass it in like any
+ * `BaseExceptionFilter`:
+ *
+ * ```typescript
+ * app.useGlobalFilters(
+ *   new McpExceptionFilter(app.get(HttpAdapterHost).httpAdapter),
+ * );
+ * ```
+ *
+ * Other contexts (`ws`, `graphql`) and non-MCP microservice transports are not
+ * specially handled: they go through the MCP (RPC) branch below.
  */
 @Catch()
-export class McpExceptionFilter implements ExceptionFilter {
-  @Optional()
-  @Inject(HttpAdapterHost)
-  private readonly httpAdapterHost?: HttpAdapterHost;
-
+export class McpExceptionFilter extends BaseExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): Observable<never> | void {
     if (host.getType() === 'http') {
-      new BaseExceptionFilter(this.httpAdapterHost!.httpAdapter).catch(
-        exception,
-        host,
-      );
-      return;
+      return super.catch(exception, host);
     }
     // RpcException already carries an explicit, client-facing payload.
     if (exception instanceof RpcException) {

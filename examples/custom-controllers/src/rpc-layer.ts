@@ -83,11 +83,10 @@ export class AuditInterceptor implements NestInterceptor {
 }
 
 /**
- * Exception filter — extends the library's `McpExceptionFilter` (an
- * `RpcExceptionFilter`) so we get its behavior for free: it surfaces the REAL
- * error message of a thrown handler as an `isError: true` tool result, instead
- * of NestJS's default "Internal server error" masking. We only add a log line
- * so the filter is visible in the demo.
+ * Exception filter — extends the library's `McpExceptionFilter` so we get its
+ * behavior for free: it surfaces the REAL error message of a thrown handler as
+ * an `isError: true` tool result, instead of NestJS's default "Internal server
+ * error" masking. We only add a log line so the filter is visible in the demo.
  *
  * Without this filter, `boom`'s `Error('intentional failure (RPC layer)')` would
  * reach the client as an opaque "Internal server error".

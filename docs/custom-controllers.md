@@ -140,10 +140,14 @@ scope something to one tool, use a method-level interceptor or guard.
 ## Surfacing a tool's real error with `McpExceptionFilter`
 
 When a tool method throws, NestJS's default behavior masks the message to a
-generic `Internal server error`. The library ships **`McpExceptionFilter`** (an
-`RpcExceptionFilter`) that instead surfaces the real error message as an
-`isError: true` tool result — the form an MCP client expects. Apply it globally
-via `APP_FILTER`, or per controller, or extend it to add your own logging:
+generic `Internal server error`. The library ships **`McpExceptionFilter`**,
+which instead surfaces the real error message as an `isError: true` tool result
+— the form an MCP client expects. Apply it globally via `APP_FILTER` (with
+`connectMicroservice({ strategy }, { inheritAppConfig: true })` so the MCP
+microservice sees it), or per controller, or extend it to add your own logging.
+Errors from plain HTTP routes (including guards on the MCP route) are handed to
+Nest's own `BaseExceptionFilter`, so a global registration is safe in a hybrid
+app:
 
 ```typescript
 @Catch()
