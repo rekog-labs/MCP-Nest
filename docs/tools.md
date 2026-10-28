@@ -128,10 +128,10 @@ The `@Tool()` decorator accepts a configuration object with the following proper
 - **`parameters`** (required): Zod schema defining the expected input parameters and their validation rules
 - **`outputSchema`** (optional): Zod schema for validating and structuring the tool's return value
 - **`annotations`** (optional): Advisory tool behavior hints for MCP clients, as defined in the [MCP ToolAnnotations specification](https://modelcontextprotocol.io/specification/2026-07-28/schema#toolannotations). These hints do not enforce permissions:
-  - `readOnlyHint`: Indicates if the tool only reads data without side effects
-  - `destructiveHint`: Warns if the tool modifies or deletes data
-  - `idempotentHint`: Indicates whether repeated calls with the same arguments have no additional effect on the environment. Their responses need not be identical.
-  - `openWorldHint`: Indicates whether the tool may interact with external entities.
+  - `readOnlyHint`: Indicates if the tool does not modify its environment. Defaults to `false`.
+  - `destructiveHint`: Indicates whether the tool may perform destructive updates to its environment; `false` means it performs only additive updates. Meaningful only when `readOnlyHint` is `false`. Defaults to `true`.
+  - `idempotentHint`: Indicates whether repeated calls with the same arguments have no additional effect on the environment. Their responses need not be identical. Meaningful only when `readOnlyHint` is `false`. Defaults to `false`.
+  - `openWorldHint`: Indicates whether the tool may interact with external entities. Defaults to `true`.
 - **`_meta`** (optional): Arbitrary metadata (`Record<string, any>`) passed straight through to the advertised tool definition. Your keys surface verbatim under `_meta` on the tool in `tools/list` and are not interpreted by the server. Note that the server merges its own keys into the same `_meta` object — every tool also carries a computed `securitySchemes` entry (derived from `@PublicTool`/`@ToolScopes`/`@ToolRoles`, or `[{ "type": "noauth" }]` when undecorated) — so `_meta` is your object plus those framework additions, not your object alone.
 
 For detailed type definitions, refer to the `McpContext` interface and `ToolOptions` type in the `@rekog/mcp-nest` package.
