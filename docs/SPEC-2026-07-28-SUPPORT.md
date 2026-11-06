@@ -235,7 +235,10 @@ Independent of the era work — these are places we don't currently meet the spe
       through a new optional `McpTransport.notifyListChanged(kind)`, which the HTTP transport
       forwards to the SDK's `notify` facade. `subscriptions/listen` itself is served by the SDK
       entry with no work from us — ack-first, `subscriptionId`-tagged, opt-in filtered. All
-      three behaviours are covered by tests.
+      three behaviours are covered by tests. The 2025 era originally got nothing here; the
+      same hook now also sends the unsolicited notification on every open `statefulMode`
+      session and on stdio (`mcp-legacy-list-changed.e2e.spec.ts`). Legacy stateless mode
+      has no stream to push on and is skipped.
 - [x] **JSON Schema dialect: draft-07 → 2020-12.** `tool-schema.ts` advertised tool schemas as
       draft-07 (inherited from the v1 SDK's `toJsonSchemaCompat` defaults). 2020-12 is the
       spec's **default and RECOMMENDED** dialect, and SDK v2 clients enforce it: their default validator compiles

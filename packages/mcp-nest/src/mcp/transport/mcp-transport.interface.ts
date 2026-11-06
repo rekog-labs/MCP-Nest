@@ -85,9 +85,12 @@ export interface McpTransport {
    * `registerTool`/`removeTool` and friends).
    *
    * On protocol revision `2026-07-28` these events are delivered on
-   * `subscriptions/listen` streams to the clients that opted into them —
-   * there is no connection to broadcast down. Optional: transports with
-   * nowhere to deliver simply omit it.
+   * `subscriptions/listen` streams to the clients that opted into them. On the
+   * 2025 era they are unsolicited `notifications/{kind}/list_changed` messages
+   * sent down every live connection that advertised the capability (stateful
+   * Streamable HTTP sessions, stdio); a stateless 2025-era server has no
+   * connection to send on. Must not throw for one failing recipient: log and
+   * carry on. Optional: transports with nowhere to deliver simply omit it.
    */
   notifyListChanged?(kind: 'tools' | 'resources' | 'prompts'): void;
 }

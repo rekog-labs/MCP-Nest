@@ -26,6 +26,7 @@ from the same `@Tool` methods.
 | Sessions | `Mcp-Session-Id` header, `GET`/`DELETE /mcp` | removed |
 | Discovery | `initialize` result | `server/discover` |
 | Progress / logging | over the session's SSE stream (session-aware transports only) | on the request's own response stream — always available |
+| `list_changed` notifications | pushed unsolicited down the session's standalone `GET` SSE stream (`statefulMode`) or the stdio pipe; none in stateless mode | only on `subscriptions/listen` streams that opted in |
 
 "Era" is a **per-request** fact, not a server-wide one — the same process serves
 both.
