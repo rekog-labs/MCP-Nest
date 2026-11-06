@@ -170,6 +170,7 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     try {
       this.buildCapabilities();
       this.warnIfNamedServerHasNoDecoratorCapabilities();
+      this.warnIfOptedOutCapabilityHasDecorators();
       this.warnIfToolListCacheHintIsPublic();
       this.warnIfDiscoverCacheHintIsPublic();
       this.warnIfServerInfoCacheHintIsPublic();
@@ -238,6 +239,29 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         `controllers. (Safe to ignore if this server is populated at runtime ` +
         `via strategy.registerTool()/registerResource()/registerPrompt().)`,
     );
+  }
+
+  /**
+   * `capabilities: { tools: undefined }` (or `resources`/`prompts`) opts the
+   * server out of that capability, and with it out of the request handlers —
+   * so decorator capabilities of that kind would be silently unreachable.
+   */
+  private warnIfOptedOutCapabilityHasDecorators(): void {
+    const declared = this.options.capabilities ?? {};
+    const counts = {
+      tools: this.tools.length,
+      resources: this.resources.length + this.templates.length,
+      prompts: this.prompts.length,
+    };
+    for (const kind of ['tools', 'resources', 'prompts'] as const) {
+      if (kind in declared && !declared[kind] && counts[kind] > 0) {
+        this.logger.warn(
+          `MCP server '${this.options.name}' opts out of the '${kind}' ` +
+            `capability (capabilities.${kind} is ${String(declared[kind])}), ` +
+            `so its ${counts[kind]} decorated ${kind} will not be served.`,
+        );
+      }
+    }
   }
 
   /**
@@ -495,14 +519,23 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     const capabilities: ServerCapabilities = {
       ...(this.options.capabilities ?? {}),
     };
-    if (this.getTools().length > 0) {
-      capabilities.tools = capabilities.tools ?? { listChanged: true };
-    }
-    if (this.getResources().length + this.getTemplates().length > 0) {
-      capabilities.resources = capabilities.resources ?? { listChanged: true };
-    }
-    if (this.getPrompts().length > 0) {
-      capabilities.prompts = capabilities.prompts ?? { listChanged: true };
+    // `tools`, `resources` and `prompts` are advertised whatever the current
+    // count. Any strategy can gain or lose entries at runtime
+    // (`registerTool()`/`removeTool()`…), and the capability set is fixed when
+    // the server is created — at `initialize` for a 2025-era session, and per
+    // request on 2026-07-28. Deriving it from the count meant a server that
+    // started empty never offered tools registered later, and a modern client
+    // asking `tools/list` after the last tool was removed got `-32601`. An
+    // empty list is a valid answer to every list method.
+    //
+    // A user-supplied value wins; opt out by passing the key explicitly as
+    // `undefined` (e.g. `capabilities: { prompts: undefined }`) — the same `in`
+    // check as `logging` below. An opted-out kind also gets no request
+    // handlers (see `bindRequestHandlers`).
+    for (const kind of ['tools', 'resources', 'prompts'] as const) {
+      if (!(kind in capabilities)) {
+        capabilities[kind] = { listChanged: true };
+      }
     }
     // `Context.log` is available to every handler, and the spec requires that
     // "servers that emit log message notifications MUST declare the `logging`
@@ -604,9 +637,17 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
-    this.bindToolHandlers(server, session, rawRequest);
-    this.bindResourceHandlers(server, session, rawRequest);
-    this.bindPromptHandlers(server, session, rawRequest);
+    // Bound by capability, not by count: the handlers read the live registry on
+    // every request, so they answer `[]` while a kind is empty and pick up
+    // runtime registrations without a re-bind. The SDK refuses to bind a
+    // handler for a capability the server does not declare, so a kind the user
+    // opted out of (or a `serverMutator` removed) is skipped.
+    const declared = server.server.getCapabilities();
+    if (declared.tools) this.bindToolHandlers(server, session, rawRequest);
+    if (declared.resources) {
+      this.bindResourceHandlers(server, session, rawRequest);
+    }
+    if (declared.prompts) this.bindPromptHandlers(server, session, rawRequest);
   }
 
   /**
@@ -748,8 +789,6 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
-    if (this.getTools().length === 0) return;
-
     const allowUnauthenticatedAccess =
       this.options.allowUnauthenticatedAccess ?? false;
 
@@ -872,8 +911,6 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
-    if (this.getResources().length + this.getTemplates().length === 0) return;
-
     server.server.setRequestHandler('resources/list', () => ({
       resources: this.getResources().map((r) => r.metadata),
     }));
@@ -933,8 +970,6 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     session: McpSessionSeed,
     rawRequest?: unknown,
   ): void {
-    if (this.getPrompts().length === 0) return;
-
     server.server.setRequestHandler('prompts/list', () => ({
       prompts: this.getPrompts().map((prompt) => ({
         name: prompt.metadata.name,

@@ -236,6 +236,14 @@ Independent of the era work — these are places we don't currently meet the spe
       forwards to the SDK's `notify` facade. `subscriptions/listen` itself is served by the SDK
       entry with no work from us — ack-first, `subscriptionId`-tagged, opt-in filtered. All
       three behaviours are covered by tests.
+- [x] **Capabilities depended on the item count at server creation.** `tools`/`resources`/
+      `prompts` were advertised (and their handlers bound) only when at least one entry existed
+      when the SDK server was built — at `initialize` on 2025, per request on 2026-07-28, per
+      connection on stdio. A server that started empty never offered entries registered later,
+      and on the modern era `tools/list` after the last `removeTool()` answered `-32601`. All
+      three are now always advertised (`{ listChanged: true }`) with handlers that read the live
+      registry, so empty lists answer `[]`. Opt out per kind with `capabilities: { prompts:
+      undefined }`, mirroring `logging`. Covered by `tests/mcp-capabilities-zero-items.e2e.spec.ts`.
 - [x] **JSON Schema dialect: draft-07 → 2020-12.** `tool-schema.ts` advertised tool schemas as
       draft-07 (inherited from the v1 SDK's `toJsonSchemaCompat` defaults). 2020-12 is the
       spec's **default and RECOMMENDED** dialect, and SDK v2 clients enforce it: their default validator compiles

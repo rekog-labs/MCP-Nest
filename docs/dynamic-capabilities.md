@@ -9,6 +9,8 @@ Dynamic capability registration allows you to programmatically register MCP tool
 
 Dynamic capabilities work alongside decorator-based capabilities. Registering with an already-used name overwrites the previous entry.
 
+A server can also start with **nothing registered** — no `@McpController` at all — and fill up later, e.g. a gateway that registers tools once it has discovered its upstreams. Every server advertises the `tools`, `resources` and `prompts` capabilities (each `{ listChanged: true }`) regardless of how many entries exist, so clients that connected while it was empty see entries registered afterwards, and a list whose last entry was removed answers `[]` rather than an error. See [Starting empty](#starting-empty).
+
 > **Note:** Dynamically registered handlers are invoked **directly** by the strategy — they do **not** pass through the NestJS RPC pipeline, so guards, pipes, interceptors, and exception filters do not apply to them. Use `@McpController` classes when you need the pipeline; use dynamic registration for runtime-defined capabilities.
 
 **Contents:**
@@ -19,6 +21,7 @@ Dynamic capabilities work alongside decorator-based capabilities. Registering wi
   - [Resources](#resources)
   - [Prompts](#prompts)
   - [Deregistration](#deregistration)
+  - [Starting empty](#starting-empty)
   - [Mixed Mode: Static + Dynamic](#mixed-mode-static--dynamic)
   - [Registration from an External Module](#registration-from-an-external-module)
     - [Multi-Server Isolation](#multi-server-isolation)
@@ -276,7 +279,9 @@ this.strategy.removeResource('mcp://app-config');
 this.strategy.removePrompt('summarize');
 ```
 
-Attempting to call, read, or get a removed capability returns a `MethodNotFound` MCP error.
+Removing the last entry of a kind leaves an empty list: `tools/list` (and `resources/list`, `prompts/list`) answers `[]`, on both protocol eras.
+
+Attempting to call, read, or get a removed capability returns an `InvalidParams` (`-32602`) MCP error naming it — the method still exists, only the entry is gone.
 
 Re-registering after removal works as expected — the capability reappears in listings and the new handler is used:
 
@@ -290,6 +295,47 @@ this.strategy.registerTool({
   handler: async () => ({ content: [{ type: 'text', text: 'new result' }] }),
 });
 ```
+
+## Starting empty
+
+A strategy does not need any decorator capabilities. The server below starts with zero tools, resources and prompts and registers them at runtime:
+
+```typescript
+export const mcp = new McpStrategy({
+  name: 'gateway',
+  version: '1.0.0',
+  transports: [new StreamableHttpTransport()],
+});
+
+@Injectable()
+export class UpstreamToolsService implements OnApplicationBootstrap {
+  constructor(@Inject(MCP_STRATEGY) private readonly strategy: McpStrategy) {}
+
+  async onApplicationBootstrap() {
+    for (const tool of await discoverUpstreamTools()) {
+      this.strategy.registerTool(tool);
+    }
+  }
+}
+```
+
+This works because capability advertisement does not depend on the current count:
+
+- Every server advertises `tools`, `resources` and `prompts`, each as `{ listChanged: true }`, plus `logging`. Until something is registered the lists are simply empty (`tools/list` → `{ tools: [] }`).
+- The request handlers read the live registry on every request, so a client that connected while the server was empty — a 2025-era session, a stdio connection, or a stream of 2026-07-28 requests — sees entries registered later on its next `list` call, and sees `[]` again once they are removed.
+
+To stop advertising a kind entirely, pass its key explicitly as `undefined`; the server then has no handlers for that kind and answers its methods with `-32601 Method not found`:
+
+```typescript
+new McpStrategy({
+  name: 'tools-only',
+  version: '1.0.0',
+  capabilities: { resources: undefined, prompts: undefined },
+  transports: [new StreamableHttpTransport()],
+});
+```
+
+Any other value you pass for `tools`, `resources` or `prompts` (e.g. `{ tools: { listChanged: false } }`) replaces the default. Opting out of a kind while `@McpController` classes declare entries of that kind logs a startup warning, since those entries will not be served.
 
 ## Mixed Mode: Static + Dynamic
 

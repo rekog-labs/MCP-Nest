@@ -101,7 +101,17 @@ export interface McpServerOptions {
   websiteUrl?: string;
   /** Icons representing this server. */
   icons?: Icon[];
-  /** Extra MCP server capabilities merged with the auto-derived ones. */
+  /**
+   * Extra MCP server capabilities merged with the defaults.
+   *
+   * By default every server advertises `tools`, `resources` and `prompts`
+   * (each `{ listChanged: true }`) and `logging` (`{}`), whether or not any are
+   * registered yet — entries can be added at runtime with `registerTool()` &
+   * co., and an empty list is a valid answer. A value given here replaces the
+   * default for that key. To stop advertising one, pass the key explicitly as
+   * `undefined`, e.g. `{ prompts: undefined }`; the server then has no handlers
+   * for that kind's methods and clients get `-32601 Method not found`.
+   */
   capabilities?: ServerCapabilities;
   /**
    * Cache hints for **modern-era** cacheable results (SEP-2549), keyed by
