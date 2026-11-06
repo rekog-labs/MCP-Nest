@@ -2,7 +2,9 @@ import {
   serveStdio,
   type StdioServerHandle,
 } from '@modelcontextprotocol/server/stdio';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { McpTransport, McpTransportContext } from '../mcp-transport.interface';
+import { ListChangedKind, sendListChanged } from './list-changed';
 
 export interface StdioTransportOptions {
   /**
@@ -37,6 +39,14 @@ export class StdioTransport implements McpTransport {
   readonly kind = 'stdio' as const;
 
   private handle?: StdioServerHandle;
+  private ctx?: McpTransportContext;
+  /**
+   * The most recent instance the entry asked for — the one pinned to the
+   * connection. A `server/discover` probe that is later discarded for an
+   * `initialize` is replaced here before the legacy instance connects, and a
+   * closed instance has no transport, so {@link sendListChanged} skips it.
+   */
+  private server?: McpServer;
   private readonly legacy: 'serve' | 'reject';
   /** Prevent a stdio-only Node process from exiting during async Nest bootstrap. */
   private readonly bootstrapKeepAlive = setInterval(
@@ -49,18 +59,24 @@ export class StdioTransport implements McpTransport {
   }
 
   start(ctx: McpTransportContext): void {
+    this.ctx = ctx;
     this.handle = serveStdio(
       // Called once per connection — plus once more for a `server/discover`
       // probe whose instance is discarded if the client falls back to
-      // `initialize`. Construction must therefore stay side-effect free.
-      (reqCtx) =>
-        ctx.createBoundServer({
+      // `initialize`. Construction must therefore stay side-effect free
+      // (remembering the instance for list-changed delivery is not a side
+      // effect on the connection).
+      (reqCtx) => {
+        const server = ctx.createBoundServer({
           transport: this.kind,
           // A stdio connection is long-lived on both eras: there is a live
           // channel for progress and logging, just no protocol session id.
           stateless: false,
           era: reqCtx.era,
-        }),
+        });
+        this.server = server;
+        return server;
+      },
       {
         legacy: this.legacy,
         onerror: (error) =>
@@ -75,5 +91,23 @@ export class StdioTransport implements McpTransport {
     clearInterval(this.bootstrapKeepAlive);
     await this.handle?.close();
     this.handle = undefined;
+    this.server = undefined;
+  }
+
+  /**
+   * Send `notifications/{kind}/list_changed` on the pinned instance. On a
+   * 2025-era connection it goes straight down the pipe; on a `2026-07-28`
+   * connection the SDK entry intercepts it and re-routes it onto the matching
+   * `subscriptions/listen` subscriptions (dropping it when there are none).
+   */
+  notifyListChanged(kind: ListChangedKind): void {
+    if (!this.server) return;
+    sendListChanged(this.server, kind, (error) =>
+      this.ctx?.logger.warn(
+        `Failed to send ${kind} list_changed over stdio: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      ),
+    );
   }
 }

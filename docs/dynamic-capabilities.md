@@ -22,6 +22,7 @@ A server can also start with **nothing registered** — no `@McpController` at a
   - [Prompts](#prompts)
   - [Deregistration](#deregistration)
   - [Starting empty](#starting-empty)
+  - [Change Notifications](#change-notifications)
   - [Mixed Mode: Static + Dynamic](#mixed-mode-static--dynamic)
   - [Registration from an External Module](#registration-from-an-external-module)
     - [Multi-Server Isolation](#multi-server-isolation)
@@ -336,6 +337,41 @@ new McpStrategy({
 ```
 
 Any other value you pass for `tools`, `resources` or `prompts` (e.g. `{ tools: { listChanged: false } }`) replaces the default. Opting out of a kind while `@McpController` classes declare entries of that kind logs a startup warning, since those entries will not be served.
+
+## Change Notifications
+
+Every `register*` / `remove*` call tells connected clients that the matching
+list changed — `notifications/tools/list_changed`,
+`notifications/resources/list_changed` or `notifications/prompts/list_changed` —
+so they can re-list instead of keeping a stale copy. Who receives it depends on
+the protocol era and the transport:
+
+| Transport / mode | 2025 era (`initialize` handshake) | `2026-07-28` |
+| --- | --- | --- |
+| `StreamableHttpTransport({ statefulMode: true })` | every open session, on its standalone `GET` SSE stream | every `subscriptions/listen` stream that opted into that kind |
+| `StreamableHttpTransport()` (stateless, the default) | **none** — there is no long-lived stream to push on; clients see the change on their next `list` call | every `subscriptions/listen` stream that opted into that kind |
+| `StdioTransport` | the connected client, down the pipe | the connection's `subscriptions/listen` subscriptions that opted in |
+
+A few details worth knowing:
+
+- **2025-era delivery needs the session's `GET` stream to be open.** The SDK
+  client opens it on its own right after the handshake; a notification sent
+  while a session has no stream is dropped, not queued.
+- **Closed sessions are skipped.** A session ended with `DELETE` (or by the
+  server shutting down) no longer receives anything.
+- **A list the session was not told about is skipped.** The spec only lets a
+  server send `…/list_changed` for a capability it declared with
+  `listChanged: true` during the handshake, and a 2025-era session keeps the
+  capabilities it was given then. Every kind is advertised that way by default
+  (see [Starting empty](#starting-empty)), so this only applies to a kind you
+  opted out of (`capabilities: { prompts: undefined }`) or declared with
+  `listChanged: false` (`capabilities: { prompts: { listChanged: false } }`).
+  A bare `{}` is not enough: the SDK fills in `listChanged: true`.
+- **One bad session never affects the others.** A failed send is logged as a
+  warning against that session and delivery carries on; `register*`/`remove*`
+  never throw because of it.
+- **The event bus is in-process.** In a multi-process deployment, only clients
+  connected to the process that made the change are notified.
 
 ## Mixed Mode: Static + Dynamic
 

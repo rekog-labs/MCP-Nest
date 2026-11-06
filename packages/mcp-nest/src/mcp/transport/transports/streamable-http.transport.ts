@@ -25,6 +25,7 @@ import type { McpSessionSeed } from '../mcp-context';
 import { MCP_RESOURCE_METADATA_URL } from '../mcp-transport.constants';
 import type { McpHttpHandler } from '../mcp-http-handler';
 import { readJsonBody } from './read-body';
+import { ListChangedKind, sendListChanged } from './list-changed';
 import { describeRequirement } from '../../services/tool-authorization.service';
 
 /**
@@ -589,16 +590,43 @@ export class StreamableHttpTransport implements McpTransport {
   }
 
   /**
-   * Publish a list-changed event to every open `subscriptions/listen` stream
-   * that opted into it. The SDK owns the wire semantics (filtering, the
-   * `io.modelcontextprotocol/subscriptionId` tag); we only source the event.
+   * Announce a runtime capability-list change on both eras.
+   *
+   * - **`2026-07-28`**: publish the event to every open `subscriptions/listen`
+   *   stream that opted into it. The SDK owns the wire semantics (filtering,
+   *   the `io.modelcontextprotocol/subscriptionId` tag); we only source it.
+   * - **2025-era, stateful**: send `notifications/{kind}/list_changed` on every
+   *   open session's server, which the SDK transport writes to that session's
+   *   standalone `GET` SSE stream (and drops if the client never opened one).
+   *   Closed sessions are already gone from {@link servers} — `cleanupSession`
+   *   removes them — and one failing session never stops the others.
+   * - **2025-era, stateless**: nothing to do. Each server lives for exactly one
+   *   POST and there is no standalone stream to push down; clients re-list.
    */
-  notifyListChanged(kind: 'tools' | 'resources' | 'prompts'): void {
+  notifyListChanged(kind: ListChangedKind): void {
     const notifier = this.modernHandler?.notify;
-    if (!notifier) return;
-    if (kind === 'tools') notifier.toolsChanged();
-    else if (kind === 'resources') notifier.resourcesChanged();
-    else notifier.promptsChanged();
+    if (notifier) {
+      try {
+        if (kind === 'tools') notifier.toolsChanged();
+        else if (kind === 'resources') notifier.resourcesChanged();
+        else notifier.promptsChanged();
+      } catch (error) {
+        this.ctx?.logger.error(
+          `Failed to publish ${kind} list change to subscriptions/listen streams`,
+          error as Error,
+        );
+      }
+    }
+
+    for (const [sessionId, server] of Object.entries(this.servers)) {
+      sendListChanged(server, kind, (error) =>
+        this.ctx?.logger.warn(
+          `Failed to send ${kind} list_changed to MCP session ${sessionId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        ),
+      );
+    }
   }
 
   private async handlePost(req: any, res: any): Promise<void> {

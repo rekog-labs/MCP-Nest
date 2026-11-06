@@ -235,7 +235,10 @@ Independent of the era work — these are places we don't currently meet the spe
       through a new optional `McpTransport.notifyListChanged(kind)`, which the HTTP transport
       forwards to the SDK's `notify` facade. `subscriptions/listen` itself is served by the SDK
       entry with no work from us — ack-first, `subscriptionId`-tagged, opt-in filtered. All
-      three behaviours are covered by tests.
+      three behaviours are covered by tests. The 2025 era originally got nothing here; the
+      same hook now also sends the unsolicited notification on every open `statefulMode`
+      session and on stdio (`mcp-legacy-list-changed.e2e.spec.ts`). Legacy stateless mode
+      has no stream to push on and is skipped.
 - [x] **Capabilities depended on the item count at server creation.** `tools`/`resources`/
       `prompts` were advertised (and their handlers bound) only when at least one entry existed
       when the SDK server was built — at `initialize` on 2025, per request on 2026-07-28, per
