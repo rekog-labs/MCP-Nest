@@ -483,7 +483,7 @@ Beyond the required `name` and `version`, the `McpStrategy` constructor accepts 
 | `websiteUrl` | `string` | URL of the website associated with the server. |
 | `icons` | `Icon[]` | Icons representing the server (MCP SDK `Icon`: `{ src, mimeType?, sizes?, theme? }`). |
 | `instructions` | `string \| ((ctx: McpInstructionsContext) => string \| undefined)` | Server instructions sent to clients on discovery. Pass a function to choose them per caller: it receives `{ request, user, era, transport }`, where `user` is the caller as per-tool authorization sees it (`resolveUser`, else `req.user`) and `request` is the raw Node request (`undefined` on STDIO). The function is synchronous. If it throws or returns a non-string, the error is logged and no instructions are sent. Do not combine it with `cacheHints['server/discover'].cacheScope: 'public'`. |
-| `capabilities` | `ServerCapabilities` | Extra MCP capabilities, merged with the auto-derived ones. |
+| `capabilities` | `ServerCapabilities` | Extra MCP capabilities, merged with the defaults. By default `tools`, `resources` and `prompts` (`{ listChanged: true }`) and `logging` are always advertised, even with nothing registered yet; a value given here replaces that key's default, and passing a key explicitly as `undefined` (e.g. `{ prompts: undefined }`) stops advertising it. See [Starting empty](./dynamic-capabilities.md#starting-empty). |
 | `server` | `string` | Logical server name for multi-server isolation — binds only `@McpController({ server })` classes. Omit for the default server. |
 
 ```typescript
