@@ -16,13 +16,28 @@ function stripScheme(uri: string): string {
  * The catch-all rule MUST run before the single-param rule: `{(\w+)}` can't
  * match `{path*}` (the `*` sits between `\w+` and `}`), which is the bug that
  * previously left `{path*}` untouched so it never matched.
+ *
+ * Everything outside a recognised `{...}` expression is literal text, so its
+ * path-to-regexp syntax characters are escaped: a raw `:` or `*` (e.g.
+ * `mirror://https://x`, `urn:isbn:1`) would otherwise parse as a parameter and
+ * make `match()` throw on every `resources/read`.
  */
 function convertTemplate(template: string): string {
   if (!template) return template;
-  return template
-    .replace(/\{\?[^}]+\}/g, '')
-    .replace(/\{(\w+)\*\}/g, '*$1')
-    .replace(/\{(\w+)\}/g, ':$1');
+  let out = '';
+  let last = 0;
+  for (const m of template.matchAll(/\{\?[^}]+\}|\{(\w+)(\*)?\}/g)) {
+    out += escapeText(template.slice(last, m.index));
+    last = m.index + m[0].length;
+    if (!m[1]) continue; // `{?query}` is matched separately
+    out += (m[2] ? '*' : ':') + m[1];
+  }
+  return out + escapeText(template.slice(last));
+}
+
+/** Escapes path-to-regexp v8 syntax characters (mirrors its internal `escapeText`). */
+function escapeText(str: string): string {
+  return str.replace(/[{}()[\]+?!:*\\]/g, '\\$&');
 }
 
 /**
