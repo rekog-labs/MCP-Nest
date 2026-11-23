@@ -2,7 +2,8 @@ import { match } from 'path-to-regexp';
 
 /** Strips the scheme (`mcp://foo` -> `foo`). */
 function stripScheme(uri: string): string {
-  return uri.includes('://') ? uri.split('://')[1] : uri;
+  const i = uri.indexOf('://');
+  return i === -1 ? uri : uri.substring(i + 3);
 }
 
 /**
@@ -51,8 +52,10 @@ function parseQueryString(uri: string): Record<string, string> {
   if (i === -1) return {};
   const params: Record<string, string> = {};
   for (const pair of uri.substring(i + 1).split('&')) {
-    const [k, v] = pair.split('=');
-    if (k) params[decodeURIComponent(k)] = v ? decodeURIComponent(v) : '';
+    const eq = pair.indexOf('=');
+    const k = eq === -1 ? pair : pair.substring(0, eq);
+    const v = eq === -1 ? '' : pair.substring(eq + 1);
+    if (k) params[decodeURIComponent(k)] = decodeURIComponent(v);
   }
   return params;
 }
