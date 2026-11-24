@@ -37,10 +37,12 @@
   "peerDependenciesMeta": {
     "@nestjs/platform-fastify": {
       "optional": true
+    },
+    "express": {
+      "optional": true
     }
   },
   "dependencies": {
-    "multer": "^2.5.0",
     "path-to-regexp": "^8.4.2"
   },
   "devDependencies": {
