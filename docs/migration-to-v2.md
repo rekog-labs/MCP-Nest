@@ -51,7 +51,7 @@ npm install @rekog/mcp-nest \
 | Nest microservices | not used | `@nestjs/microservices` — **required**, it's how the strategy attaches |
 | OAuth server | bundled in `@rekog/mcp-nest` | separate package `@rekog/mcp-nest-auth` |
 | `zod` | `^4` | `^4` (unchanged; and `parameters` now also accepts any Standard Schema or raw JSON Schema) |
-| `express` / `@nestjs/platform-fastify` | peer / optional peer | unchanged |
+| `express` / `@nestjs/platform-fastify` | peer / optional peer | both optional peers (only `import type` is used from `express`) |
 
 **`2.0.0-beta.5` is the minimum SDK version.** It is the first release matching
 the *final* `2026-07-28` wire; `beta.4` ships the pre-final shape and is
