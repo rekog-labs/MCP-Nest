@@ -5,8 +5,11 @@ import { toStandardJsonSchema } from '@valibot/to-json-schema';
 import { type } from 'arktype';
 import {
   assertNoMcpParamHeaderMirroring,
+  inlineRootRef,
   resolveToolSchema,
 } from './tool-schema';
+
+const DIALECT = 'https://json-schema.org/draft/2020-12/schema';
 
 describe('resolveToolSchema', () => {
   describe('Zod', () => {
@@ -53,6 +56,139 @@ describe('resolveToolSchema', () => {
       if (!result.success) {
         expect(result.message).toContain('[name]');
       }
+    });
+  });
+
+  /**
+   * Issue #296: from zod 4.5, a root schema with an `id` converts to
+   * `{ $ref: '#/$defs/<id>', $defs }`, which has no root `type: "object"` and
+   * makes clients reject `tools/list`. The expected values below are the
+   * literal output of zod 4.4.3, so these hold on any zod 4.x.
+   */
+  describe('Zod schema with an id (.meta({ id }) / globalRegistry)', () => {
+    it('advertises the object at the root, as zod <= 4.4 did', () => {
+      const schema = z.object({ id: z.string() }).meta({ id: 'GetThingInput' });
+      expect(resolveToolSchema(schema).toJsonSchema('input')).toEqual({
+        $schema: DIALECT,
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      });
+    });
+
+    it('does the same for the output projection', () => {
+      const schema = z
+        .object({ id: z.string() })
+        .meta({ id: 'GetThingOutput' });
+      expect(resolveToolSchema(schema).toJsonSchema('output')).toEqual({
+        $schema: DIALECT,
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+        additionalProperties: false,
+      });
+    });
+
+    it('keeps title/description from .meta()', () => {
+      const schema = z
+        .object({ id: z.string() })
+        .meta({ id: 'X', title: 'T', description: 'D' });
+      expect(resolveToolSchema(schema).toJsonSchema('input')).toEqual({
+        $schema: DIALECT,
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+        title: 'T',
+        description: 'D',
+      });
+    });
+
+    it('handles a schema registered in z.globalRegistry', () => {
+      const schema = z.object({ q: z.string() });
+      z.globalRegistry.add(schema, { id: 'RegisteredToolInput296' });
+      try {
+        expect(resolveToolSchema(schema).toJsonSchema('input')).toMatchObject({
+          type: 'object',
+          properties: { q: { type: 'string' } },
+        });
+        expect(
+          resolveToolSchema(schema).toJsonSchema('input'),
+        ).not.toHaveProperty('$ref');
+      } finally {
+        z.globalRegistry.remove(schema);
+      }
+    });
+
+    it('keeps the other named definitions in $defs', () => {
+      const Inner = z.object({ x: z.number() }).meta({ id: 'Inner296' });
+      const schema = z.object({ a: Inner, b: Inner }).meta({ id: 'Outer296' });
+      expect(resolveToolSchema(schema).toJsonSchema('input')).toEqual({
+        $schema: DIALECT,
+        type: 'object',
+        properties: {
+          a: { $ref: '#/$defs/Inner296' },
+          b: { $ref: '#/$defs/Inner296' },
+        },
+        required: ['a', 'b'],
+        $defs: {
+          Inner296: {
+            type: 'object',
+            properties: { x: { type: 'number' } },
+            required: ['x'],
+          },
+        },
+      });
+    });
+
+    it('points a recursive self-reference at the root (#)', () => {
+      const Node: z.ZodType = z
+        .object({
+          name: z.string(),
+          get children() {
+            return z.array(Node);
+          },
+        })
+        .meta({ id: 'Node296' });
+      expect(resolveToolSchema(Node).toJsonSchema('input')).toEqual({
+        $schema: DIALECT,
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          children: { type: 'array', items: { $ref: '#' } },
+        },
+        required: ['name', 'children'],
+      });
+    });
+
+    it('still validates arguments with the Zod schema itself', async () => {
+      const schema = z.object({ id: z.string() }).meta({ id: 'Validated296' });
+      const resolved = resolveToolSchema(schema);
+      expect(await resolved.validate({ id: 'a' })).toEqual({
+        success: true,
+        data: { id: 'a' },
+      });
+      expect((await resolved.validate({ id: 1 })).success).toBe(false);
+    });
+
+    it('inlines a root $ref from a Standard Schema converter too', () => {
+      // A zod schema that fails `instanceof z.ZodType` (zod/mini, a second
+      // zod copy) goes through `~standard.jsonSchema`.
+      const zodSchema = z.object({ a: z.string() }).meta({ id: 'Std296' });
+      const standardOnly = { '~standard': zodSchema['~standard'] };
+      expect(resolveToolSchema(standardOnly).toJsonSchema('input')).toEqual({
+        $schema: DIALECT,
+        type: 'object',
+        properties: { a: { type: 'string' } },
+        required: ['a'],
+      });
+    });
+
+    it('leaves a raw JSON Schema with a root $ref as authored', () => {
+      const raw = {
+        $ref: '#/$defs/A',
+        $defs: { A: { type: 'object', properties: {} } },
+      };
+      expect(resolveToolSchema(raw).toJsonSchema('input')).toBe(raw);
     });
   });
 
@@ -250,5 +386,116 @@ describe('assertNoMcpParamHeaderMirroring', () => {
     expect(() =>
       assertNoMcpParamHeaderMirroring(cyclic, "@Tool({ name: 'x' })"),
     ).not.toThrow();
+  });
+});
+
+describe('inlineRootRef', () => {
+  const body = { type: 'object', properties: { a: { type: 'string' } } };
+
+  it('returns a schema without a root $ref unchanged (same object)', () => {
+    const json = { $schema: DIALECT, ...body };
+    expect(inlineRootRef(json)).toBe(json);
+  });
+
+  it('decodes JSON Pointer escapes in the definition name', () => {
+    expect(
+      inlineRootRef({
+        $ref: '#/$defs/a~1b c~0d',
+        $defs: { 'a/b c~d': body },
+      }),
+    ).toEqual(body);
+  });
+
+  it('decodes a percent-encoded definition name', () => {
+    expect(
+      inlineRootRef({ $ref: '#/$defs/a%20b', $defs: { 'a b': body } }),
+    ).toEqual(body);
+  });
+
+  it('rewrites refs into the inlined definition, also from other $defs', () => {
+    expect(
+      inlineRootRef({
+        $ref: '#/$defs/Root',
+        $defs: {
+          Root: {
+            type: 'object',
+            properties: {
+              child: { $ref: '#/$defs/Child' },
+              name: { $ref: '#/$defs/Root/properties/label' },
+              label: { type: 'string' },
+            },
+          },
+          Child: {
+            type: 'object',
+            properties: { parent: { $ref: '#/$defs/Root' } },
+          },
+        },
+      }),
+    ).toEqual({
+      type: 'object',
+      properties: {
+        child: { $ref: '#/$defs/Child' },
+        name: { $ref: '#/properties/label' },
+        label: { type: 'string' },
+      },
+      $defs: {
+        Child: {
+          type: 'object',
+          properties: { parent: { $ref: '#' } },
+        },
+      },
+    });
+  });
+
+  it('does not touch data values or property names that look like $ref', () => {
+    const data = { $ref: '#/$defs/Root' };
+    expect(
+      inlineRootRef({
+        $ref: '#/$defs/Root',
+        $defs: {
+          Root: {
+            type: 'object',
+            properties: {
+              $ref: { type: 'string', default: '#/$defs/Root' },
+              default: { $ref: '#/$defs/Root' },
+              blob: { type: 'object', default: data, examples: [data] },
+              fixed: { const: data, enum: [data] },
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      type: 'object',
+      properties: {
+        $ref: { type: 'string', default: '#/$defs/Root' },
+        default: { $ref: '#' },
+        blob: { type: 'object', default: data, examples: [data] },
+        fixed: { const: data, enum: [data] },
+      },
+    });
+  });
+
+  it.each([
+    [
+      'a root keyword next to $ref (applies together with it in 2020-12)',
+      { $ref: '#/$defs/A', description: 'x', $defs: { A: body } },
+    ],
+    ['a $ref to a missing definition', { $ref: '#/$defs/B', $defs: { A: body } }],
+    [
+      'a $ref into the middle of a definition',
+      { $ref: '#/$defs/A/properties/a', $defs: { A: body } },
+    ],
+    ['a $ref outside $defs', { $ref: '#/definitions/A', definitions: { A: body } }],
+    ['an external $ref', { $ref: 'https://example.com/s.json' }],
+    [
+      'a definition with its own $id',
+      { $ref: '#/$defs/A', $defs: { A: { ...body, $id: 'urn:a' } } },
+    ],
+    [
+      'a definition with nested $defs',
+      { $ref: '#/$defs/A', $defs: { A: { ...body, $defs: {} } } },
+    ],
+  ])('leaves %s unchanged', (_label, json) => {
+    expect(inlineRootRef(json as Record<string, unknown>)).toBe(json);
   });
 });

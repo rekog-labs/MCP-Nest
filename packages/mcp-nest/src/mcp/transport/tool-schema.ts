@@ -28,7 +28,7 @@ export interface ResolvedToolSchema {
 }
 
 // -----------------------------------------------------------------------------
-// Zod (case 1) — preserved byte-for-byte from the previous implementation.
+// Zod (case 1) — as before, plus root `$ref` inlining for zod >= 4.5.
 // -----------------------------------------------------------------------------
 
 /**
@@ -55,10 +55,136 @@ function zodToJsonSchema(
   schema: ZodType,
   io: 'input' | 'output',
 ): Record<string, unknown> {
-  return z.toJSONSchema(schema, { target: JSON_SCHEMA_TARGET, io }) as Record<
-    string,
-    unknown
-  >;
+  return inlineRootRef(
+    z.toJSONSchema(schema, { target: JSON_SCHEMA_TARGET, io }) as Record<
+      string,
+      unknown
+    >,
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Root `$ref` inlining (issue #296).
+// -----------------------------------------------------------------------------
+
+const DEFS_REF_PREFIX = '#/$defs/';
+
+/** The only root keys a pure "reference to a definition" root may carry. */
+const REF_ROOT_KEYS = new Set(['$schema', '$ref', '$defs']);
+
+/**
+ * Keywords whose value is instance data, not a schema: a `$ref` string inside
+ * them is a value and must not be rewritten.
+ */
+const DATA_KEYWORDS = new Set(['const', 'enum', 'default', 'examples']);
+
+/**
+ * Keywords whose value maps arbitrary names to subschemas. Their keys are
+ * names (a property may well be called `default` or `$ref`), not keywords.
+ */
+const SCHEMA_MAP_KEYWORDS = new Set([
+  'properties',
+  'patternProperties',
+  'dependentSchemas',
+  '$defs',
+  'definitions',
+]);
+
+/** Decode one JSON Pointer token taken from a URI fragment (RFC 6901 §6). */
+function decodePointerToken(token: string): string {
+  let decoded = token;
+  try {
+    decoded = decodeURIComponent(token);
+  } catch {
+    // Not percent-encoded; use it as is.
+  }
+  return decoded.replace(/~1/g, '/').replace(/~0/g, '~');
+}
+
+/**
+ * Rewrite every schema `$ref` that points at the inlined definition (or inside
+ * it) to point at the root instead. Walks schema positions only, so values in
+ * `const`/`default`/… and property *names* are left untouched.
+ */
+function rewriteRefsToRoot(
+  node: unknown,
+  fromRef: string,
+  inSchemaMap: boolean,
+): unknown {
+  if (Array.isArray(node)) {
+    return node.map((item) => rewriteRefsToRoot(item, fromRef, false));
+  }
+  if (typeof node !== 'object' || node === null) return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (inSchemaMap) {
+      out[key] = rewriteRefsToRoot(value, fromRef, false);
+    } else if (key === '$ref' && typeof value === 'string') {
+      out[key] =
+        value === fromRef
+          ? '#'
+          : value.startsWith(`${fromRef}/`)
+            ? `#${value.slice(fromRef.length)}`
+            : value;
+    } else if (DATA_KEYWORDS.has(key)) {
+      out[key] = value;
+    } else {
+      out[key] = rewriteRefsToRoot(
+        value,
+        fromRef,
+        SCHEMA_MAP_KEYWORDS.has(key),
+      );
+    }
+  }
+  return out;
+}
+
+/**
+ * Put the definition a root-level `$ref` points at back at the root.
+ *
+ * From zod 4.5, `z.toJSONSchema()` no longer inlines a root schema that has an
+ * `id` (`.meta({ id })`, or registered in `z.globalRegistry`). It returns
+ * `{ $schema, $ref: '#/$defs/<id>', $defs: { <id>: {...} } }` instead. MCP
+ * requires a tool's `inputSchema` to have `type: "object"` at the root, so
+ * clients that validate `tools/list` (the SDK client among them) reject the
+ * whole result and every tool disappears.
+ *
+ * Inlining gives exactly what zod <= 4.4 produced, so clients that do not
+ * follow a root `$ref` keep working too:
+ *  1. the referenced definition replaces the root (`$schema` is kept);
+ *  2. it is removed from `$defs`, and the other definitions stay;
+ *  3. references to it (a recursive schema pointing at itself) become `#`.
+ *
+ * Anything that is not that exact shape is returned unchanged: extra root
+ * keywords next to `$ref` (in 2020-12 they apply *together* with it, so a merge
+ * could change the meaning), a `$ref` into the middle of a definition, or a
+ * definition carrying its own `$id`/`$schema`/`$defs`.
+ */
+export function inlineRootRef(
+  json: Record<string, unknown>,
+): Record<string, unknown> {
+  const ref = json.$ref;
+  const defs = json.$defs;
+  if (typeof ref !== 'string' || !ref.startsWith(DEFS_REF_PREFIX)) return json;
+  if (!isPlainObject(defs)) return json;
+  if (Object.keys(json).some((key) => !REF_ROOT_KEYS.has(key))) return json;
+
+  const token = ref.slice(DEFS_REF_PREFIX.length);
+  if (token.length === 0 || token.includes('/')) return json;
+  const name = decodePointerToken(token);
+  const body = defs[name];
+  if (!isPlainObject(body)) return json;
+  if ('$id' in body || '$schema' in body || '$defs' in body) return json;
+
+  const otherDefs = Object.fromEntries(
+    Object.entries(defs).filter(([key]) => key !== name),
+  );
+  const inlined: Record<string, unknown> = {
+    ...('$schema' in json ? { $schema: json.$schema } : {}),
+    ...body,
+    ...(Object.keys(otherDefs).length > 0 ? { $defs: otherDefs } : {}),
+  };
+  return rewriteRefsToRoot(inlined, ref, false) as Record<string, unknown>;
 }
 
 /**
@@ -150,9 +276,14 @@ function resolveStandard(schema: StandardSchemaLike): ResolvedToolSchema {
         );
       }
       // Same dialect requirement as Zod above — see JSON_SCHEMA_TARGET.
-      return io === 'input'
-        ? converter.input({ target: JSON_SCHEMA_TARGET })
-        : converter.output({ target: JSON_SCHEMA_TARGET });
+      // Same root-`$ref` inlining too: a Zod copy that fails the `instanceof`
+      // check (zod/mini, a second zod install) lands here, and its converter
+      // has the same zod >= 4.5 behavior.
+      return inlineRootRef(
+        io === 'input'
+          ? converter.input({ target: JSON_SCHEMA_TARGET })
+          : converter.output({ target: JSON_SCHEMA_TARGET }),
+      );
     },
     async validate(value) {
       const result = await std.validate(value);
