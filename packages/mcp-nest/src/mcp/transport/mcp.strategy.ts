@@ -20,7 +20,9 @@ import {
 import { firstValueFrom } from 'rxjs';
 import { z } from 'zod';
 import {
+  advertisedOutputSchema,
   assertNoMcpParamHeaderMirroring,
+  findUnadvertisedZodOutputSchema,
   resolveToolSchema,
 } from './tool-schema';
 import type { ToolInputSchema } from '../decorators/tool.decorator';
@@ -443,6 +445,12 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
         `@Tool({ name: '${base.name}' })`,
       );
     }
+    if (base.outputSchema) {
+      this.warnUnadvertisedOutputSchema(
+        base.outputSchema,
+        `@Tool({ name: '${base.name}' })`,
+      );
+    }
     return base;
   }
 
@@ -822,19 +830,17 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
             : undefined;
           if (input) schema.inputSchema = input;
           if (tool.metadata.outputSchema) {
-            const output = resolveToolSchema(
-              tool.metadata.outputSchema,
-            ).toJsonSchema('output');
+            const output = advertisedOutputSchema(tool.metadata.outputSchema);
             if (output) {
               // Advertise the schema as authored. This used to force
               // `type: 'object'`, which corrupted every non-object output
               // schema: SEP-2106 widened `structuredContent` to any JSON value
               // and the spec documents array `outputSchema`s explicitly, so a
               // conforming client validating against a mangled schema fails on a
-              // perfectly valid result. (The override was always a no-op for the
-              // Zod path — `normalizeObjectSchema` only ever yields object
-              // schemas there — so this only unbreaks Standard Schema and raw
-              // JSON Schema output schemas.)
+              // perfectly valid result. Every schema path (Zod, Standard
+              // Schema, raw JSON Schema) can yield a non-object root here; on
+              // the 2025 era the SDK wraps it as `{ result: <schema> }` and
+              // `tools/call` wraps the value to match (`projectCallToolResult`).
               schema.outputSchema = output;
             }
           }
@@ -893,12 +899,23 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
       );
       try {
         const result = await tool.invoke(request.params.arguments ?? {}, ctx);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return await this.formatToolResult(
+        const formatted = await this.formatToolResult(
           result,
           tool.metadata.outputSchema,
           tool.metadata.disableResponseValidation,
         );
+        if (isInputRequiredResult(formatted)) return formatted;
+        // On the 2025 era a non-object `outputSchema` is advertised wrapped as
+        // `{ result: <schema> }` (the SDK rewrites it in `tools/list`), so the
+        // value must be wrapped as `{ result: <value> }` too. The SDK does this
+        // for `McpServer.registerTool` tools only; a raw `tools/call` handler
+        // like this one must call the projection itself. Identity for object
+        // values on the 2026 era.
+        const advertised = tool.metadata.outputSchema
+          ? advertisedOutputSchema(tool.metadata.outputSchema)
+          : undefined;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+        return server.server.projectCallToolResult(formatted, advertised);
       } catch (error) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return this.toErrorResult(error);
@@ -1041,6 +1058,19 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     }
   }
 
+  /** Warn when a tool's Zod `outputSchema` cannot be advertised. */
+  private warnUnadvertisedOutputSchema(
+    outputSchema: ToolInputSchema,
+    toolLabel: string,
+  ): void {
+    const reason = findUnadvertisedZodOutputSchema(outputSchema);
+    if (!reason) return;
+    this.logger.warn(
+      `${toolLabel} has an outputSchema with no JSON Schema form (${reason}). ` +
+        `tools/list does not advertise it; results are still validated against it.`,
+    );
+  }
+
   private async formatToolResult(
     result: any,
     outputSchema?: ToolInputSchema,
@@ -1138,6 +1168,12 @@ export class McpStrategy extends Server implements CustomTransportStrategy {
     if (definition.parameters) {
       assertNoMcpParamHeaderMirroring(
         definition.parameters,
+        `registerTool('${definition.name}')`,
+      );
+    }
+    if (definition.outputSchema) {
+      this.warnUnadvertisedOutputSchema(
+        definition.outputSchema,
         `registerTool('${definition.name}')`,
       );
     }

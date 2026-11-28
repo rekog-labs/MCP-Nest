@@ -486,8 +486,8 @@ Tracked in four tiers, one commit each.
       explicitly (`list_users`). The override spread `type: 'object'` **last**, so
       `{type:'array', items:{…}}` went out as `{items:{…}, type:'object'}` — `type` overwritten,
       `items` orphaned, and every conforming client that validates results rejected them.
-      Was a no-op on the Zod path (`normalizeObjectSchema` only ever yields object schemas
-      there), so this unbreaks the Standard Schema and raw-JSON-Schema paths only.
+      At the time this was a no-op on the Zod path, which dropped every non-object output
+      schema; non-object Zod output schemas are advertised since #298 (issue #128).
 - [x] Tests: `tests/mcp-spec-error-codes.e2e.spec.ts`, 12 tests over both eras.
       Suite 637 → **649 pass, 0 fail**.
 - [x] §5's dialect claim corrected: the spec does **not** forbid draft-07. 2020-12 is the
@@ -505,15 +505,15 @@ Two era-specific behaviours were discovered and are now pinned by test rather th
    `$ref` pointers rewritten for the new root). The 2025 revision only permitted object output
    schemas, so this is the SDK being era-appropriate, not corruption. Modern era passes the
    schema through verbatim. Both are asserted.
-2. **⚠️ SDK client gap: non-object `structuredContent` is unusable today.**
-   `@modelcontextprotocol/client@2.0.0-beta.5` still types the field as
-   `z.record(z.string(), z.unknown())` in its `CallToolResult` schema, so a result carrying an
-   array or scalar `structuredContent` is rejected **client-side** regardless of what the server
-   emits. SEP-2106's widening *is* honored on the server side (the SDK even ships
-   `appendTextFallbackForNonObject` to add the compensating text block). So advertising a
-   non-object `outputSchema` is correct and now works, but the matching result shape cannot
-   round-trip until the client catches up. Deliberately not asserted end-to-end; revisit on the
-   next SDK bump.
+2. **Non-object `structuredContent` round-trips on both eras (since #298).** The SDK ≥ 2.4
+   client accepts it on the modern era. On the legacy era the value must be wrapped as
+   `{result:<value>}` to match the wrapped schema. The SDK does that in
+   `Server.projectCallToolResult`, which `McpServer.registerTool` calls for you but a raw
+   `tools/call` handler (ours) must call itself — `McpStrategy` now does, with the same schema
+   `tools/list` advertised (`advertisedOutputSchema`). Like the SDK, a typeless root that is
+   provably an object (a union of objects) is stamped `type:'object'` and is not wrapped.
+   Asserted end-to-end in `tests/mcp-spec-error-codes.e2e.spec.ts`. (Under
+   `2.0.0-beta.5` the client still typed the field as a record and rejected non-objects.)
 
 ### Tier 2 — authorization security ✅
 
@@ -794,8 +794,6 @@ mind for any future code touching Node built-ins directly.
 - **Consent is not wired for STDIO** (no browser) and there is no "revoke my approvals" route
   (`ConsentService.clearConsents()` exists but is unexposed).
 - **Full SEP-2243 `x-mcp-header` support** — mirroring is refused, not implemented.
-- **Non-object `structuredContent`** cannot round-trip until the SDK client's `CallToolResult`
-  schema widens (Tier 1).
 - **`code_challenge` format validation** (RFC 7636's 43–128 unreserved characters) — a malformed
   S256 challenge simply never verifies, so it adds no security.
 

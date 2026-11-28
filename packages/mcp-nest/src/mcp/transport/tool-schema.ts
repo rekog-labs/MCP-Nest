@@ -14,9 +14,12 @@ export interface ResolvedToolSchema {
   /**
    * The JSON Schema to advertise. `io` selects the input vs output projection
    * for schemas that distinguish them (Zod pipes, Standard Schema converters).
-   * Returns `undefined` when the schema does not describe an object shape and so
-   * should not be advertised (preserves the historical Zod behavior where a
-   * non-object schema produced no `inputSchema`).
+   * Returns `undefined` when the schema should not be advertised:
+   * - `input`: the schema does not describe an object shape (MCP requires an
+   *   object `inputSchema`; preserves the historical Zod behavior);
+   * - `output`: a non-object Zod schema that has no JSON Schema form (a root
+   *   `.transform()`, `z.date()`, …). Non-object output schemas are otherwise
+   *   advertised: SEP-2106 lets `structuredContent` be any JSON value.
    */
   toJsonSchema(io: 'input' | 'output'): Record<string, unknown> | undefined;
   /** Validate a value, mirroring Zod's `safeParse` result shape. */
@@ -209,7 +212,17 @@ function resolveZod(schema: ZodType): ResolvedToolSchema {
   return {
     toJsonSchema(io) {
       if (io === 'output') {
-        return zodToJsonSchema(schema, io);
+        // An object schema that cannot be converted throws, as it always did.
+        // A non-object one used to be dropped before conversion, so a tool with
+        // e.g. a root `.transform()` listed fine without an `outputSchema`;
+        // keep that rather than failing `tools/list` for every tool.
+        // `findUnadvertisedZodOutputSchema` warns about it at registration.
+        if (schema instanceof z.ZodObject) return zodToJsonSchema(schema, io);
+        try {
+          return zodToJsonSchema(schema, io);
+        } catch {
+          return undefined;
+        }
       }
       const normalized = normalizeObjectSchema(schema);
       if (!normalized) return undefined;
@@ -229,6 +242,88 @@ function resolveZod(schema: ZodType): ResolvedToolSchema {
       return { success: false, message };
     },
   };
+}
+
+// -----------------------------------------------------------------------------
+// Advertised output schema — mirrors the SDK's `McpServer` (SDK >= 2.4).
+// -----------------------------------------------------------------------------
+
+const LOCAL_DEFINITION_REF = /^#\/(\$defs|definitions)\/([^/~%]+)$/;
+
+/**
+ * Port of the SDK's (unexported) `isProvablyObjectShapedRoot`. A typeless root
+ * is provably an object when it carries object keywords, when a `$ref` points
+ * one hop to a `type: 'object'` definition, or when it is a composition
+ * (`oneOf`/`anyOf`/`allOf`) whose every member is provably an object (a Zod
+ * union or discriminated union of objects).
+ */
+function isProvablyObjectShapedRoot(
+  schema: Record<string, unknown>,
+  root: Record<string, unknown> = schema,
+): boolean {
+  if (
+    'properties' in schema ||
+    'patternProperties' in schema ||
+    'additionalProperties' in schema ||
+    'required' in schema
+  ) {
+    return true;
+  }
+  const ref =
+    typeof schema.$ref === 'string' && LOCAL_DEFINITION_REF.exec(schema.$ref);
+  if (ref) {
+    const defs = root[ref[1]] as Record<string, unknown> | undefined;
+    const target = defs?.[ref[2]] as Record<string, unknown> | undefined;
+    if (target?.type === 'object') return true;
+  }
+  for (const key of ['oneOf', 'anyOf', 'allOf']) {
+    const members = schema[key];
+    if (Array.isArray(members) && members.length > 0) {
+      return members.every(
+        (m) =>
+          isPlainObject(m) &&
+          (m.type === 'object' ||
+            isProvablyObjectShapedRoot(m, '$id' in m ? {} : root)),
+      );
+    }
+  }
+  return false;
+}
+
+/**
+ * The `outputSchema` a tool advertises in `tools/list`, and the schema
+ * `tools/call` hands to `projectCallToolResult` — one function so the two can
+ * never disagree (the SDK memoises `outputSchemaJson` for the same reason).
+ *
+ * Any root is allowed (SEP-2106). As in the SDK's `standardSchemaToJsonSchema`,
+ * a typeless root that is provably an object gets `type: 'object'`, so the
+ * 2025-era codec does not wrap e.g. a union of objects as `{ result: … }`.
+ */
+export function advertisedOutputSchema(
+  schema: ToolInputSchema,
+): Record<string, unknown> | undefined {
+  const json = resolveToolSchema(schema).toJsonSchema('output');
+  if (!json || json.type !== undefined) return json;
+  return isProvablyObjectShapedRoot(json) ? { type: 'object', ...json } : json;
+}
+
+/**
+ * The reason a tool's Zod `outputSchema` is left out of `tools/list` (it is a
+ * non-object schema with no JSON Schema form), or `undefined` if it is
+ * advertised or is not a Zod schema. Used to warn at registration.
+ */
+export function findUnadvertisedZodOutputSchema(
+  schema: ToolInputSchema,
+): string | undefined {
+  if (!(schema instanceof z.ZodType) || schema instanceof z.ZodObject) {
+    return undefined;
+  }
+  try {
+    zodToJsonSchema(schema, 'output');
+    return undefined;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
 }
 
 // -----------------------------------------------------------------------------

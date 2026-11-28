@@ -25,15 +25,13 @@
  *      revision only permitted object output schemas. That is the SDK doing the
  *      right era-appropriate thing, not us corrupting the schema.
  *
- * Known SDK limitation (deliberately not asserted): a *result* whose
- * `structuredContent` is a non-object JSON value is rejected client-side by
- * `@modelcontextprotocol/client@2.0.0-beta.5`, whose `CallToolResult` schema
- * still types the field as `z.record(z.string(), z.unknown())`. SEP-2106's
- * widening is honored on the server (the SDK even ships
- * `appendTextFallbackForNonObject`) but not yet in the client's result
- * validation, so an end-to-end array-`structuredContent` round-trip cannot pass
- * today no matter what the server emits. Advertising the schema correctly is
- * still the right thing to do and is what this suite locks in.
+ *    The `tools/call` result follows the same envelope: on legacy a
+ *    non-object value goes out as `structuredContent: { result: <value> }`
+ *    (the SDK's `projectCallToolResult`), on modern it goes out as is. A root
+ *    that is provably an object (a union of objects) is stamped
+ *    `type: 'object'` and is not wrapped on either era, as in the SDK's own
+ *    `McpServer`. The round-trip tests below drive the SDK client, which
+ *    validates `structuredContent` against the advertised schema.
  */
 import { INestApplication } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
@@ -61,11 +59,7 @@ class ErrorCodeTools {
   }
 }
 
-/**
- * Output schemas that are NOT object-shaped. Only the Standard Schema and raw
- * JSON Schema paths can produce these — the Zod path normalizes non-object
- * schemas away before they are advertised.
- */
+/** Raw JSON Schema output schemas that are NOT object-shaped. */
 @McpController()
 class NonObjectOutputSchemaTools {
   @Tool({
@@ -100,13 +94,77 @@ class NonObjectOutputSchemaTools {
   }
 }
 
+/** The same, authored in Zod (issue #128). */
+@McpController()
+class ZodNonObjectOutputSchemaTools {
+  @Tool({
+    name: 'zod-array-output-tool',
+    description: 'Returns a top-level JSON array',
+    parameters: z.object({}),
+    outputSchema: z.array(z.object({ id: z.string(), name: z.string() })),
+  })
+  async listUsers() {
+    return [
+      { id: '1', name: 'Alice' },
+      { id: '2', name: 'Bob' },
+    ];
+  }
+
+  @Tool({
+    name: 'zod-string-output-tool',
+    description: 'Returns a bare JSON string',
+    parameters: z.object({}),
+    outputSchema: z.string(),
+  })
+  async bareString() {
+    return 'just a string';
+  }
+
+  @Tool({
+    name: 'zod-nullable-output-tool',
+    description: 'Returns null',
+    parameters: z.object({}),
+    outputSchema: z.object({ id: z.string() }).nullable(),
+  })
+  async nothing() {
+    return null;
+  }
+
+  @Tool({
+    name: 'zod-union-output-tool',
+    description: 'Returns one of two object shapes',
+    parameters: z.object({}),
+    outputSchema: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('a'), a: z.string() }),
+      z.object({ kind: z.literal('b'), b: z.number() }),
+    ]),
+  })
+  async union() {
+    return { kind: 'b', b: 2 };
+  }
+
+  @Tool({
+    name: 'zod-transform-output-tool',
+    description: 'Output schema with no JSON Schema form',
+    parameters: z.object({}),
+    outputSchema: z.object({ n: z.number() }).transform((v) => v),
+  })
+  async transformed() {
+    return { n: 1 };
+  }
+}
+
 describe.each(ERAS)('spec error codes and schemas (%s era)', (era: Era) => {
   let app: INestApplication;
   let port: number;
 
   beforeAll(async () => {
     ({ app, port } = await bootstrapMcpApp({
-      controllers: [ErrorCodeTools, NonObjectOutputSchemaTools],
+      controllers: [
+        ErrorCodeTools,
+        NonObjectOutputSchemaTools,
+        ZodNonObjectOutputSchemaTools,
+      ],
     }));
   });
 
@@ -214,6 +272,53 @@ describe.each(ERAS)('spec error codes and schemas (%s era)', (era: Era) => {
       }
     });
 
+    it('advertises a Zod array outputSchema correctly for the era', async () => {
+      const client = await createEraClient(era, port);
+      try {
+        const { tools } = await client.listTools();
+        const tool = tools.find((t) => t.name === 'zod-array-output-tool');
+        const natural = {
+          type: 'array',
+          items: { type: 'object', required: ['id', 'name'] },
+        };
+        expect(tool!.outputSchema).toMatchObject(
+          era === 'modern'
+            ? natural
+            : {
+                type: 'object',
+                required: ['result'],
+                properties: { result: natural },
+              },
+        );
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('stamps a Zod union of objects as an object root, unwrapped on both eras', async () => {
+      const client = await createEraClient(era, port);
+      try {
+        const { tools } = await client.listTools();
+        const tool = tools.find((t) => t.name === 'zod-union-output-tool');
+        expect(tool!.outputSchema).toMatchObject({ type: 'object' });
+        expect(tool!.outputSchema).not.toHaveProperty('properties.result');
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('lists a tool whose Zod outputSchema has no JSON Schema form, without one', async () => {
+      const client = await createEraClient(era, port);
+      try {
+        const { tools } = await client.listTools();
+        const tool = tools.find((t) => t.name === 'zod-transform-output-tool');
+        expect(tool).toBeDefined();
+        expect(tool!.outputSchema).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+
     it('does not invent an outputSchema for tools that declare none', async () => {
       const client = await createEraClient(era, port);
       try {
@@ -221,6 +326,39 @@ describe.each(ERAS)('spec error codes and schemas (%s era)', (era: Era) => {
         const known = tools.find((t) => t.name === 'known-tool');
         expect(known).toBeDefined();
         expect(known!.outputSchema).toBeUndefined();
+      } finally {
+        await client.close();
+      }
+    });
+  });
+
+  describe('non-object structuredContent round-trips through the SDK client', () => {
+    const wrap = (value: unknown) =>
+      era === 'modern' ? value : { result: value };
+    const users = [
+      { id: '1', name: 'Alice' },
+      { id: '2', name: 'Bob' },
+    ];
+
+    it.each([
+      ['array-output-tool', wrap(users)],
+      ['string-output-tool', wrap('just a string')],
+      ['zod-array-output-tool', wrap(users)],
+      ['zod-string-output-tool', wrap('just a string')],
+      ['zod-nullable-output-tool', wrap(null)],
+      // Provably an object: never wrapped.
+      ['zod-union-output-tool', { kind: 'b', b: 2 }],
+      // Not advertised; an object value needs no wrap.
+      ['zod-transform-output-tool', { n: 1 }],
+    ])('%s', async (name, expected) => {
+      const client = await createEraClient(era, port);
+      try {
+        // `listTools` first: the client caches each tool's outputSchema from it
+        // and validates `structuredContent` against that cache.
+        await client.listTools();
+        const result = await client.callTool({ name, arguments: {} });
+        expect(result.isError).toBeFalsy();
+        expect(result.structuredContent).toEqual(expected);
       } finally {
         await client.close();
       }

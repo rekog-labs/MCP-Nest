@@ -4,7 +4,9 @@ import * as v from 'valibot';
 import { toStandardJsonSchema } from '@valibot/to-json-schema';
 import { type } from 'arktype';
 import {
+  advertisedOutputSchema,
   assertNoMcpParamHeaderMirroring,
+  findUnadvertisedZodOutputSchema,
   inlineRootRef,
   resolveToolSchema,
 } from './tool-schema';
@@ -49,6 +51,24 @@ describe('resolveToolSchema', () => {
           required: ['id', 'name'],
         },
       });
+    });
+
+    it('does not advertise a non-object output schema with no JSON Schema form', () => {
+      const transformed = z.object({ n: z.number() }).transform((v) => v);
+      expect(
+        resolveToolSchema(transformed).toJsonSchema('output'),
+      ).toBeUndefined();
+      expect(findUnadvertisedZodOutputSchema(transformed)).toContain(
+        'Transforms cannot be represented',
+      );
+      expect(findUnadvertisedZodOutputSchema(schema)).toBeUndefined();
+      expect(findUnadvertisedZodOutputSchema(z.array(z.string()))).toBeUndefined();
+    });
+
+    it('still throws for an object output schema with no JSON Schema form', () => {
+      expect(() =>
+        resolveToolSchema(z.object({ d: z.date() })).toJsonSchema('output'),
+      ).toThrow();
     });
 
     it('accepts valid input', async () => {
@@ -515,5 +535,34 @@ describe('inlineRootRef', () => {
     ],
   ])('leaves %s unchanged', (_label, json) => {
     expect(inlineRootRef(json as Record<string, unknown>)).toBe(json);
+  });
+});
+
+describe('advertisedOutputSchema', () => {
+  it('stamps type: object on a union of objects', () => {
+    const json = advertisedOutputSchema(
+      z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('a') }),
+        z.object({ kind: z.literal('b') }),
+      ]),
+    );
+    expect(json).toMatchObject({ type: 'object' });
+    expect(json).toHaveProperty('oneOf');
+  });
+
+  it('does not stamp a union that can hold a non-object', () => {
+    const json = advertisedOutputSchema(
+      z.union([z.object({ a: z.string() }), z.string()]),
+    );
+    expect(json).not.toHaveProperty('type');
+  });
+
+  it('keeps an explicit root type', () => {
+    expect(advertisedOutputSchema(z.array(z.string()))).toMatchObject({
+      type: 'array',
+    });
+    expect(advertisedOutputSchema({ type: 'string' })).toEqual({
+      type: 'string',
+    });
   });
 });
