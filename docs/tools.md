@@ -126,7 +126,7 @@ The `@Tool()` decorator accepts a configuration object with the following proper
 - **`description`** (required): Human-readable description explaining what the tool does
 - **`title`** (optional): Human-readable display name returned as the top-level `title` in `tools/list`. Clients can show it instead of `name`. It is separate from `annotations.title`
 - **`parameters`** (required): Zod schema defining the expected input parameters and their validation rules
-- **`outputSchema`** (optional): schema for validating and structuring the tool's return value
+- **`outputSchema`** (optional): schema for validating and structuring the tool's return value. Any JSON Schema root is allowed (SEP-2106), e.g. `z.array(...)` or `z.string()`. On the `2026-07-28` era it is advertised and returned as is; on the 2025 era a non-object schema and value are wrapped as `{ result: ... }`, because that revision only allows objects. A non-object Zod schema with no JSON Schema form (a root `.transform()`) is not advertised and logs a warning at startup
 - **`disableResponseValidation`** (optional): set to `true` to skip the server's check of the result against `outputSchema` for this tool (the schema is still advertised; the result must still conform). Overrides the server-wide `McpServerOptions.disableResponseValidation`. See [Skipping server-side response validation](#skipping-server-side-response-validation)
 - **`annotations`** (optional): Advisory tool behavior hints for MCP clients, as defined in the [MCP ToolAnnotations specification](https://modelcontextprotocol.io/specification/2026-07-28/schema#toolannotations). These hints do not enforce permissions:
   - `readOnlyHint`: Indicates if the tool does not modify its environment. Defaults to `false`.
