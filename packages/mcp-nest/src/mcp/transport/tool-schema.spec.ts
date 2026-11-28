@@ -34,9 +34,21 @@ describe('resolveToolSchema', () => {
       );
     });
 
-    it('returns undefined JSON Schema for a non-object Zod schema', () => {
+    it('returns undefined JSON Schema for a non-object Zod input schema', () => {
       const resolved = resolveToolSchema(z.string());
       expect(resolved.toJsonSchema('input')).toBeUndefined();
+    });
+
+    it('advertises an array output schema', () => {
+      const schema = z.array(z.object({ id: z.number(), name: z.string() }));
+      const resolved = resolveToolSchema(schema);
+      expect(resolved.toJsonSchema('output')).toMatchObject({
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['id', 'name'],
+        },
+      });
     });
 
     it('accepts valid input', async () => {
@@ -480,12 +492,18 @@ describe('inlineRootRef', () => {
       'a root keyword next to $ref (applies together with it in 2020-12)',
       { $ref: '#/$defs/A', description: 'x', $defs: { A: body } },
     ],
-    ['a $ref to a missing definition', { $ref: '#/$defs/B', $defs: { A: body } }],
+    [
+      'a $ref to a missing definition',
+      { $ref: '#/$defs/B', $defs: { A: body } },
+    ],
     [
       'a $ref into the middle of a definition',
       { $ref: '#/$defs/A/properties/a', $defs: { A: body } },
     ],
-    ['a $ref outside $defs', { $ref: '#/definitions/A', definitions: { A: body } }],
+    [
+      'a $ref outside $defs',
+      { $ref: '#/definitions/A', definitions: { A: body } },
+    ],
     ['an external $ref', { $ref: 'https://example.com/s.json' }],
     [
       'a definition with its own $id',

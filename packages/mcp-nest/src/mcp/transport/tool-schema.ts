@@ -208,6 +208,9 @@ function normalizeObjectSchema(
 function resolveZod(schema: ZodType): ResolvedToolSchema {
   return {
     toJsonSchema(io) {
+      if (io === 'output') {
+        return zodToJsonSchema(schema, io);
+      }
       const normalized = normalizeObjectSchema(schema);
       if (!normalized) return undefined;
       return zodToJsonSchema(normalized, io);
